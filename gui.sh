@@ -1,14 +1,13 @@
 #!/bin/sh
 docker build -t xyscope .
-xhost -SI:localuser:root
 docker run -it --rm --name xyscope1 \
 		-v $(pwd):/usr/src/xyscope \
 		-v $HOME/Music:/home/user/Music \
 		-v /tmp/.X11-unix:/tmp/.X11-unix \
-		-v $HOME/.Xauthority:/root/.Xauthority:rw \
-		-v $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:/tmp/$WAYLAND_DISPLAY  \
-		--env XDG_RUNTIME_DIR=/tmp \
-		--env WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+		-v $HOME/.Xauthority:/root/.Xauthority \
+		-v $XDG_RUNTIME_DIR:$XDG_RUNTIME_DIR \
+		--env=XDG_RUNTIME_DIR \
+		--env=WAYLAND_DISPLAY \
 		--env=DISPLAY \
 		--device=/dev/snd:/dev/snd \
 		--ipc=host \
@@ -16,3 +15,4 @@ docker run -it --rm --name xyscope1 \
 		--privileged \
 		xyscope \
 		/usr/src/xyscope/docker-entrypoint.sh
+#		-v /var/run/dbus:/var/run/dbus \

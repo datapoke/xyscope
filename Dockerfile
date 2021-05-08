@@ -5,6 +5,7 @@ RUN apt-get update && \
 		build-essential \
 		freeglut3-dev \
 		libjack-dev \
+        pulseaudio-module-jack \
         mpv
 	# && rm -rf /var/lib/apt/lists/*
 
