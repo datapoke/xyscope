@@ -114,14 +114,9 @@
 /* ringbuffer size in frames */
 #define DEFAULT_RB_SIZE (SAMPLE_RATE * BUFFER_SECONDS + FRAMES_PER_BUF)
 
-/* On the Mac, connect to all output ports as they become available. */
-/* On everything else, only connect to physical output ports. */
-#ifdef __APPLE__
-#define output_port_flags(A) ((A) & JackPortIsOutput)
-#else
+/* Connect to all software output ports as they become available. */
 #define output_port_flags(A) (((A) & JackPortIsOutput) \
-                           && ((A) & JackPortIsPhysical))
-#endif
+                           && !((A) & JackPortIsPhysical))
 
 
 /* Jack Audio types */
@@ -386,13 +381,13 @@ public:
                                                        port_name);
             int port_flags        = jack_port_flags (port);
 
-            /* printf ("noticed port: %s\n", port_name); */
+            printf ("noticed port: %s\n", port_name);
             if (output_port_flags (port_flags)) {
                 int port_name_size = jack_port_name_size ();
                 unsigned int p = 0;
                 for (int i = 0;
                      i < port_name_size && port_name[i] != '\0';
-                     p = port_name[i++] - '1');
+                     p = port_name[i++] - '0');
                 if (p >= 0 && p < t_data->channels) {
                     if (jack_port_connected_to (t_data->ports[p],
                                                 port_name)) {
