@@ -2,5 +2,5 @@
 apt install -y jackd1
 cd /usr/src/xyscope
 make
-jackd -r -d alsa -r 96000 -p 512 -d hw:2 &
-while [ 1 ] ; do ./xyscope ; sleep 5 ; done
+su user -c "jackd -R -d alsa -r 192000 -p 512 -d hw:1" &
+while [ 1 ] ; do sleep 5 ; su user -c "./xyscope" ; done
