@@ -1,8 +1,15 @@
-#!/bin/sh
+#!/bin/bash
+if [ -n "$1" ] ; then
+    exec $@
+fi
+if [ -z "${JACK_DEVICE}" ] ; then
+    JACK_DEVICE=hw:0
+fi
+
 apt install -y jackd1
 cd /usr/src/xyscope
 make
-su user -c "jackd -R -d alsa -r 192000 -p 512 -d hw:1" &
+su user -c "jackd -R -d alsa -r 192000 -p 512 -d ${JACK_DEVICE}" &
 # su user -c "mkdir -p /home/user/.config/pulse"
 # su user -c "cp /usr/src/xyscope/default.pa /home/user/.config/pulse/"
 # su user -c "pulseaudio -D"

@@ -590,8 +590,8 @@ public:
     {
         int FH;
         if ((FH = open (DEFAULT_PREF_FILE, O_CREAT | O_WRONLY, 00660))) {
-            prefs.position[0] = glutGet (GLUT_WINDOW_X);
-            prefs.position[1] = glutGet (GLUT_WINDOW_Y);
+            // prefs.position[0] = glutGet (GLUT_WINDOW_X);
+            // prefs.position[1] = glutGet (GLUT_WINDOW_Y);
             fprintf (stderr, "saving preferences\n");
             write (FH, (void *) &prefs, sizeof (preferences_t));
             close (FH);

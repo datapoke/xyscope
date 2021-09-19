@@ -1,5 +1,7 @@
 FROM debian:buster-slim
 
+ARG MUSIC_DIR
+
 RUN apt-get update && \
 	apt-get install -y --no-install-recommends \
 		build-essential \
@@ -28,5 +30,8 @@ RUN apt-get install -y --no-install-recommends \
 
 RUN useradd -m -s /bin/bash -u 1000 user
 RUN usermod -aG audio user
+RUN ln -sf ${MUSIC_DIR} /home/user/
 
-WORKDIR /home/user/Music
+COPY ./docker-entrypoint.sh /usr/local/bin/
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
