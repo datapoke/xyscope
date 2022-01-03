@@ -4,6 +4,6 @@ docker exec -it \
 		--env=XDG_RUNTIME_DIR \
 		--env=WAYLAND_DISPLAY \
 		--env=DISPLAY \
-        -w /home/user/Music \
+		-w /home/user/Music \
 		xyscope1 \
 		bash
