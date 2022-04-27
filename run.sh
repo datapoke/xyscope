@@ -2,10 +2,10 @@
 if [ -n "$1" ] ; then
     export JACK_DEVICE=$1
 fi
-if [ -n "$MUSIC_DIR" ] ; then
+if [ -n "$2" ] ; then
     MUSIC_DIR=$2
 fi
-docker build -t xyscope --build-args MUSIC_DIR=$(MUSIC_DIR) .
+docker build -t xyscope --build-arg MUSIC_DIR=${MUSIC_DIR} .
 docker run -it --rm --name xyscope1 \
 		-v $(pwd):/usr/src/xyscope \
 		-v /tmp/.X11-unix:/tmp/.X11-unix \
