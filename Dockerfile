@@ -1,7 +1,5 @@
 FROM debian:bullseye-slim
 
-ARG MUSIC_DIR
-
 RUN apt-get update && \
 	apt-get install -y --no-install-recommends \
 		build-essential \
@@ -27,6 +25,8 @@ RUN apt-get install -y --no-install-recommends \
   libxcb-xinerama0 libxcb-xkb1 libxcomposite1 libxkbcommon-x11-0 \
   libxml++2.6-2v5 publicsuffix qt5-gtk-platformtheme qttranslations5-l10n systemd \
   systemd-sysv libzita-alsa-pcmi0 libzita-resampler1
+
+ARG MUSIC_DIR
 
 RUN useradd -m -s /bin/bash -u 1000 user
 RUN usermod -aG audio user
