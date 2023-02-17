@@ -26,11 +26,8 @@ RUN apt-get install -y --no-install-recommends \
   libxml++2.6-2v5 publicsuffix qt5-gtk-platformtheme qttranslations5-l10n systemd \
   systemd-sysv libzita-alsa-pcmi0 libzita-resampler1
 
-ARG MUSIC_DIR
-
 RUN useradd -m -s /bin/bash -u 1000 user
 RUN usermod -aG audio user
-RUN ln -sf ${MUSIC_DIR} /home/user/
 
 COPY ./docker-entrypoint.sh /usr/local/bin/
 
