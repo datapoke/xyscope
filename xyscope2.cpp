@@ -31,8 +31,11 @@
 #include <GL/glut.h>
 #include <GL/gl.h>
 #endif
-#include <jack/jack.h>
-#include <jack/ringbuffer.h>
+#include <pipewire/pipewire.h>
+#include <pipewire/thread-loop.h>
+#include <pipewire/context.h>
+#include <pipewire/core.h>
+#include <spa/utils/ringbuffer.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -83,7 +86,7 @@
  *
  * e.g. (44100 * 60 + 44100 / 60) * 8 = 21173880 bytes or 20.2MB
  *
- * That being said, the jack ringbuffer will round up to the next
+ * That being said, the ringbuffer will round up to the next
  * power of two, in the above case giving us a 32.0MB ringbuffer.
  */
 #define BUFFER_SECONDS 60
@@ -91,12 +94,10 @@
 /* How many times to draw each frame */
 #define DRAW_EACH_FRAME 2
 
-/* Whether to start jackd if it is not running */
+/* Whether or not we are responsible for the frame rate */
 #ifdef __APPLE__
-#define DEFAULT_START_JACKD false
 #define RESPONSIBLE_FOR_FRAME_RATE false
 #else
-#define DEFAULT_START_JACKD false
 #define RESPONSIBLE_FOR_FRAME_RATE true
 #endif
 
@@ -114,13 +115,11 @@
 /* ringbuffer size in frames */
 #define DEFAULT_RB_SIZE (SAMPLE_RATE * BUFFER_SECONDS + FRAMES_PER_BUF)
 
-/* Connect to all software output ports as they become available. */
-#define output_port_flags(A) (((A) & JackPortIsOutput) \
-                           && !((A) & JackPortIsPhysical))
-
-
-/* Jack Audio types */
-typedef jack_default_audio_sample_t sample_t;
+/* Audio types */
+typedef float sample_t;
+typedef struct pw_core pw_core_t;
+typedef struct pw_port pw_port_t;
+typedef uint32_t pw_nframes_t;
 
 typedef struct _frame_t {
     sample_t left_channel;
@@ -129,12 +128,13 @@ typedef struct _frame_t {
 
 typedef struct _thread_data {
     pthread_t thread_id;
-    jack_client_t *client;
-    jack_port_t **ports;
-    sample_t **input_buffer;
+    pw_core_t *core;
+    struct pw_stream **ports;
+    struct pw_stream *stream;
+    struct spa_buffer *input_buffer;
     size_t frame_size;
-    jack_ringbuffer_t *ringbuffer;
-    jack_nframes_t rb_size;
+    struct spa_ringbuffer *ringbuffer;
+    pw_nframes_t rb_size;
     pthread_mutex_t ringbuffer_lock;
     pthread_cond_t data_ready;
     unsigned int channels;
@@ -143,9 +143,17 @@ typedef struct _thread_data {
     volatile bool new_port_available;
     timeval last_new_port;
     timeval last_write;
-} jack_thread_data_t;
+} pipewire_thread_data_t;
 
-jack_thread_data_t Thread_Data;
+pipewire_thread_data_t Thread_Data;
+
+static void registry_events_on_global(void *data, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *props);
+
+static const struct pw_registry_events registry_events = {
+    PW_VERSION_REGISTRY_EVENTS,
+    .global = registry_events_on_global,
+    // ... other events if needed
+};
 
 
 #define ROOT_TWO 1.41421356237309504880
@@ -172,286 +180,80 @@ double timeDiff (timeval a, timeval b)
 
 
 
-/* Jack Audio callback functions */
+/* pipewire callback functions */
 
-/* The callback function to tell us new ports are available */
-void newPort (jack_port_id_t port_id, int something, void *arg)
+static void registry_events_on_global(void *data, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *props)
 {
-    jack_thread_data_t *t_data = (jack_thread_data_t *) arg;
-    gettimeofday (&t_data->last_new_port, NULL);
-    t_data->new_port_available = true;
+    pipewire_thread_data_t *t_data = (pipewire_thread_data_t *) data;
+    const char *media_class;
+
+    if (strcmp(type, PW_TYPE_INTERFACE_Port) == 0) {
+        media_class = spa_dict_lookup(props, PW_KEY_MEDIA_CLASS);
+
+        if (media_class && strstr(media_class, "Audio/Sink")) {
+            fprintf(stdout, "Found monitor port with id: %u\n", id);
+            gettimeofday(&t_data->last_new_port, NULL);
+            t_data->new_port_available = true;
+
+            // Connect the stream to the monitor port
+            pw_stream_connect(t_data->ports[0],
+                            PW_DIRECTION_INPUT,
+                            id,
+                            (pw_stream_flags)(PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS), NULL, 0);
+        }
+    }
 }
 
-/* The callback function for Jack Audio to provide us with audio data */
-int process (jack_nframes_t nframes, void *arg)
+void process(void *data, uint32_t seq, uint64_t time, uint32_t priority, const struct spa_pod *pod)
 {
-    jack_thread_data_t *t_data = (jack_thread_data_t *) arg;
-    sample_t **input_buffer = t_data->input_buffer;
+    pipewire_thread_data_t *t_data = (pipewire_thread_data_t *)data;
+    struct spa_buffer *buffers;
+    struct spa_data *d;
     frame_t frame;
-    unsigned int p;
-    size_t i;
+    uint32_t num_buffers, data_size, num_samples, i;
+    uint32_t write_index;
+    uint32_t write_space;
 
     /* Do nothing if the scope is paused or we are not ready. */
-    if (t_data->pause_scope || ! t_data->can_process)
-        return 0;
+    if (t_data->pause_scope || !t_data->can_process)
+        return;
 
     /* start the latency timer */
-    gettimeofday (&t_data->last_write, NULL);
+    gettimeofday(&t_data->last_write, NULL);
 
-    /* get the input buffers from jack */
-    for (p = 0; p < t_data->channels; p++)
-        t_data->input_buffer[p]
-            = (sample_t *) jack_port_get_buffer (t_data->ports[p], nframes);
+    /* Get the input buffers from PipeWire */
+    buffers = t_data->input_buffer;
+    d = &buffers->datas[0];
+    num_buffers = 1;
+    data_size = d->chunk->size;
+    num_samples = data_size / (t_data->channels * sizeof(sample_t));
 
-    /* scene::drawPlot() requires interleaved data.  It is simpler here
-     * to just queue interleaved samples to a single ringbuffer. */
-    for (i = 0; i < nframes; i++) {
-        frame.left_channel  = (sample_t) * (input_buffer[LEFT_PORT]  + i);
-        frame.right_channel = (sample_t) * (input_buffer[RIGHT_PORT] + i);
-        jack_ringbuffer_write (t_data->ringbuffer,
-                               (const char *) &frame,
-                               t_data->frame_size);
+    /* Write interleaved data to the ringbuffer */
+    for (i = 0; i < num_samples; i += t_data->channels) {
+        frame.left_channel = *(sample_t *) SPA_MEMBER(d->data, i * sizeof(sample_t), void);
+        frame.right_channel = *(sample_t *) SPA_MEMBER(d->data, (i + 1) * sizeof(sample_t), void);
+
+        spa_ringbuffer_get_write_index(t_data->ringbuffer, &write_index);
+        write_space = spa_ringbuffer_get_write_index(t_data->ringbuffer, &write_index);
+        if (write_space >= t_data->frame_size) {
+            spa_ringbuffer_init(t_data->ringbuffer);
+            spa_ringbuffer_write_data(t_data->ringbuffer, write_index, t_data->rb_size, (const char *)&frame, t_data->frame_size);
+            spa_ringbuffer_write_update(t_data->ringbuffer, t_data->frame_size);
+        }
     }
 
-    if (pthread_mutex_trylock (&t_data->ringbuffer_lock) == 0) {
-        /* drawPlot() will wait for this signal before reading from
-         * the ringbuffer and displaying the most recent framebuf */
-        pthread_cond_signal (&t_data->data_ready);
-        pthread_mutex_unlock (&t_data->ringbuffer_lock);
+    if (pthread_mutex_trylock(&t_data->ringbuffer_lock) == 0) {
+        pthread_cond_signal(&t_data->data_ready);
+        pthread_mutex_unlock(&t_data->ringbuffer_lock);
     }
-
-    return 0;
-}
-
-void jackShutdown (void *arg)
-{
-    fprintf (stderr, "JACK shutdown\n");
-    abort ();
 }
 
 
-
-/* The audioInput object: readerThread(), setupPorts(),
- *                        connectPorts(), quitNow() */
-
-class audioInput
-{
-public:
-    pthread_t capture_thread;
-    bool quit;
-
-    audioInput ()
-    {
-        bzero (&Thread_Data, sizeof (Thread_Data));
-        pthread_mutex_t ringbuffer_lock = PTHREAD_MUTEX_INITIALIZER;
-        pthread_cond_t data_ready       = PTHREAD_COND_INITIALIZER;
-        Thread_Data.ringbuffer_lock     = ringbuffer_lock;
-        Thread_Data.data_ready          = data_ready;
-        quit = false;
-        pthread_create (&capture_thread, NULL, readerThread, (void *) this);
-    }
-    ~audioInput ()
-    {
-        jack_thread_data_t *t_data = getThreadData ();
-        jack_client_close (t_data->client);
-        jack_ringbuffer_free (t_data->ringbuffer);
-    }
-
-    static void* readerThread (void* arg)
-    {
-        audioInput* ai             = (audioInput *) arg;
-        jack_thread_data_t *t_data = ai->getThreadData ();
-        timeval this_moment;
-
-        t_data->thread_id = ai->capture_thread;
-
-        if (DEFAULT_START_JACKD) {
-            jack_status_t status;
-            t_data->client = jack_client_open ("xyscope",
-                                              JackServerName,
-                                              &status);
-            if (t_data->client == NULL) {
-                if (status & JackServerFailed) {
-                    fprintf (stderr, "JACK server failed to start\n");
-                }
-                else {
-                    fprintf (stderr, "jack_client_open() failed, "
-                             "status = 0x%2.0x\n", status);
-                }
-                exit (1);
-            }
-        }
-        else {
-            t_data->client = jack_client_new ("xyscope");
-            if (t_data->client == NULL) {
-                fprintf (stderr, "JACK server not running?\n");
-                exit (1);
-            }
-        }
-
-        t_data->input_buffer       = NULL;
-        t_data->frame_size         = sizeof (frame_t);
-        t_data->ringbuffer         = NULL;
-        t_data->rb_size            = DEFAULT_RB_SIZE;
-        t_data->channels           = 2;
-        t_data->can_process        = false;
-        t_data->pause_scope        = false;
-        t_data->new_port_available = false;
-        gettimeofday (&t_data->last_new_port, NULL);
-        gettimeofday (&t_data->last_write, NULL);
-
-        jack_set_process_callback (t_data->client, process, t_data);
-        jack_set_port_registration_callback (t_data->client, newPort, t_data);
-        jack_on_shutdown (t_data->client, jackShutdown, t_data);
-
-        if (jack_activate (t_data->client)) {
-            fprintf (stderr, "cannot activate client");
-        }
-        ai->setupPorts ();
-
-        t_data->can_process = true;  /* process() can start, now */
-
-        while (! ai->quit) {
-            if (t_data->new_port_available) {
-                gettimeofday (&this_moment, NULL);
-                if (timeDiff (t_data->last_new_port, this_moment) > 5.0) {
-                    t_data->new_port_available = false;
-                    ai->connectPorts ();
-                }
-            }
-            usleep (1000);
-        }
-        return ai;
-    }
-
-    void setupPorts ()
-    {
-        jack_thread_data_t *t_data = getThreadData ();
-        size_t input_buffer_size;
-
-        /* Allocate data structures that depend on the number of ports. */
-        t_data->ports = (jack_port_t **) malloc (sizeof (jack_port_t *)
-                                                 * t_data->channels);
-        input_buffer_size = t_data->channels * sizeof (sample_t *);
-        t_data->input_buffer = (sample_t **) malloc (input_buffer_size);
-        printf ("requesting %.1fMB (%.1f second) ringbuffer\n",
-                (1 / (1024.0 * 1024.0)
-                 * ((double) t_data->rb_size * (double) t_data->frame_size)),
-                (double) BUFFER_SECONDS);
-        t_data->ringbuffer = jack_ringbuffer_create (t_data->frame_size
-                                                     * t_data->rb_size);
-
-        /* When JACK is running realtime, jack_activate() will have
-         * called mlockall() to lock our pages into memory.  But, we
-         * still need to touch any newly allocated pages before
-         * process() starts using them.  Otherwise, a page fault could
-         * create a delay that would force JACK to shut us down. */
-        bzero (t_data->input_buffer, input_buffer_size);
-        bzero (t_data->ringbuffer->buf, t_data->ringbuffer->size);
-        printf ("initialized %.1fMB (%.1f second) ringbuffer\n",
-                (1 / (1024.0 * 1024.0)
-                 * (double) t_data->ringbuffer->size),
-                 ((double) t_data->ringbuffer->size
-                  / ((double) SAMPLE_RATE * (double) t_data->frame_size)));
-
-        for (unsigned int i = 0; i < t_data->channels; i++) {
-            char name[64];
-            sprintf (name, "in%d", i+1);
-            if ((t_data->ports[i] = jack_port_register (t_data->client, name,
-                                                        JACK_DEFAULT_AUDIO_TYPE,
-                                                        JackPortIsInput,
-                                                        0)) == 0) {
-                fprintf (stderr, "cannot register input port \"%s\"!\n", name);
-                jack_client_close (t_data->client);
-                exit (1);
-            }
-        }
-    }
-
-    void connectPorts ()
-    {
-        jack_thread_data_t *t_data = getThreadData ();
-        const char **out_ports     = jack_get_ports (t_data->client,
-                                                     NULL,
-                                                     NULL,
-                                                     0);
-        for (int i = 0; out_ports[i]; i++) {
-            const char *port_name = out_ports[i];
-            jack_port_t *port     = jack_port_by_name (t_data->client,
-                                                       port_name);
-            int port_flags        = jack_port_flags (port);
-
-            printf ("noticed port: %s\n", port_name);
-            if (output_port_flags (port_flags)) {
-                int port_name_size = jack_port_name_size ();
-                unsigned int p = 0;
-                for (int i = 0;
-                     i < port_name_size && port_name[i] != '\0';
-                     p = port_name[i++] - '0');
-                if (p >= 0 && p < t_data->channels) {
-                    if (jack_port_connected_to (t_data->ports[p],
-                                                port_name)) {
-                        printf ("already connected to %s\n", port_name);
-                    }
-                    else {
-                        printf ("connecting to %s... ", port_name);
-                        if (jack_connect (t_data->client,
-                                          port_name,
-                                          jack_port_name (t_data->ports[p]))) {
-                            fprintf (stderr, "cannot connect to %s\n",
-                                     port_name);
-                            jack_client_close (t_data->client);
-                            exit (1);
-                        }
-                        printf ("connected\n");
-                    }
-                }
-            }
-        }
-    }
-
-    void quitNow ()
-    {
-        jack_thread_data_t *t_data = getThreadData ();
-        jack_client_close (t_data->client);
-        jack_ringbuffer_free (t_data->ringbuffer);
-        quit = true;
-    }
-
-    /* accessor methods */
-    jack_thread_data_t *getThreadData (void)
-    {
-        return &Thread_Data;
-    }
-};
-
-
-
-/* The scene object */
-
-typedef struct _preferences_t {
-    int dim[2];
-    int normal_dim[2];
-    int old_dim[2];
-    int position[2];
-    double side[4]; /* t, b, r, l */
-    double scale_factor;
-    bool scale_locked;
-    bool is_full_screen;
-    bool auto_scale;
-    unsigned int color_mode;
-    double color_range;
-    double color_rate;
-    unsigned int display_mode;
-    unsigned int line_width;
-    unsigned int show_stats;
-    double hue;
-} preferences_t;
 
 class scene
 {
 public:
-    audioInput* ai;
+    pipewire_thread_data_t *t_data;
     size_t frame_size;
     size_t bytes_per_buf;
     frame_t *framebuf;
@@ -583,8 +385,6 @@ public:
 
         for (int i = 0; i < 4; i++)
             target_side[i] = prefs.side[i];
-
-        ai = new audioInput ();
     }
     ~scene ()
     {
@@ -601,7 +401,7 @@ public:
 
     void drawPlot ()
     {
-        jack_thread_data_t *t_data = ai->getThreadData ();
+        pipewire_thread_data_t *t_data = &scn.t_data;
         size_t bytes_ready, bytes_read;
         double h   = -1.0;
         double s   = 1.0;
@@ -624,22 +424,24 @@ public:
             pthread_cond_wait (&t_data->data_ready, &t_data->ringbuffer_lock);
         }
 
-
         /* Read data from the ring buffer */
         if (t_data->pause_scope) {
-            distance = bump * frame_size;
+            distance = bump * t_data->frame_size;
             bump     = -DRAW_FRAMES;
         }
         else {
-            bytes_ready = jack_ringbuffer_read_space (t_data->ringbuffer);
+            uint32_t idx;
+            spa_ringbuffer_get_read_index(t_data->ringbuffer, &idx);
+            bytes_ready = spa_ringbuffer_get_available(t_data->ringbuffer, idx);
             if (bytes_ready != bytes_per_buf)
                 distance = bytes_ready - bytes_per_buf;
         }
         if (distance != 0)
-            jack_ringbuffer_read_advance (t_data->ringbuffer, distance);
-        bytes_read = jack_ringbuffer_read (t_data->ringbuffer,
-                                           (char *) framebuf,
-                                           bytes_per_buf);
+            spa_ringbuffer_read_update(t_data->ringbuffer, idx + distance);
+        bytes_read = spa_ringbuffer_read_data(t_data->ringbuffer,
+                                            idx + distance,
+                                            (char *)framebuf,
+                                            bytes_per_buf);
 
         if (! t_data->pause_scope)
             pthread_mutex_unlock (&t_data->ringbuffer_lock);
@@ -883,7 +685,7 @@ public:
 
     void drawStats ()
     {
-        jack_thread_data_t *t_data = ai->getThreadData ();
+        pipewire_thread_data_t *t_data = &scn.t_data;
         timeval this_frame_time;
         double elapsed_time;
         /* char color_threshold_string[64]; */
@@ -929,7 +731,7 @@ public:
 
     void drawText (void)
     {
-        jack_thread_data_t *t_data = ai->getThreadData ();
+        pipewire_thread_data_t *t_data = &scn.t_data;
         timeval this_frame_time;
         double elapsed_time;
         bool show_timer = false;
@@ -1197,7 +999,7 @@ public:
 
     void togglePaused (void)
     {
-        jack_thread_data_t *t_data = ai->getThreadData ();
+        pipewire_thread_data_t *t_data = &scn.t_data;
         if (t_data->pause_scope) {
             latency = 0.0;
             text_timer[CounterTimer].show = false;
@@ -1253,7 +1055,7 @@ public:
 
     void nextStatsGroup (void)
     {
-        // jack_thread_data_t *t_data = ai->getThreadData ();
+        // pipewire_thread_data_t *t_data = &scn.t_data;
         // gettimeofday (&t_data->last_write, NULL);
         // latency = 0.0;
         prefs.show_stats++;
@@ -1271,7 +1073,7 @@ public:
 
     void rewind (int nbufs)
     {
-        jack_thread_data_t *t_data = ai->getThreadData ();
+        pipewire_thread_data_t *t_data = &scn.t_data;
         if (t_data->pause_scope) {
             if ((offset - FRAMES_PER_BUF * nbufs) >= -DEFAULT_RB_SIZE) {
                 offset -= FRAMES_PER_BUF * nbufs;
@@ -1283,7 +1085,7 @@ public:
 
     void fastForward (int nbufs)
     {
-        jack_thread_data_t *t_data = ai->getThreadData ();
+        pipewire_thread_data_t *t_data = &scn.t_data;
         if (t_data->pause_scope) {
             if (offset < -FRAMES_PER_BUF * nbufs) {
                 offset += FRAMES_PER_BUF * nbufs;
@@ -1753,6 +1555,72 @@ int main (int argc, char * const argv[])
     scn.showAutoScale (NOT_TIMED);
     scn.showScale (NOT_TIMED);
 
+    // Initialize PipeWire
+    pw_init(NULL, NULL);
+
+    // Create main loop
+    struct pw_thread_loop *main_loop = pw_thread_loop_new("main_loop", NULL);
+
+    // Create PipeWire context
+    struct pw_context *context = pw_context_new(pw_main_loop_get_loop(main_loop), NULL, 0);
+
+    // create a registry listener
+    struct spa_hook registry_listener;
+
+    // Start the main loop
+    pw_thread_loop_start(main_loop);
+
+    // Create PipeWire core
+    pipewire_thread_data_t *t_data = &scn.t_data;
+    t_data->core = pw_context_connect(context, NULL, 0);
+
+    if (t_data->core == NULL) {
+        fprintf(stderr, "Failed to connect to PipeWire core\n");
+        // Handle error and clean up resources
+        return 1;
+    }
+
+    // Register core events
+    pw_core_t *core = pw_context_connect(context, NULL, 0);
+    pw_registry_t *registry = pw_core_get_registry(core, PW_VERSION_REGISTRY);
+    pw_registry_add_listener(registry, &registry_listener, &registry_events, t_data);
+
+    // Create and configure the audio stream
+    struct pw_stream *stream;
+    struct pw_stream_events stream_events = {0};
+
+    // Set up stream event callbacks
+    stream_events.process = your_process_function; // Replace with your function for processing audio data
+    // ... Add other event callbacks as needed
+
+    // Stream properties
+    struct pw_properties *stream_props = pw_properties_new(NULL, NULL);
+    pw_properties_set(stream_props, PW_KEY_MEDIA_TYPE, "Audio");
+    pw_properties_set(stream_props, PW_KEY_MEDIA_CATEGORY, "Capture");
+    pw_properties_set(stream_props, PW_KEY_MEDIA_ROLE, "DSP");
+
+    // Create the stream
+    stream = pw_stream_new(t_data->core, "xyscope_stream", stream_props);
+    if (!stream) {
+        fprintf(stderr, "Failed to create PipeWire stream\n");
+        // Handle error and clean up resources
+    }
+
+    // Register the stream events
+    struct spa_hook stream_listener;
+    pw_stream_add_listener(stream, &stream_listener, &stream_events, t_data);
+
+    // Connect the stream
+    uint32_t flags = PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS;
+    if (pw_stream_connect(stream, PW_DIRECTION_INPUT, PW_ID_ANY, flags, NULL, 0) < 0) {
+        fprintf(stderr, "Failed to connect the stream\n");
+        // Handle error and clean up resources
+    }
+
+    // Main application loop
+    // The monitor port will be connected in the core_events_on_info function when it becomes available
+
+    // Don't forget to clean up resources when the application is done or needs to exit
     glutMainLoop ();
 
     return 0;
