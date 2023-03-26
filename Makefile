@@ -17,5 +17,8 @@ xyscope: xyscope.cpp Makefile
 xyscope2: xyscope2.cpp Makefile
 	${CXX} ${CXX_FLAGS} xyscope2.cpp ${LD_FLAGS2} ${LD_LIBS2} -o xyscope2
 
+monitor: monitor.cpp Makefile
+	${CXX} ${CXX_FLAGS} monitor.cpp ${LD_FLAGS2} ${LD_LIBS2} -o monitor
+
 clean:
 	rm -f core *.o xyscope xyscope2
