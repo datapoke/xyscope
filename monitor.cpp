@@ -35,14 +35,14 @@ static void on_process(void *data)
     struct pw_stream *stream = (struct pw_stream *)data;
     struct pw_buffer *buf;
 
-    if ((buf = pw_stream_dequeue_buffer(stream)) <= 0)
+    if ((buf = pw_stream_dequeue_buffer(stream)) == NULL)
         return;
 
     struct spa_data *d = &buf->buffer->datas[0];
-    if (d->type == SPA_DATA_MemPtr)
+    if (d->type == SPA_DATA_MemPtr && d->data != NULL)
     {
         // write samples to stdout
-        write(STDOUT_FILENO, d->data, d->maxsize);
+        write(STDOUT_FILENO, d->data, (size_t) d->chunk);
     }
 
     pw_stream_queue_buffer(stream, buf);

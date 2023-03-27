@@ -1,13 +1,13 @@
 FROM debian:bullseye-slim
 
-# RUN apt-get update && \
-# 	apt-get install -y --no-install-recommends \
-# 		build-essential \
-# 		freeglut3-dev \
-# 		libjack-dev \
-# 		pulseaudio-module-jack \
-# 		mpv
-# 	# && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+	apt-get install -y --no-install-recommends \
+		build-essential \
+		freeglut3-dev \
+		libjack-dev \
+		pulseaudio-module-jack \
+		mpv
+	# && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -27,14 +27,16 @@ RUN apt-get update && \
         libxml++2.6-2v5 publicsuffix qt5-gtk-platformtheme qttranslations5-l10n systemd \
         systemd-sysv libzita-alsa-pcmi0 libzita-resampler1
 
-RUN apt-get install -y --no-install-recommends \
-		build-essential \
-		freeglut3-dev \
-        pkg-config \
-		pipewire \
-		libpipewire-0.3-dev \
-		mpv
-	# && rm -rf /var/lib/apt/lists/*
+# RUN apt-get install -y --no-install-recommends \
+# 		build-essential \
+#         gdb \
+# 		freeglut3-dev \
+#         pkg-config \
+#         alsa-utils \
+# 		pipewire \
+# 		libpipewire-0.3-dev \
+# 		mpv
+# 	# && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m -s /bin/bash -u 1000 user
 RUN usermod -aG audio user
