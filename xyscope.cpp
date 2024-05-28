@@ -60,7 +60,7 @@
 #define DEFAULT_AUTO_SCALE true
 
 /* Default color mode setting */
-#define DEFAULT_COLOR_MODE ColorStandardMode
+#define DEFAULT_COLOR_MODE ColorDeltaMode
 
 /* Default color range setting used by DisplayLengthMode */
 #define DEFAULT_COLOR_RANGE 1.0
@@ -69,7 +69,7 @@
 #define DEFAULT_COLOR_RATE 10.0
 
 /* Default display mode setting */
-#define DEFAULT_DISPLAY_MODE DisplayStandardMode
+#define DEFAULT_DISPLAY_MODE DisplayLengthMode
 
 /* Set this to your sample rate */
 #define SAMPLE_RATE 44100
@@ -387,7 +387,7 @@ public:
                                                        port_name);
             int port_flags        = jack_port_flags (port);
 
-            //printf ("noticed port: %s\n", port_name);
+            printf ("noticed port: %s\n", port_name);
 
             int left_connected = jack_port_connected_to(t_data->ports[0],
 			                                            port_name);
