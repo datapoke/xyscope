@@ -81,13 +81,13 @@
  * That being said, the jack ringbuffer will round up to the next
  * power of two, in the above case giving us a 32.0MB ringbuffer.
  */
-#define BUFFER_SECONDS 0.125
+#define BUFFER_SECONDS 1.0
 
 /* How many times to draw each frame */
 #define DRAW_EACH_FRAME 2
 
 /* whether to limit frame rate */
-#define LIMIT_FRAME_RATE true
+#define RESPONSIBLE_FOR_FRAME_RATE true
 
 
 /* End of easily configurable settings */
@@ -1490,7 +1490,7 @@ void idle (void)
             glutSetCursor (GLUT_CURSOR_NONE);
     }
 
-    if (LIMIT_FRAME_RATE) {
+    if (RESPONSIBLE_FOR_FRAME_RATE) {
         /* limit our framerate to FRAME_RATE (e.g. 60) frames per second */
         elapsed_time = timeDiff (scn.reset_frame_time, scn.last_frame_time);
         if (elapsed_time < (scn.frame_count / (double) FRAME_RATE)) {

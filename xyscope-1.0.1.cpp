@@ -1,6 +1,6 @@
 /*
  *  xyscope.cpp
- *  Copyright (c) 2006-2007 by Chris Reaume <chris@flatlan.net>
+ *  Copyright (c) 2006-2007 by datapoke <7674597+datapoke@users.noreply.github.com>
  *    All rights reserved.
  *
  *  Some code copyright (c) Luke Campagnola <lcampagn@mines.edu>
@@ -21,16 +21,11 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA
  *
- * $Id: xyscope.cpp,v 1.175 2007/03/26 17:31:28 chris Exp $
+ * $Id: xyscope.cpp,v 1.175 2007/03/26 17:31:28 datapoke Exp $
  *
  */
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#include <OpenGL/gl.h>
-#else
 #include <GL/glut.h>
 #include <GL/gl.h>
-#endif
 #include <jack/jack.h>
 #include <jack/ringbuffer.h>
 #include <stdlib.h>
@@ -48,13 +43,13 @@
 #define DEFAULT_PREF_FILE ".xyscope.pref"
 
 /* Default line width setting */
-#define DEFAULT_LINE_WIDTH 2
+#define DEFAULT_LINE_WIDTH 1
 
 /* Maximum line width setting */
 #define MAX_LINE_WIDTH 8
 
 /* Default full screen mode setting */
-#define DEFAULT_FULL_SCREEN false
+#define DEFAULT_FULL_SCREEN true
 
 /* Default auto-scale setting */
 #define DEFAULT_AUTO_SCALE true
@@ -63,19 +58,19 @@
 #define DEFAULT_COLOR_MODE ColorDeltaMode
 
 /* Default color range setting used by DisplayLengthMode */
-#define DEFAULT_COLOR_RANGE 3.0
+#define DEFAULT_COLOR_RANGE 1.0
 
 /* Default color rate setting */
-#define DEFAULT_COLOR_RATE 42.0
+#define DEFAULT_COLOR_RATE 10.0
 
 /* Default display mode setting */
-#define DEFAULT_DISPLAY_MODE DisplayStandardMode
+#define DEFAULT_DISPLAY_MODE DisplayLengthMode
 
 /* Set this to your sample rate */
-#define SAMPLE_RATE 96000
+#define SAMPLE_RATE 44100
 
 /* Set this to your desired Frames Per Second */
-#define FRAME_RATE 120
+#define FRAME_RATE 60
 
 /* ringbuffer size in seconds; expect memory usage to exceed:
  *
@@ -86,19 +81,13 @@
  * That being said, the jack ringbuffer will round up to the next
  * power of two, in the above case giving us a 32.0MB ringbuffer.
  */
-#define BUFFER_SECONDS 1
+#define BUFFER_SECONDS 1.0
 
 /* How many times to draw each frame */
-#define DRAW_EACH_FRAME 1
+#define DRAW_EACH_FRAME 2
 
-/* Whether to start jackd if it is not running */
-#ifdef __APPLE__
-#define DEFAULT_START_JACKD true
-#define RESPONSIBLE_FOR_FRAME_RATE false
-#else
-#define DEFAULT_START_JACKD false
+/* whether to limit frame rate */
 #define RESPONSIBLE_FOR_FRAME_RATE true
-#endif
 
 
 /* End of easily configurable settings */
@@ -113,8 +102,6 @@
 
 /* ringbuffer size in frames */
 #define DEFAULT_RB_SIZE (SAMPLE_RATE * BUFFER_SECONDS + FRAMES_PER_BUF)
-
-#define output_port_flags(A) ((A) & JackPortIsOutput)
 
 
 /* Jack Audio types */
@@ -263,28 +250,10 @@ public:
 
         t_data->thread_id = ai->capture_thread;
 
-        if (DEFAULT_START_JACKD) {
-            jack_status_t status;
-            t_data->client = jack_client_open ("xyscope",
-                                              JackServerName,
-                                              &status);
-            if (t_data->client == NULL) {
-                if (status & JackServerFailed) {
-                    fprintf (stderr, "JACK server failed to start\n");
-                }
-                else {
-                    fprintf (stderr, "jack_client_open() failed, "
-                             "status = 0x%2.0x\n", status);
-                }
-                exit (1);
-            }
-        }
-        else {
-            t_data->client = jack_client_new ("xyscope");
-            if (t_data->client == NULL) {
-                fprintf (stderr, "JACK server not running?\n");
-                exit (1);
-            }
+        t_data->client = jack_client_new ("xyscope");
+        if (t_data->client == NULL) {
+            fprintf (stderr, "JACK server not running?\n");
+            exit (1);
         }
 
         t_data->input_buffer       = NULL;
@@ -312,12 +281,13 @@ public:
         while (! ai->quit) {
             if (t_data->new_port_available) {
                 gettimeofday (&this_moment, NULL);
-                if (timeDiff (t_data->last_new_port, this_moment) > 0.1) {
+                if (timeDiff (t_data->last_new_port, this_moment) > 0.5) {
+				    fprintf (stderr, "reconnecting\n");
                     t_data->new_port_available = false;
                     ai->connectPorts ();
                 }
             }
-            usleep (100000);
+            usleep (1000);
         }
         return ai;
     }
@@ -381,24 +351,32 @@ public:
 
             printf ("noticed port: %s\n", port_name);
 
-            int left = strncmp(port_name, "Firefox:output_FL", strlen("Firefox:output_FL"));
-            if (left == 0) {
-                printf ("connecting port %s to input 0\n", port_name);
-                if (jack_connect (t_data->client,
-                                port_name,
-                                jack_port_name (t_data->ports[0]))) {
-                    fprintf (stderr, "cannot connect to %s\n", port_name);
-                    jack_client_close (t_data->client);
+            int left_connected = jack_port_connected_to(t_data->ports[0],
+                                                        port_name);
+            if (!left_connected) {
+                int left = strstr(port_name, "output_FL") != NULL;
+                if (left == 1) {
+                    printf ("connecting port %s to input 0\n", port_name);
+                    if (jack_connect (t_data->client,
+                                    port_name,
+                                    jack_port_name (t_data->ports[0]))) {
+                        fprintf (stderr, "cannot connect to %s\n", port_name);
+                        jack_client_close (t_data->client);
+                    }
                 }
             }
-            int right = strncmp(port_name, "Firefox:output_FR", strlen("Firefox:output_FR"));
-            if (right == 0) {
-                printf ("connecting port %s to input 1\n", port_name);
-                if (jack_connect (t_data->client,
-                                port_name,
-                                jack_port_name (t_data->ports[1]))) {
-                    fprintf (stderr, "cannot connect to %s\n", port_name);
-                    jack_client_close (t_data->client);
+            int right_connected = jack_port_connected_to(t_data->ports[1],
+                                                         port_name);
+            if (!right_connected) {
+                int right = strstr(port_name, "output_FR") != NULL;
+                if (right == 1) {
+                    printf ("connecting port %s to input 1\n", port_name);
+                    if (jack_connect (t_data->client,
+                                    port_name,
+                                    jack_port_name (t_data->ports[1]))) {
+                        fprintf (stderr, "cannot connect to %s\n", port_name);
+                        jack_client_close (t_data->client);
+                    }
                 }
             }
         }
@@ -486,7 +464,7 @@ public:
     } text_timer_t;
     enum {
         AutoScaleTimer   = 0,
-        ColorModeTimer   = 1, 
+        ColorModeTimer   = 1,
         ColorRangeTimer  = 2,
         ColorRateTimer   = 3,
         DisplayModeTimer = 4,
@@ -584,8 +562,10 @@ public:
     {
         int FH;
         if ((FH = open (DEFAULT_PREF_FILE, O_CREAT | O_WRONLY, 00660))) {
+            /*
             prefs.position[0] = glutGet (GLUT_WINDOW_X);
             prefs.position[1] = glutGet (GLUT_WINDOW_Y);
+            */
             fprintf (stderr, "saving preferences\n");
             write (FH, (void *) &prefs, sizeof (preferences_t));
             close (FH);
@@ -678,7 +658,7 @@ public:
         for (unsigned int i = 0; i < frames_read; i++) {
             lc = framebuf[i].left_channel;
             rc = framebuf[i].right_channel;
-            d  = hypot (lc, rc) / ROOT_TWO;
+            d  = hypot (lc - olc, rc - orc) / ROOT_TWO;
             switch (prefs.color_mode) {
                 case ColorStandardMode:
                     break;
@@ -690,12 +670,12 @@ public:
                 case DisplayStandardMode:
                     break;
                 case DisplayRadiusMode:
-                    h = (d * 360.0 * prefs.scale_factor
-                         * prefs.color_range) + prefs.hue;
+                    h = ((hypot (lc, rc) / ROOT_TWO)
+                         * 360.0 * prefs.color_range
+                         * prefs.scale_factor) + prefs.hue;
                     break;
                 case DisplayLengthMode:
-                    h = ((hypot (lc - olc, rc - orc) / ROOT_TWO)
-                         * 360.0 * prefs.color_range) + prefs.hue;
+                    h = (d * 360.0 * prefs.color_range) + prefs.hue;
                     if (h < prefs.hue) {
                         h = prefs.hue + 360.0 + h;
                         if (h < prefs.hue)
@@ -703,7 +683,6 @@ public:
                     }
                     if (h > prefs.hue + 360.0)
                         h = prefs.hue + 360.0;
-                    olc = lc, orc = rc;
                     break;
                 case DisplayTimeMode:
                     h = (((double) i / (double) frames_read)
@@ -731,6 +710,7 @@ public:
                 glColor3d (r, g, b);
             }
             glVertex2d (lc, rc);
+            olc = lc, orc = rc;
         }
         glEnd ();
         glPopMatrix ();
@@ -859,7 +839,7 @@ public:
                 /* get the time so we can calculate how long to display */
                 elapsed_time = timeDiff (text_timer[i].time,
                                          this_frame_time);
-                if (elapsed_time > 2.0)
+                if (elapsed_time > 10.0)
                     text_timer[i].show = false;
 
                 if (text_timer[i].auto_position) {
@@ -931,7 +911,7 @@ public:
         /* get the time so we can calculate how long to display */
         gettimeofday (&this_frame_time, NULL);
         elapsed_time = timeDiff (show_intro_time, this_frame_time);
-        if (elapsed_time > 2.0)
+        if (elapsed_time > 10.0)
             show_intro = false;
 
         if (show_intro || prefs.show_stats == 1) {
