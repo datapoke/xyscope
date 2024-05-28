@@ -24,13 +24,8 @@
  * $Id: xyscope.cpp,v 1.175 2007/03/26 17:31:28 chris Exp $
  *
  */
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#include <OpenGL/gl.h>
-#else
 #include <GL/glut.h>
 #include <GL/gl.h>
-#endif
 #include <jack/jack.h>
 #include <jack/ringbuffer.h>
 #include <stdlib.h>
@@ -91,14 +86,8 @@
 /* How many times to draw each frame */
 #define DRAW_EACH_FRAME 2
 
-/* Whether to start jackd if it is not running */
-#ifdef __APPLE__
-#define DEFAULT_START_JACKD true
-#define RESPONSIBLE_FOR_FRAME_RATE false
-#else
-#define DEFAULT_START_JACKD false
-#define RESPONSIBLE_FOR_FRAME_RATE true
-#endif
+/* whether to limit frame rate */
+#define LIMIT_FRAME_RATE true
 
 
 /* End of easily configurable settings */
@@ -113,15 +102,6 @@
 
 /* ringbuffer size in frames */
 #define DEFAULT_RB_SIZE (SAMPLE_RATE * BUFFER_SECONDS + FRAMES_PER_BUF)
-
-/* On the Mac, connect to all output ports as they become available. */
-/* On everything else, only connect to physical output ports. */
-#ifdef __APPLE__
-#define output_port_flags(A) ((A) & JackPortIsOutput)
-#else
-#define output_port_flags(A) (((A) & JackPortIsOutput) \
-                           && ((A) & JackPortIsPhysical))
-#endif
 
 
 /* Jack Audio types */
@@ -270,28 +250,10 @@ public:
 
         t_data->thread_id = ai->capture_thread;
 
-        if (DEFAULT_START_JACKD) {
-            jack_status_t status;
-            t_data->client = jack_client_open ("xyscope",
-                                              JackServerName,
-                                              &status);
-            if (t_data->client == NULL) {
-                if (status & JackServerFailed) {
-                    fprintf (stderr, "JACK server failed to start\n");
-                }
-                else {
-                    fprintf (stderr, "jack_client_open() failed, "
-                             "status = 0x%2.0x\n", status);
-                }
-                exit (1);
-            }
-        }
-        else {
-            t_data->client = jack_client_new ("xyscope");
-            if (t_data->client == NULL) {
-                fprintf (stderr, "JACK server not running?\n");
-                exit (1);
-            }
+        t_data->client = jack_client_new ("xyscope");
+        if (t_data->client == NULL) {
+            fprintf (stderr, "JACK server not running?\n");
+            exit (1);
         }
 
         t_data->input_buffer       = NULL;
@@ -392,8 +354,8 @@ public:
             int left_connected = jack_port_connected_to(t_data->ports[0],
 			                                            port_name);
 			if (!left_connected) {
-                int left = strncmp(port_name, "Firefox:output_FL", strlen("Firefox:output_FL"));
-				if (left == 0) {
+                int left = strstr(port_name, "output_FL") != NULL;
+				if (left == 1) {
             		printf ("connecting port %s to input 0\n", port_name);
                 	if (jack_connect (t_data->client,
                                   	port_name,
@@ -406,8 +368,8 @@ public:
             int right_connected = jack_port_connected_to(t_data->ports[1],
 			                                             port_name);
 			if (!right_connected) {
-                int right = strncmp(port_name, "Firefox:output_FR", strlen("Firefox:output_FR"));
-				if (right == 0) {
+                int right = strstr(port_name, "output_FR") != NULL;
+				if (right == 1) {
             		printf ("connecting port %s to input 1\n", port_name);
                 	if (jack_connect (t_data->client,
                                   	port_name,
@@ -417,33 +379,6 @@ public:
                 	}
 				}
 			}
-/*
-            if (output_port_flags (port_flags)) {
-                int port_name_size = jack_port_name_size ();
-                unsigned int p = 0;
-                for (int i = 0;
-                     i < port_name_size && port_name[i] != '\0';
-                     p = port_name[i++] - '1');
-                if (p >= 0 && p < t_data->channels) {
-                    if (jack_port_connected_to (t_data->ports[p],
-                                                port_name)) {
-                        printf ("already connected to %s\n", port_name);
-                    }
-                    else {
-                        printf ("connecting to %s... ", port_name);
-                        if (jack_connect (t_data->client,
-                                          port_name,
-                                          jack_port_name (t_data->ports[p]))) {
-                            fprintf (stderr, "cannot connect to %s\n",
-                                     port_name);
-                            jack_client_close (t_data->client);
-                            exit (1);
-                        }
-                        printf ("connected\n");
-                    }
-                }
-            }
-*/
         }
     }
 
@@ -627,8 +562,10 @@ public:
     {
         int FH;
         if ((FH = open (DEFAULT_PREF_FILE, O_CREAT | O_WRONLY, 00660))) {
+            /*
             prefs.position[0] = glutGet (GLUT_WINDOW_X);
             prefs.position[1] = glutGet (GLUT_WINDOW_Y);
+            */
             fprintf (stderr, "saving preferences\n");
             write (FH, (void *) &prefs, sizeof (preferences_t));
             close (FH);
@@ -1553,7 +1490,7 @@ void idle (void)
             glutSetCursor (GLUT_CURSOR_NONE);
     }
 
-    if (RESPONSIBLE_FOR_FRAME_RATE) {
+    if (LIMIT_FRAME_RATE) {
         /* limit our framerate to FRAME_RATE (e.g. 60) frames per second */
         elapsed_time = timeDiff (scn.reset_frame_time, scn.last_frame_time);
         if (elapsed_time < (scn.frame_count / (double) FRAME_RATE)) {
