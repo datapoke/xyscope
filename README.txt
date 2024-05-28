@@ -1,7 +1,3 @@
-First make sure the Jack Audio Connection Kit is installed.
-http://www.jackaudio.org
-
-Run 'jackd -R -d alsa -p 512' before running xyscope.
 
 Useful keys:
     Escape            - Quit
