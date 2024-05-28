@@ -67,7 +67,7 @@
 #define DEFAULT_DISPLAY_MODE DisplayLengthMode
 
 /* Set this to your sample rate */
-#define SAMPLE_RATE 44100
+#define SAMPLE_RATE 96000
 
 /* Set this to your desired Frames Per Second */
 #define FRAME_RATE 60
