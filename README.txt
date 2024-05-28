@@ -10,6 +10,7 @@ Useful keys:
     [ and ]           - Adjust color range
     - and +           - Adjust color rate
     a                 - Auto-scale on/off
+    b and b           - Adjust splines
     c and C           - Color mode
     d and D           - Display mode
     f                 - Enter/Exit full screen mode
