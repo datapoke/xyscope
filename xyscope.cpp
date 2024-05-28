@@ -54,6 +54,9 @@
 /* Default auto-scale setting */
 #define DEFAULT_AUTO_SCALE true
 
+/* Default spline steps setting */
+#define DEFAULT_SPLINE_STEPS 1
+
 /* Default color mode setting */
 #define DEFAULT_COLOR_MODE ColorDeltaMode
 
@@ -345,10 +348,6 @@ public:
                                                      0);
         for (int i = 0; out_ports[i]; i++) {
             const char *port_name = out_ports[i];
-            jack_port_t *port     = jack_port_by_name (t_data->client,
-                                                       port_name);
-            int port_flags        = jack_port_flags (port);
-
             printf ("noticed port: %s\n", port_name);
 
             int left_connected = jack_port_connected_to(t_data->ports[0],
@@ -411,6 +410,7 @@ typedef struct _preferences_t {
     bool scale_locked;
     bool is_full_screen;
     bool auto_scale;
+    unsigned int spline_steps;
     unsigned int color_mode;
     double color_range;
     double color_rate;
@@ -464,15 +464,16 @@ public:
     } text_timer_t;
     enum {
         AutoScaleTimer   = 0,
-        ColorModeTimer   = 1, 
-        ColorRangeTimer  = 2,
-        ColorRateTimer   = 3,
-        DisplayModeTimer = 4,
-        LineWidthTimer   = 5,
+        SplineTimer      = 1,
+        ColorModeTimer   = 2, 
+        ColorRangeTimer  = 3,
+        ColorRateTimer   = 4,
+        DisplayModeTimer = 5,
+        LineWidthTimer   = 6,
         /* End of text timers automatically included in stats display */
-        PausedTimer      = 6,
-        ScaleTimer       = 7,
-        CounterTimer     = 8
+        PausedTimer      = 7,
+        ScaleTimer       = 8,
+        CounterTimer     = 9
     } text_timer_handles;
     text_timer_t text_timer[NUM_TEXT_TIMERS];
     timeval show_intro_time;
@@ -526,6 +527,7 @@ public:
         prefs.scale_locked   = true;
         prefs.is_full_screen = DEFAULT_FULL_SCREEN;
         prefs.auto_scale     = DEFAULT_AUTO_SCALE;
+        prefs.spline_steps   = DEFAULT_SPLINE_STEPS;
         prefs.color_mode     = DEFAULT_COLOR_MODE;
         prefs.color_range    = DEFAULT_COLOR_RANGE;
         prefs.color_rate     = DEFAULT_COLOR_RATE;
@@ -710,7 +712,35 @@ public:
                 HSVtoRGB (&r, &g, &b, h, s, v);
                 glColor3d (r, g, b);
             }
-            glVertex2d (lc, rc);
+            if (prefs.spline_steps > 1 && i > 2 && i < frames_read - 2) {
+                // Calculate Catmull-Rom spline segment
+                double prev2_lc = framebuf[i-2].left_channel;
+                double prev2_rc = framebuf[i-2].right_channel;
+                double prev_lc = framebuf[i-1].left_channel;
+                double prev_rc = framebuf[i-1].right_channel;
+                double next_lc = framebuf[i+1].left_channel;
+                double next_rc = framebuf[i+1].right_channel;
+                double next2_lc = framebuf[i+2].left_channel;
+                double next2_rc = framebuf[i+2].right_channel;
+
+                for (double t = 0.0; t <= 1.0; t += 1.0 / (double) prefs.spline_steps) {
+                    double t2 = t * t;
+                    double t3 = t2 * t;
+
+                    double x = 0.5 * ((2 * prev_lc) + (-prev2_lc + next_lc) * t +
+                                      (2*prev2_lc - 5*prev_lc + 4*next_lc - next2_lc) * t2 +
+                                      (-prev2_lc + 3*prev_lc- 3*next_lc + next2_lc) * t3);
+                    double y = 0.5 * ((2 * prev_rc) + (-prev2_rc + next_rc) * t +
+                                      (2*prev2_rc - 5*prev_rc + 4*next_rc - next2_rc) * t2 +
+                                      (-prev2_rc + 3*prev_rc- 3*next_rc + next2_rc) * t3);
+
+                    glVertex2d (x, y);
+                    framebuf[i].left_channel = x;
+                    framebuf[i].right_channel = y;
+                }
+            } else {
+                glVertex2d (lc, rc);
+            }
         }
         glEnd ();
         glPopMatrix ();
@@ -811,6 +841,7 @@ public:
         { "[ and ]",           "Adjust color range" },
         { "- and +",           "Adjust color rate" },
         { "a",                 "Auto-scale on/off" },
+        { "b",                 "Adjust splines" },
         { "c and C",           "Color mode" },
         { "d and D",           "Display mode" },
         { "f",                 "Enter/Exit full screen mode" },
@@ -953,6 +984,17 @@ public:
         timer->auto_position = true;
         sprintf (timer->string,
                  "Auto-scale: %s", prefs.auto_scale ? "on" : "off");
+        if (timed)
+            gettimeofday (&timer->time, NULL);
+        timer->show = true;
+    }
+
+    void showSplines (bool timed)
+    {
+        text_timer_t *timer  = &text_timer[SplineTimer];
+        timer->auto_position = true;
+        sprintf (timer->string,
+                 "Splines: %d", prefs.spline_steps);
         if (timed)
             gettimeofday (&timer->time, NULL);
         timer->show = true;
@@ -1167,6 +1209,20 @@ public:
                                   (prefs.side[2] - prefs.side[3]) / 2.1);
         prefs.auto_scale   = ! prefs.auto_scale;
         showAutoScale (TIMED);
+    }
+
+    void moreSplines (void)
+    {
+        if (prefs.spline_steps < 128)
+            prefs.spline_steps *= 2;
+        showSplines (TIMED);
+    }
+
+    void lessSplines (void)
+    {
+        if (prefs.spline_steps > 1)
+            prefs.spline_steps /= 2;
+        showSplines (TIMED);
     }
 
     void togglePaused (void)
@@ -1606,6 +1662,12 @@ void keyboard (unsigned char key, int xPos, int yPos)
         case 'a':
             scn.toggleAutoScale ();
             break;
+        case 'b':
+            scn.moreSplines ();
+            break;
+        case 'B':
+            scn.lessSplines ();
+            break;
         case 'c':
             scn.nextColorMode ();
             break;
@@ -1725,6 +1787,7 @@ int main (int argc, char * const argv[])
     scn.showColorRate (NOT_TIMED);
     scn.showColorMode (NOT_TIMED);
     scn.showAutoScale (NOT_TIMED);
+    scn.showSplines (NOT_TIMED);
     scn.showScale (NOT_TIMED);
 
     glutMainLoop ();
