@@ -7,7 +7,7 @@ if [ -n "$2" ] ; then
 fi
 docker build -t xyscope .
 docker run -it --rm --name xyscope1 \
-		-v $(pwd):/usr/src/xyscope \
+		-v $(pwd):/usr/src/xyscope.dist \
 		-v /tmp/.X11-unix:/tmp/.X11-unix \
 		-v $HOME/.Xauthority:/root/.Xauthority \
 		-v $MUSIC_DIR:/home/user/Music \

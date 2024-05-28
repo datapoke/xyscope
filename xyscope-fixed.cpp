@@ -1,6 +1,6 @@
 /*
  *  xyscope.cpp
- *  Copyright (c) 2006-2007 by Chris Reaume <chris@flatlan.net>
+ *  Copyright (c) 2006-2007 by datapoke <7674597+datapoke@users.noreply.github.com>
  *    All rights reserved.
  *
  *  Some code copyright (c) Luke Campagnola <lcampagn@mines.edu>
@@ -21,7 +21,7 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA
  *
- * $Id: xyscope.cpp,v 1.175 2007/03/26 17:31:28 chris Exp $
+ * $Id: xyscope.cpp,v 1.175 2007/03/26 17:31:28 datapoke Exp $
  *
  */
 #ifdef __APPLE__
@@ -48,16 +48,16 @@
 #define DEFAULT_PREF_FILE ".xyscope.pref"
 
 /* Default line width setting */
-#define DEFAULT_LINE_WIDTH 1
+#define DEFAULT_LINE_WIDTH 2
 
 /* Maximum line width setting */
 #define MAX_LINE_WIDTH 8
 
 /* Default full screen mode setting */
-#define DEFAULT_FULL_SCREEN true
+#define DEFAULT_FULL_SCREEN false
 
 /* Default auto-scale setting */
-#define DEFAULT_AUTO_SCALE true
+#define DEFAULT_AUTO_SCALE false
 
 /* Default color mode setting */
 #define DEFAULT_COLOR_MODE ColorStandardMode
@@ -66,7 +66,7 @@
 #define DEFAULT_COLOR_RANGE 1.0
 
 /* Default color rate setting */
-#define DEFAULT_COLOR_RATE 10.0
+#define DEFAULT_COLOR_RATE 1.0
 
 /* Default display mode setting */
 #define DEFAULT_DISPLAY_MODE DisplayStandardMode
@@ -86,14 +86,14 @@
  * That being said, the jack ringbuffer will round up to the next
  * power of two, in the above case giving us a 32.0MB ringbuffer.
  */
-#define BUFFER_SECONDS 0.125
+#define BUFFER_SECONDS 60
 
 /* How many times to draw each frame */
 #define DRAW_EACH_FRAME 2
 
 /* Whether to start jackd if it is not running */
 #ifdef __APPLE__
-#define DEFAULT_START_JACKD true
+#define DEFAULT_START_JACKD false
 #define RESPONSIBLE_FOR_FRAME_RATE false
 #else
 #define DEFAULT_START_JACKD false
@@ -114,14 +114,9 @@
 /* ringbuffer size in frames */
 #define DEFAULT_RB_SIZE (SAMPLE_RATE * BUFFER_SECONDS + FRAMES_PER_BUF)
 
-/* On the Mac, connect to all output ports as they become available. */
-/* On everything else, only connect to physical output ports. */
-#ifdef __APPLE__
-#define output_port_flags(A) ((A) & JackPortIsOutput)
-#else
+/* Connect to all software output ports as they become available. */
 #define output_port_flags(A) (((A) & JackPortIsOutput) \
                            && ((A) & JackPortIsPhysical))
-#endif
 
 
 /* Jack Audio types */
@@ -319,8 +314,7 @@ public:
         while (! ai->quit) {
             if (t_data->new_port_available) {
                 gettimeofday (&this_moment, NULL);
-                if (timeDiff (t_data->last_new_port, this_moment) > 0.5) {
-				    fprintf (stderr, "reconnecting\n");
+                if (timeDiff (t_data->last_new_port, this_moment) > 5.0) {
                     t_data->new_port_available = false;
                     ai->connectPorts ();
                 }
@@ -387,63 +381,36 @@ public:
                                                        port_name);
             int port_flags        = jack_port_flags (port);
 
-            //printf ("noticed port: %s\n", port_name);
+            printf ("noticed port: %s\n", port_name);
 
             int left_connected = jack_port_connected_to(t_data->ports[0],
-			                                            port_name);
-			if (!left_connected) {
+                                                        port_name);
+            if (!left_connected) {
                 int left = strncmp(port_name, "Firefox:output_FL", strlen("Firefox:output_FL"));
-				if (left == 0) {
-            		printf ("connecting port %s to input 0\n", port_name);
-                	if (jack_connect (t_data->client,
-                                  	port_name,
-                                  	jack_port_name (t_data->ports[0]))) {
-                    	fprintf (stderr, "cannot connect to %s\n", port_name);
-                    	jack_client_close (t_data->client);
-                	}
-				}
-			}
-            int right_connected = jack_port_connected_to(t_data->ports[1],
-			                                             port_name);
-			if (!right_connected) {
-                int right = strncmp(port_name, "Firefox:output_FR", strlen("Firefox:output_FR"));
-				if (right == 0) {
-            		printf ("connecting port %s to input 1\n", port_name);
-                	if (jack_connect (t_data->client,
-                                  	port_name,
-                                  	jack_port_name (t_data->ports[1]))) {
-                    	fprintf (stderr, "cannot connect to %s\n", port_name);
-                    	jack_client_close (t_data->client);
-                	}
-				}
-			}
-/*
-            if (output_port_flags (port_flags)) {
-                int port_name_size = jack_port_name_size ();
-                unsigned int p = 0;
-                for (int i = 0;
-                     i < port_name_size && port_name[i] != '\0';
-                     p = port_name[i++] - '1');
-                if (p >= 0 && p < t_data->channels) {
-                    if (jack_port_connected_to (t_data->ports[p],
-                                                port_name)) {
-                        printf ("already connected to %s\n", port_name);
-                    }
-                    else {
-                        printf ("connecting to %s... ", port_name);
-                        if (jack_connect (t_data->client,
-                                          port_name,
-                                          jack_port_name (t_data->ports[p]))) {
-                            fprintf (stderr, "cannot connect to %s\n",
-                                     port_name);
-                            jack_client_close (t_data->client);
-                            exit (1);
-                        }
-                        printf ("connected\n");
+                if (left == 0) {
+                    printf ("connecting port %s to input 0\n", port_name);
+                    if (jack_connect (t_data->client,
+                                    port_name,
+                                    jack_port_name (t_data->ports[0]))) {
+                        fprintf (stderr, "cannot connect to %s\n", port_name);
+                        jack_client_close (t_data->client);
                     }
                 }
             }
-*/
+            int right_connected = jack_port_connected_to(t_data->ports[1],
+                                                         port_name);
+            if (!right_connected) {
+                int right = strncmp(port_name, "Firefox:output_FR", strlen("Firefox:output_FR"));
+                if (right == 0) {
+                    printf ("connecting port %s to input 1\n", port_name);
+                    if (jack_connect (t_data->client,
+                                    port_name,
+                                    jack_port_name (t_data->ports[1]))) {
+                        fprintf (stderr, "cannot connect to %s\n", port_name);
+                        jack_client_close (t_data->client);
+                    }
+                }
+            }
         }
     }
 
@@ -529,7 +496,7 @@ public:
     } text_timer_t;
     enum {
         AutoScaleTimer   = 0,
-        ColorModeTimer   = 1, 
+        ColorModeTimer   = 1,
         ColorRangeTimer  = 2,
         ColorRateTimer   = 3,
         DisplayModeTimer = 4,
@@ -608,7 +575,7 @@ public:
         vertical_increment   = -40.0;
         color_delta          = 0.0;
         color_threshold      = 0.0;
-        show_intro           = false;
+        show_intro           = true;
         show_help            = false;
         show_mouse           = true;
 
@@ -627,8 +594,8 @@ public:
     {
         int FH;
         if ((FH = open (DEFAULT_PREF_FILE, O_CREAT | O_WRONLY, 00660))) {
-            prefs.position[0] = glutGet (GLUT_WINDOW_X);
-            prefs.position[1] = glutGet (GLUT_WINDOW_Y);
+            // prefs.position[0] = glutGet (GLUT_WINDOW_X);
+            // prefs.position[1] = glutGet (GLUT_WINDOW_Y);
             fprintf (stderr, "saving preferences\n");
             write (FH, (void *) &prefs, sizeof (preferences_t));
             close (FH);
@@ -689,7 +656,7 @@ public:
             autoScale ();
 
 
-        /* set up the OpenGL */
+        /* set up OpenGL */
         glMatrixMode (GL_PROJECTION);
         glLoadIdentity ();
         glOrtho (prefs.side[3], prefs.side[2],
@@ -721,7 +688,7 @@ public:
         for (unsigned int i = 0; i < frames_read; i++) {
             lc = framebuf[i].left_channel;
             rc = framebuf[i].right_channel;
-            d  = hypot (lc, rc) / ROOT_TWO;
+            d  = hypot (lc - olc, rc - orc) / ROOT_TWO;
             switch (prefs.color_mode) {
                 case ColorStandardMode:
                     break;
@@ -733,12 +700,12 @@ public:
                 case DisplayStandardMode:
                     break;
                 case DisplayRadiusMode:
-                    h = (d * 360.0 * prefs.scale_factor
-                         * prefs.color_range) + prefs.hue;
+                    h = ((hypot (lc, rc) / ROOT_TWO)
+                         * 360.0 * prefs.color_range
+                         * prefs.scale_factor) + prefs.hue;
                     break;
                 case DisplayLengthMode:
-                    h = ((hypot (lc - olc, rc - orc) / ROOT_TWO)
-                         * 360.0 * prefs.color_range) + prefs.hue;
+                    h = (d * 360.0 * prefs.color_range) + prefs.hue;
                     if (h < prefs.hue) {
                         h = prefs.hue + 360.0 + h;
                         if (h < prefs.hue)
@@ -746,7 +713,6 @@ public:
                     }
                     if (h > prefs.hue + 360.0)
                         h = prefs.hue + 360.0;
-                    olc = lc, orc = rc;
                     break;
                 case DisplayTimeMode:
                     h = (((double) i / (double) frames_read)
@@ -774,6 +740,7 @@ public:
                 glColor3d (r, g, b);
             }
             glVertex2d (lc, rc);
+            olc = lc, orc = rc;
         }
         glEnd ();
         glPopMatrix ();

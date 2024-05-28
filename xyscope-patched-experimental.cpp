@@ -48,34 +48,34 @@
 #define DEFAULT_PREF_FILE ".xyscope.pref"
 
 /* Default line width setting */
-#define DEFAULT_LINE_WIDTH 1
+#define DEFAULT_LINE_WIDTH 2
 
 /* Maximum line width setting */
 #define MAX_LINE_WIDTH 8
 
 /* Default full screen mode setting */
-#define DEFAULT_FULL_SCREEN true
+#define DEFAULT_FULL_SCREEN false
 
 /* Default auto-scale setting */
 #define DEFAULT_AUTO_SCALE true
 
 /* Default color mode setting */
-#define DEFAULT_COLOR_MODE ColorStandardMode
+#define DEFAULT_COLOR_MODE ColorDeltaMode
 
 /* Default color range setting used by DisplayLengthMode */
-#define DEFAULT_COLOR_RANGE 1.0
+#define DEFAULT_COLOR_RANGE 3.0
 
 /* Default color rate setting */
-#define DEFAULT_COLOR_RATE 10.0
+#define DEFAULT_COLOR_RATE 42.0
 
 /* Default display mode setting */
 #define DEFAULT_DISPLAY_MODE DisplayStandardMode
 
 /* Set this to your sample rate */
-#define SAMPLE_RATE 44100
+#define SAMPLE_RATE 96000
 
 /* Set this to your desired Frames Per Second */
-#define FRAME_RATE 60
+#define FRAME_RATE 120
 
 /* ringbuffer size in seconds; expect memory usage to exceed:
  *
@@ -86,10 +86,10 @@
  * That being said, the jack ringbuffer will round up to the next
  * power of two, in the above case giving us a 32.0MB ringbuffer.
  */
-#define BUFFER_SECONDS 0.125
+#define BUFFER_SECONDS 1
 
 /* How many times to draw each frame */
-#define DRAW_EACH_FRAME 2
+#define DRAW_EACH_FRAME 1
 
 /* Whether to start jackd if it is not running */
 #ifdef __APPLE__
@@ -114,14 +114,7 @@
 /* ringbuffer size in frames */
 #define DEFAULT_RB_SIZE (SAMPLE_RATE * BUFFER_SECONDS + FRAMES_PER_BUF)
 
-/* On the Mac, connect to all output ports as they become available. */
-/* On everything else, only connect to physical output ports. */
-#ifdef __APPLE__
 #define output_port_flags(A) ((A) & JackPortIsOutput)
-#else
-#define output_port_flags(A) (((A) & JackPortIsOutput) \
-                           && ((A) & JackPortIsPhysical))
-#endif
 
 
 /* Jack Audio types */
@@ -319,13 +312,12 @@ public:
         while (! ai->quit) {
             if (t_data->new_port_available) {
                 gettimeofday (&this_moment, NULL);
-                if (timeDiff (t_data->last_new_port, this_moment) > 0.5) {
-				    fprintf (stderr, "reconnecting\n");
+                if (timeDiff (t_data->last_new_port, this_moment) > 0.1) {
                     t_data->new_port_available = false;
                     ai->connectPorts ();
                 }
             }
-            usleep (1000);
+            usleep (100000);
         }
         return ai;
     }
@@ -387,63 +379,28 @@ public:
                                                        port_name);
             int port_flags        = jack_port_flags (port);
 
-            //printf ("noticed port: %s\n", port_name);
+            printf ("noticed port: %s\n", port_name);
 
-            int left_connected = jack_port_connected_to(t_data->ports[0],
-			                                            port_name);
-			if (!left_connected) {
-                int left = strncmp(port_name, "Firefox:output_FL", strlen("Firefox:output_FL"));
-				if (left == 0) {
-            		printf ("connecting port %s to input 0\n", port_name);
-                	if (jack_connect (t_data->client,
-                                  	port_name,
-                                  	jack_port_name (t_data->ports[0]))) {
-                    	fprintf (stderr, "cannot connect to %s\n", port_name);
-                    	jack_client_close (t_data->client);
-                	}
-				}
-			}
-            int right_connected = jack_port_connected_to(t_data->ports[1],
-			                                             port_name);
-			if (!right_connected) {
-                int right = strncmp(port_name, "Firefox:output_FR", strlen("Firefox:output_FR"));
-				if (right == 0) {
-            		printf ("connecting port %s to input 1\n", port_name);
-                	if (jack_connect (t_data->client,
-                                  	port_name,
-                                  	jack_port_name (t_data->ports[1]))) {
-                    	fprintf (stderr, "cannot connect to %s\n", port_name);
-                    	jack_client_close (t_data->client);
-                	}
-				}
-			}
-/*
-            if (output_port_flags (port_flags)) {
-                int port_name_size = jack_port_name_size ();
-                unsigned int p = 0;
-                for (int i = 0;
-                     i < port_name_size && port_name[i] != '\0';
-                     p = port_name[i++] - '1');
-                if (p >= 0 && p < t_data->channels) {
-                    if (jack_port_connected_to (t_data->ports[p],
-                                                port_name)) {
-                        printf ("already connected to %s\n", port_name);
-                    }
-                    else {
-                        printf ("connecting to %s... ", port_name);
-                        if (jack_connect (t_data->client,
-                                          port_name,
-                                          jack_port_name (t_data->ports[p]))) {
-                            fprintf (stderr, "cannot connect to %s\n",
-                                     port_name);
-                            jack_client_close (t_data->client);
-                            exit (1);
-                        }
-                        printf ("connected\n");
-                    }
+            int left = strncmp(port_name, "Firefox:output_FL", strlen("Firefox:output_FL"));
+            if (left == 0) {
+                printf ("connecting port %s to input 0\n", port_name);
+                if (jack_connect (t_data->client,
+                                port_name,
+                                jack_port_name (t_data->ports[0]))) {
+                    fprintf (stderr, "cannot connect to %s\n", port_name);
+                    jack_client_close (t_data->client);
                 }
             }
-*/
+            int right = strncmp(port_name, "Firefox:output_FR", strlen("Firefox:output_FR"));
+            if (right == 0) {
+                printf ("connecting port %s to input 1\n", port_name);
+                if (jack_connect (t_data->client,
+                                port_name,
+                                jack_port_name (t_data->ports[1]))) {
+                    fprintf (stderr, "cannot connect to %s\n", port_name);
+                    jack_client_close (t_data->client);
+                }
+            }
         }
     }
 
@@ -902,7 +859,7 @@ public:
                 /* get the time so we can calculate how long to display */
                 elapsed_time = timeDiff (text_timer[i].time,
                                          this_frame_time);
-                if (elapsed_time > 10.0)
+                if (elapsed_time > 2.0)
                     text_timer[i].show = false;
 
                 if (text_timer[i].auto_position) {
@@ -974,7 +931,7 @@ public:
         /* get the time so we can calculate how long to display */
         gettimeofday (&this_frame_time, NULL);
         elapsed_time = timeDiff (show_intro_time, this_frame_time);
-        if (elapsed_time > 10.0)
+        if (elapsed_time > 2.0)
             show_intro = false;
 
         if (show_intro || prefs.show_stats == 1) {

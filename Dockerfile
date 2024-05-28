@@ -41,6 +41,10 @@ RUN apt-get update && \
 RUN useradd -m -s /bin/bash -u 1000 user
 RUN usermod -aG audio user
 
+COPY ./                     /usr/src/xyscope
 COPY ./docker-entrypoint.sh /usr/local/bin/
+
+RUN    cd /usr/src/xyscope \
+    && make
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
