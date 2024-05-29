@@ -57,7 +57,7 @@
 #define DEFAULT_AUTO_SCALE true
 
 /* Default spline steps setting */
-#define DEFAULT_SPLINE_STEPS 1
+#define DEFAULT_SPLINE_STEPS 16
 
 /* Default color mode setting */
 #define DEFAULT_COLOR_MODE ColorDeltaMode
@@ -597,11 +597,15 @@ public:
         double d   = 0.0;
         double dt  = 0.0;
         signed int distance = 0;
-        unsigned int window_size  = DRAW_FRAMES / 100;
-        unsigned int overlap_size = DRAW_FRAMES / 200;
+
+        /* FFT stuff */
+        unsigned int window_size  = DRAW_FRAMES / 200;
+        unsigned int overlap_size = DRAW_FRAMES / 400;
         double max_magnitude = 0.0;
+        double* avg_magnitudes;
         double** stft_results;
         fftw_plan fft_plan;
+
         /* if the scope is paused, there are no samples available;
          * therefore we should not wait for the reader thread */
         if (! t_data->pause_scope) {
@@ -690,15 +694,21 @@ public:
                     delete[] temp_data;
                 }
 
-                // Find the maximum magnitude in the STFT array
+                // Calculate the average magnitude of the STFT array
+                avg_magnitudes = new double[frames_read / (window_size - overlap_size)];
                 for (unsigned int i = 0; i < frames_read / (window_size - overlap_size); i++) {
+                    double sum = 0.0;
                     for (unsigned int j = 0; j < window_size; j++) {
                         double magnitude = stft_results[i][j];
                         if (magnitude > max_magnitude) {
                             max_magnitude = magnitude;
                         }
+                        sum += stft_results[i][j];
                     }
+                    avg_magnitudes[i] = sum / window_size;
+                    delete[] stft_results[i];
                 }
+                delete[] stft_results;
                 break;
             case DisplayTimeMode:
                 break;
@@ -738,9 +748,8 @@ public:
                         h = prefs.hue + 360.0;
                     break;
                 case DisplayFrequencyMode:
-                    if (i / (window_size - overlap_size) < frames_read / (window_size - overlap_size)
-                            && i % window_size < window_size) {
-                        h = map(stft_results[i / (window_size - overlap_size)][i % window_size],
+                    if (i / (window_size - overlap_size) < frames_read / (window_size - overlap_size)) {
+                        h = map(avg_magnitudes[i / (window_size - overlap_size)],
                                 0, max_magnitude, 0, 360 * prefs.color_range) + prefs.hue;
                     }
                     break;
@@ -800,8 +809,10 @@ public:
         }
         glEnd ();
         glPopMatrix ();
-        if (prefs.display_mode == DisplayFrequencyMode)
+        if (prefs.display_mode == DisplayFrequencyMode) {
             fftw_destroy_plan (fft_plan);
+            delete[] avg_magnitudes;
+        }
 
         switch (prefs.color_mode) {
             case ColorStandardMode:
