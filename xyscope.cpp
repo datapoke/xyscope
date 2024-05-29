@@ -57,16 +57,16 @@
 #define DEFAULT_AUTO_SCALE true
 
 /* Default spline steps setting */
-#define DEFAULT_SPLINE_STEPS 16
+#define DEFAULT_SPLINE_STEPS 32
 
 /* Default color mode setting */
 #define DEFAULT_COLOR_MODE ColorDeltaMode
 
 /* Default color range setting */
-#define DEFAULT_COLOR_RANGE 2.0
+#define DEFAULT_COLOR_RANGE 8.0
 
 /* Default color rate setting */
-#define DEFAULT_COLOR_RATE 10.0
+#define DEFAULT_COLOR_RATE 0.0
 
 /* Default display mode setting */
 #define DEFAULT_DISPLAY_MODE DisplayFrequencyMode
