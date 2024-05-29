@@ -597,8 +597,8 @@ public:
         double d   = 0.0;
         double dt  = 0.0;
         signed int distance = 0;
-        unsigned int window_size = 128;
-        unsigned int overlap_size = 64;
+        unsigned int window_size  = DRAW_FRAMES / 100;
+        unsigned int overlap_size = DRAW_FRAMES / 200;
         double max_magnitude = 0.0;
         double** stft_results;
         fftw_plan fft_plan;
@@ -741,7 +741,7 @@ public:
                     if (i / (window_size - overlap_size) < frames_read / (window_size - overlap_size)
                             && i % window_size < window_size) {
                         h = map(stft_results[i / (window_size - overlap_size)][i % window_size],
-                                0, max_magnitude, 0, 360) + prefs.hue;
+                                0, max_magnitude, 0, 360 * prefs.color_range) + prefs.hue;
                     }
                     break;
                 case DisplayTimeMode:
