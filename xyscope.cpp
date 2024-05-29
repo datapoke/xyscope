@@ -749,10 +749,8 @@ public:
                         h = prefs.hue + 360.0;
                     break;
                 case DisplayFrequencyMode:
-                    if (i / (window_size - overlap_size) < frames_read / (window_size - overlap_size)) {
-                        h = map(avg_magnitudes[i / (window_size - overlap_size)],
-                                0, max_magnitude, 0, 360 * prefs.color_range) + prefs.hue;
-                    }
+                    h = map(avg_magnitudes[i / (window_size - overlap_size)],
+                            0, max_magnitude, 0, 360 * prefs.color_range) + prefs.hue;
                     break;
                 case DisplayTimeMode:
                     h = (((double) i / (double) frames_read)
