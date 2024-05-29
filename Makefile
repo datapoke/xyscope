@@ -3,7 +3,7 @@
 #
 CXX = g++
 
-CXX_FLAGS = -Wall -O3 -march=native -mtune=native
+CXX_FLAGS = -Wall -O3 -march=native -mtune=native # -fdiagnostics-color=always -g
 
 LD_LIBS   = -lpthread -lglut -lGL -ljack -lfftw3
 
