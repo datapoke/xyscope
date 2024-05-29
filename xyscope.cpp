@@ -62,8 +62,8 @@
 /* Default color mode setting */
 #define DEFAULT_COLOR_MODE ColorDeltaMode
 
-/* Default color range setting used by DisplayLengthMode */
-#define DEFAULT_COLOR_RANGE 1.0
+/* Default color range setting */
+#define DEFAULT_COLOR_RANGE 2.0
 
 /* Default color rate setting */
 #define DEFAULT_COLOR_RATE 10.0
@@ -599,8 +599,8 @@ public:
         signed int distance = 0;
 
         /* FFT stuff */
-        unsigned int window_size  = DRAW_FRAMES / 200;
-        unsigned int overlap_size = DRAW_FRAMES / 400;
+        unsigned int window_size  = DRAW_FRAMES / 100;
+        unsigned int overlap_size = DRAW_FRAMES / 200;
         double max_magnitude = 0.0;
         double* avg_magnitudes;
         double** stft_results;
@@ -691,6 +691,7 @@ public:
                     }
 
                     // Clean up the temporary array
+                    fftw_destroy_plan (fft_plan);
                     delete[] temp_data;
                 }
 
@@ -809,10 +810,8 @@ public:
         }
         glEnd ();
         glPopMatrix ();
-        if (prefs.display_mode == DisplayFrequencyMode) {
-            fftw_destroy_plan (fft_plan);
+        if (prefs.display_mode == DisplayFrequencyMode)
             delete[] avg_magnitudes;
-        }
 
         switch (prefs.color_mode) {
             case ColorStandardMode:
