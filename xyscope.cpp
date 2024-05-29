@@ -1311,6 +1311,7 @@ public:
         target_side[1] = -(prefs.side[0] - prefs.side[1]) / 2.0;
         target_side[2] =  (prefs.side[2] - prefs.side[3]) / 2.0;
         target_side[3] = -(prefs.side[2] - prefs.side[3]) / 2.0;
+        prefs.hue = 0.0;
     }
 
     void nextColorMode (void)
