@@ -63,7 +63,7 @@
 #define DEFAULT_COLOR_MODE ColorDeltaMode
 
 /* Default color range setting */
-#define DEFAULT_COLOR_RANGE 8.0
+#define DEFAULT_COLOR_RANGE 10.0
 
 /* Default color rate setting */
 #define DEFAULT_COLOR_RATE 0.0
