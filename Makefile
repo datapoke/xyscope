@@ -3,9 +3,9 @@
 #
 CXX = g++
 
-CXX_FLAGS = -Wall -O3
+CXX_FLAGS = -Wall -O3 -march=native -mtune=native
 
-LD_LIBS   = -lpthread -lglut -lGL -ljack
+LD_LIBS   = -lpthread -lglut -lGL -ljack -lfftw3
 
 all: xyscope
 

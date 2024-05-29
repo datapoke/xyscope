@@ -38,12 +38,14 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <fftw3.h>
+
 
 /* Preferences file */
 #define DEFAULT_PREF_FILE ".xyscope.pref"
 
 /* Default line width setting */
-#define DEFAULT_LINE_WIDTH 1
+#define DEFAULT_LINE_WIDTH 2
 
 /* Maximum line width setting */
 #define MAX_LINE_WIDTH 8
@@ -67,7 +69,7 @@
 #define DEFAULT_COLOR_RATE 10.0
 
 /* Default display mode setting */
-#define DEFAULT_DISPLAY_MODE DisplayLengthMode
+#define DEFAULT_DISPLAY_MODE DisplayFrequencyMode
 
 /* Set this to your sample rate */
 #define SAMPLE_RATE 96000
@@ -101,7 +103,6 @@
 
 /* Connect the end-points with a line */
 #define DRAW_FRAMES (FRAMES_PER_BUF + 1)
-
 
 /* ringbuffer size in frames */
 #define DEFAULT_RB_SIZE (SAMPLE_RATE * BUFFER_SECONDS + FRAMES_PER_BUF)
@@ -429,6 +430,7 @@ public:
     frame_t *framebuf;
     int offset;
     int bump;
+    fftw_complex* fft_out;
     size_t frames_read;
 
     double mouse[4];
@@ -452,8 +454,8 @@ public:
     bool show_help;
     bool show_mouse;
 
-    #define NUM_TEXT_TIMERS 9
-    #define NUM_AUTO_TEXT_TIMERS 6
+    #define NUM_TEXT_TIMERS 10
+    #define NUM_AUTO_TEXT_TIMERS 7
     typedef struct _text_timer_t {
         bool show;
         timeval time;
@@ -488,13 +490,14 @@ public:
         ColorDeltaMode    = 1
     } color_mode_handles;
 
-    #define NUM_DISPLAY_MODES 4
+    #define NUM_DISPLAY_MODES 5
     char display_mode_names[NUM_DISPLAY_MODES][64];
     enum {
-        DisplayStandardMode = 0,
-        DisplayRadiusMode   = 1,
-        DisplayLengthMode   = 2,
-        DisplayTimeMode     = 3
+        DisplayStandardMode  = 0,
+        DisplayRadiusMode    = 1,
+        DisplayLengthMode    = 2,
+        DisplayFrequencyMode = 3,
+        DisplayTimeMode      = 4
     } display_mode_handles;
 
     scene ()
@@ -504,6 +507,7 @@ public:
         strcpy (display_mode_names[DisplayStandardMode], "Standard");
         strcpy (display_mode_names[DisplayRadiusMode], "Radius");
         strcpy (display_mode_names[DisplayLengthMode], "Length");
+        strcpy (display_mode_names[DisplayFrequencyMode], "Frequency");
         strcpy (display_mode_names[DisplayTimeMode], "Time");
 
         frame_size           = sizeof (frame_t);
@@ -511,6 +515,7 @@ public:
         framebuf             = (frame_t *) malloc (bytes_per_buf);
         offset               = -FRAMES_PER_BUF;
         bump                 = -DRAW_FRAMES;
+        fft_out              = (fftw_complex*) fftw_malloc (sizeof (fftw_complex) * DRAW_FRAMES);
         prefs.dim[0]         = 600;
         prefs.dim[1]         = 600;
         prefs.normal_dim[0]  = 600;
@@ -592,6 +597,11 @@ public:
         double d   = 0.0;
         double dt  = 0.0;
         signed int distance = 0;
+        unsigned int window_size = 128;
+        unsigned int overlap_size = 64;
+        double max_magnitude = 0.0;
+        double** stft_results;
+        fftw_plan fft_plan;
         /* if the scope is paused, there are no samples available;
          * therefore we should not wait for the reader thread */
         if (! t_data->pause_scope) {
@@ -649,6 +659,47 @@ public:
                 break;
             case DisplayLengthMode:
                 break;
+            case DisplayFrequencyMode:
+                // Create the STFT array
+                stft_results = new double*[frames_read / (window_size - overlap_size)];
+                for (unsigned int i = 0; i < frames_read / (window_size - overlap_size); i++) {
+                    stft_results[i] = new double[window_size];
+                }
+                // Loop over the frame buffer
+                for (unsigned int i = 0; i + window_size <= frames_read; i += window_size - overlap_size) {
+                    // Copy the next window_size samples to a temporary array
+                    double (*temp_data)[2] = new double[window_size][2];
+                    for (unsigned int j = 0; j < window_size; j++) {
+                        // average both channels
+                        temp_data[j][0] = (framebuf[i + j].left_channel + framebuf[i + j].right_channel) / 2.0; // Real part
+                        temp_data[j][1] = 0.0; // Imaginary part
+                    }
+
+                    // Perform an FFT on the temporary array
+                    fft_plan = fftw_plan_dft_1d(window_size, temp_data, fft_out, FFTW_FORWARD, FFTW_ESTIMATE);
+                    fftw_execute(fft_plan);
+
+                    // Store the FFT results in the STFT array
+                    for (unsigned int j = 0; j < window_size; j++) {
+                        double real = fft_out[j][0];
+                        double imag = fft_out[j][1];
+                        stft_results[i / (window_size - overlap_size)][j] = sqrt(real * real + imag * imag);
+                    }
+
+                    // Clean up the temporary array
+                    delete[] temp_data;
+                }
+
+                // Find the maximum magnitude in the STFT array
+                for (unsigned int i = 0; i < frames_read / (window_size - overlap_size); i++) {
+                    for (unsigned int j = 0; j < window_size; j++) {
+                        double magnitude = stft_results[i][j];
+                        if (magnitude > max_magnitude) {
+                            max_magnitude = magnitude;
+                        }
+                    }
+                }
+                break;
             case DisplayTimeMode:
                 break;
             default:
@@ -660,7 +711,7 @@ public:
         for (unsigned int i = 0; i < frames_read; i++) {
             lc = framebuf[i].left_channel;
             rc = framebuf[i].right_channel;
-            d  = hypot (lc, rc) / ROOT_TWO;
+            d  = hypot (lc - olc, rc - orc) / ROOT_TWO;
             switch (prefs.color_mode) {
                 case ColorStandardMode:
                     break;
@@ -672,12 +723,12 @@ public:
                 case DisplayStandardMode:
                     break;
                 case DisplayRadiusMode:
-                    h = (d * 360.0 * prefs.scale_factor
-                         * prefs.color_range) + prefs.hue;
+                    h = ((hypot (lc, rc) / ROOT_TWO)
+                         * 360.0 * prefs.color_range
+                         * prefs.scale_factor) + prefs.hue;
                     break;
                 case DisplayLengthMode:
-                    h = ((hypot (lc - olc, rc - orc) / ROOT_TWO)
-                         * 360.0 * prefs.color_range) + prefs.hue;
+                    h = (d * 360.0 * prefs.color_range) + prefs.hue;
                     if (h < prefs.hue) {
                         h = prefs.hue + 360.0 + h;
                         if (h < prefs.hue)
@@ -685,7 +736,13 @@ public:
                     }
                     if (h > prefs.hue + 360.0)
                         h = prefs.hue + 360.0;
-                    olc = lc, orc = rc;
+                    break;
+                case DisplayFrequencyMode:
+                    if (i / (window_size - overlap_size) < frames_read / (window_size - overlap_size)
+                            && i % window_size < window_size) {
+                        h = map(stft_results[i / (window_size - overlap_size)][i % window_size],
+                                0, max_magnitude, 0, 360) + prefs.hue;
+                    }
                     break;
                 case DisplayTimeMode:
                     h = (((double) i / (double) frames_read)
@@ -699,6 +756,7 @@ public:
                     break;
                 case DisplayRadiusMode:
                 case DisplayLengthMode:
+                case DisplayFrequencyMode:
                 case DisplayTimeMode:
                     if (h > 360.0)
                         h = (double) (((int) h) % 360);
@@ -716,34 +774,34 @@ public:
                 // Calculate Catmull-Rom spline segment
                 double prev2_lc = framebuf[i-2].left_channel;
                 double prev2_rc = framebuf[i-2].right_channel;
-                double prev_lc = framebuf[i-1].left_channel;
-                double prev_rc = framebuf[i-1].right_channel;
-                double next_lc = framebuf[i+1].left_channel;
-                double next_rc = framebuf[i+1].right_channel;
+                double prev_lc  = framebuf[i-1].left_channel;
+                double prev_rc  = framebuf[i-1].right_channel;
+                double next_lc  = framebuf[i+1].left_channel;
+                double next_rc  = framebuf[i+1].right_channel;
                 double next2_lc = framebuf[i+2].left_channel;
                 double next2_rc = framebuf[i+2].right_channel;
-
                 for (double t = 0.0; t <= 1.0; t += 1.0 / (double) prefs.spline_steps) {
-                    double t2 = t * t;
+                    double t2 = t  * t;
                     double t3 = t2 * t;
-
-                    double x = 0.5 * ((2 * prev_lc) + (-prev2_lc + next_lc) * t +
-                                      (2*prev2_lc - 5*prev_lc + 4*next_lc - next2_lc) * t2 +
-                                      (-prev2_lc + 3*prev_lc- 3*next_lc + next2_lc) * t3);
-                    double y = 0.5 * ((2 * prev_rc) + (-prev2_rc + next_rc) * t +
-                                      (2*prev2_rc - 5*prev_rc + 4*next_rc - next2_rc) * t2 +
-                                      (-prev2_rc + 3*prev_rc- 3*next_rc + next2_rc) * t3);
-
+                    double x = 0.5 * ((2*prev_lc) + (-prev2_lc +   next_lc) * t +
+                                      (2*prev2_lc - 5*prev_lc  + 4*next_lc - next2_lc) * t2 +
+                                      ( -prev2_lc + 3*prev_lc  - 3*next_lc + next2_lc) * t3);
+                    double y = 0.5 * ((2*prev_rc) + (-prev2_rc +   next_rc) * t +
+                                      (2*prev2_rc - 5*prev_rc  + 4*next_rc - next2_rc) * t2 +
+                                      ( -prev2_rc + 3*prev_rc  - 3*next_rc + next2_rc) * t3);
                     glVertex2d (x, y);
-                    framebuf[i].left_channel = x;
+                    framebuf[i].left_channel  = x;
                     framebuf[i].right_channel = y;
                 }
             } else {
                 glVertex2d (lc, rc);
             }
+            olc = lc, orc = rc;
         }
         glEnd ();
         glPopMatrix ();
+        if (prefs.display_mode == DisplayFrequencyMode)
+            fftw_destroy_plan (fft_plan);
 
         switch (prefs.color_mode) {
             case ColorStandardMode:
@@ -775,6 +833,10 @@ public:
         }
         prefs.scale_factor = 2.0 / min (prefs.side[0] - prefs.side[1],
                                         prefs.side[2] - prefs.side[3]);
+    }
+
+    double map(double value, double fromLow, double fromHigh, double toLow, double toHigh) {
+        return (value - fromLow) * (toHigh - toLow) / (fromHigh - fromLow) + toLow;
     }
 
     void beginText ()
