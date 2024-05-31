@@ -45,7 +45,7 @@
 #define DEFAULT_PREF_FILE ".xyscope.pref"
 
 /* Default line width setting */
-#define DEFAULT_LINE_WIDTH 2
+#define DEFAULT_LINE_WIDTH 1
 
 /* Maximum line width setting */
 #define MAX_LINE_WIDTH 8
