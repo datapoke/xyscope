@@ -447,6 +447,7 @@ public:
     double color_delta;
     double color_threshold;
     unsigned int frame_count;
+    unsigned int vertex_count;
     bool window_is_dirty;
     bool mouse_is_dirty;
 
@@ -543,6 +544,7 @@ public:
         latency              = 0.0;
         fps                  = 0.0;
         frame_count          = 0;
+        vertex_count         = 0;
         window_is_dirty      = true;
         mouse_is_dirty       = true;
         max_sample_value     = 1.0;
@@ -605,6 +607,7 @@ public:
         double* avg_magnitudes;
         double** stft_results;
         fftw_plan fft_plan;
+        vertex_count = 0;
 
         /* if the scope is paused, there are no samples available;
          * therefore we should not wait for the reader thread */
@@ -798,11 +801,13 @@ public:
                                       (2*prev2_rc - 5*prev_rc  + 4*next_rc - next2_rc) * t2 +
                                       ( -prev2_rc + 3*prev_rc  - 3*next_rc + next2_rc) * t3);
                     glVertex2d (x, y);
+                    vertex_count++;
                     framebuf[i].left_channel  = x;
                     framebuf[i].right_channel = y;
                 }
             } else {
                 glVertex2d (lc, rc);
+                vertex_count++;
             }
             olc = lc, orc = rc;
         }
@@ -963,6 +968,7 @@ public:
         double elapsed_time;
         /* char color_threshold_string[64]; */
         char fps_string[64];
+        char vps_string[64];
         char time_string[64];
 
         if (show_intro || (prefs.show_stats > 0 && prefs.show_stats < 3)) {
@@ -985,6 +991,8 @@ public:
             last_frame_time = this_frame_time;
             sprintf (fps_string, "%.1f fps", fps);
             drawString (20.0, 20.0, fps_string);
+            sprintf (vps_string, "%d vps", vertex_count * FRAME_RATE);
+            drawString (-20.0 * (double) strlen (vps_string), -40.0, vps_string);
         }
 
         /* calculate latency */
@@ -997,8 +1005,8 @@ public:
         if (latency < 0.0)
             latency = 0.0;
         if (! t_data->pause_scope) {
-            sprintf (time_string, "%7.0f usec", latency * 100000.0);
-            drawString (-210.0, 20.0, time_string);
+            sprintf (time_string, "%.0f usec", latency * 100000.0);
+            drawString (-20.0 * (double) strlen (time_string), 20.0, time_string);
         }
     }
 
