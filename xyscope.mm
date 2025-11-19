@@ -1991,7 +1991,10 @@ public:
 
     void setWindowSize (unsigned int x, unsigned int y)
     {
-        if (! prefs.is_full_screen) {
+        if (prefs.is_full_screen) {
+            // Exit fullscreen mode first
+            SDL_SetWindowFullscreen(window, 0);
+        } else {
             SDL_GetWindowPosition(window, &prefs.position[0], &prefs.position[1]);
         }
         SDL_SetWindowPosition(window, prefs.position[0], prefs.position[1]);
@@ -2474,6 +2477,9 @@ int main (int argc, char * const argv[])
         SDL_Quit();
         return 1;
     }
+
+    // Raise window and give it focus (important when launched from Terminal)
+    SDL_RaiseWindow(window);
 
     // Create OpenGL context
     gl_context = SDL_GL_CreateContext(window);
