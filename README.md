@@ -1,14 +1,14 @@
 # XYScope - Audio Visualizer with Virtual Audio Device
 
-Real-time XY oscilloscope visualization of stereo audio using OpenGL and a virtual audio driver.
+Real-time XY oscilloscope visualization of stereo audio using OpenGL and BlackHole virtual audio driver.
 
 ## Quick Start
 
 ### For Users (Running the App)
 
 1. **Double-click `XYScope.app`**
-   - Opens Terminal and guides you through setup
-   - Installs the audio driver (requires password)
+   - Opens Terminal and installs dependencies automatically
+   - Installs BlackHole audio driver via Homebrew
    - Shows instructions for Audio MIDI Setup
 
 2. **Configure Multi-Output Device** (one time only):
@@ -17,7 +17,7 @@ Real-time XY oscilloscope visualization of stereo audio using OpenGL and a virtu
    - Select **"Create Multi-Output Device"**
    - Check both:
      - ☑ **MacBook Pro Speakers** (or your speakers) - must be first
-     - ☑ **XYScope 2ch**
+     - ☑ **BlackHole 2ch**
    - **Select Multi-Output Device in sidebar**
    - **Set Sample Rate to 96000 Hz (96 kHz)** ⚠️ Important!
    - Right-click Multi-Output Device → **"Use This Device For Sound Output"**
@@ -31,7 +31,7 @@ Real-time XY oscilloscope visualization of stereo audio using OpenGL and a virtu
 
 **Build Requirements:**
 - macOS 10.15+ with Xcode Command Line Tools
-- Homebrew with SDL2 and SDL2_ttf
+- Homebrew with SDL2, SDL2_ttf, and BlackHole 2ch
 
 **Build Commands:**
 ```bash
@@ -45,34 +45,31 @@ make rebuild      # Clean and rebuild everything
 xyscope/
 ├── xyscope.mm              Main visualizer source
 ├── Makefile                Master build file
-├── driver/                 CoreAudio driver sources
-│   ├── BlackHole.c
-│   ├── BlackHole.plist
-│   └── Makefile
 ├── resources/              App bundle resources
 │   ├── Info.plist
-│   ├── XYScope.command
-│   └── install.sh
+│   └── XYScope.command
 └── XYScope.app/            Built app (ready to distribute)
 ```
 
 **After building**, you can:
 - Move `XYScope.app` to `/Applications`
 - All sources remain in project directory for rebuilding
-- The .app is self-contained and includes all necessary files
+- The .app is self-contained and automatically installs BlackHole
 
 ## How It Works
 
 ```
-Audio Source → Multi-Output Device → XYScope 2ch (visualization)
+Audio Source → Multi-Output Device → BlackHole 2ch (visualization)
                                   → Speakers (audio output)
 ```
 
 The multi-output device sends audio to both:
-- **XYScope 2ch** - Virtual audio device captured for visualization
+- **BlackHole 2ch** - Virtual audio device captured for visualization
 - **Your speakers** - So you can hear the audio
 
-The visualizer reads from the XYScope virtual device at **96kHz sample rate** and renders Lissajous curves in real-time using OpenGL.
+The visualizer reads from the BlackHole virtual device at **96kHz sample rate** and renders Lissajous curves in real-time using OpenGL.
+
+**BlackHole** is an open-source virtual audio driver by [Existential Audio](https://existential.audio/blackhole/). XYScope automatically installs it via Homebrew.
 
 ## Features
 
@@ -88,37 +85,32 @@ See `CLAUDE.md` for full keyboard reference.
 
 ## Advanced
 
-**Manual Driver Installation:**
+**Manual Dependency Installation:**
 ```bash
-make install-driver    # Install driver (requires sudo)
-make uninstall-driver  # Uninstall driver (requires sudo)
+brew install sdl2 sdl2_ttf blackhole-2ch
 ```
 
-**Driver Location:**
-- Installed: `/Library/Audio/Plug-Ins/HAL/XYScope.driver`
-- Source: `driver/BlackHole.c` (based on BlackHole virtual audio driver)
+**BlackHole Driver:**
+- Installed via Homebrew: `brew install blackhole-2ch`
+- Location: `/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver`
+- Project: https://existential.audio/blackhole/
 
 ## Troubleshooting
 
 **No audio visualization (black screen)?**
 - Check Multi-Output Device is selected as system output
 - Verify sample rate is set to **96000 Hz** in Audio MIDI Setup
-- Ensure both Speakers and XYScope 2ch are checked in Multi-Output Device
+- Ensure both Speakers and BlackHole 2ch are checked in Multi-Output Device
 
-**Driver not appearing?**
-- Restart Mac after driver installation
-- Check driver is installed: `ls /Library/Audio/Plug-Ins/HAL/XYScope.driver`
+**BlackHole not appearing?**
+- Run: `brew install blackhole-2ch`
+- Restart CoreAudio: `sudo killall coreaudiod`
+- Check driver: `ls /Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver`
 
 ## Uninstalling
 
 ```bash
-make uninstall-driver
-```
-
-Or manually:
-```bash
-sudo rm -rf /Library/Audio/Plug-Ins/HAL/XYScope.driver
-sudo killall -9 coreaudiod
+brew uninstall blackhole-2ch sdl2 sdl2_ttf
 ```
 
 Remove the Multi-Output Device in Audio MIDI Setup.

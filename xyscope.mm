@@ -570,8 +570,8 @@ public:
         t_data->ringbuffer = ringbuffer_create(t_data->frame_size * t_data->rb_size);
         bzero(t_data->ringbuffer->buf, t_data->ringbuffer->size);
 
-        // Find XYScope device
-        AudioDeviceID xyscopeDevice = 0;
+        // Find BlackHole device
+        AudioDeviceID blackholeDevice = 0;
         AudioObjectPropertyAddress propertyAddress = {
             kAudioHardwarePropertyDevices,
             kAudioObjectPropertyScopeGlobal,
@@ -596,9 +596,9 @@ public:
                 char name[256];
                 CFStringGetCString(deviceName, name, sizeof(name), kCFStringEncodingUTF8);
                 printf("Found audio device: %s\n", name);
-                if (strstr(name, "XYScope") != NULL) {
-                    xyscopeDevice = devices[i];
-                    printf("Using XYScope device for audio input\n");
+                if (strstr(name, "BlackHole") != NULL) {
+                    blackholeDevice = devices[i];
+                    printf("Using BlackHole device for audio input\n");
                     CFRelease(deviceName);
                     break;
                 }
@@ -607,9 +607,9 @@ public:
         }
         free(devices);
 
-        if (!xyscopeDevice) {
-            fprintf(stderr, "Error: XYScope device not found!\n");
-            fprintf(stderr, "Make sure XYScope.driver is installed and XYScope + Speakers is set as default output.\n");
+        if (!blackholeDevice) {
+            fprintf(stderr, "Error: BlackHole device not found!\n");
+            fprintf(stderr, "Make sure BlackHole is installed (brew install blackhole-2ch) and Multi-Output Device is configured.\n");
             exit(1);
         }
 
@@ -659,13 +659,13 @@ public:
             exit(1);
         }
 
-        // Set current device to XYScope
+        // Set current device to BlackHole
         status = AudioUnitSetProperty(t_data->audio_unit,
                                      kAudioOutputUnitProperty_CurrentDevice,
                                      kAudioUnitScope_Global,
                                      0,
-                                     &xyscopeDevice,
-                                     sizeof(xyscopeDevice));
+                                     &blackholeDevice,
+                                     sizeof(blackholeDevice));
         if (status != noErr) {
             fprintf(stderr, "Error: Cannot set current device: %d\n", status);
             exit(1);
@@ -722,7 +722,7 @@ public:
             exit(1);
         }
 
-        printf("CoreAudio initialized successfully - reading from XYScope device\n");
+        printf("CoreAudio initialized successfully - reading from BlackHole device\n");
         t_data->can_process = true;
 #else
         thread_data_t *t_data = getThreadData ();

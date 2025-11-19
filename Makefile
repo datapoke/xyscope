@@ -29,7 +29,7 @@ else
 endif
 
 # Default target: build everything
-all: $(BINARY) driver app
+all: $(BINARY) app
 
 # Build xyscope binary
 $(BINARY): $(SRC) Makefile
@@ -37,20 +37,12 @@ $(BINARY): $(SRC) Makefile
 	$(CXX) $(CXX_FLAGS) $(SRC) $(LD_FLAGS) $(LD_LIBS) -o $(BINARY)
 	@echo "✓ xyscope binary built"
 
-# Build audio driver (macOS only)
-.PHONY: driver
-driver:
-ifeq ($(UNAME_S),Darwin)
-	@echo "Building XYScope audio driver..."
-	@cd $(DRIVER_SRC) && $(MAKE)
-	@echo "✓ Driver built"
-else
-	@echo "⚠ Audio driver is macOS-only, skipping"
-endif
+# BlackHole audio driver is now installed via Homebrew (blackhole-2ch)
+# No longer building custom driver
 
 # Assemble .app bundle
 .PHONY: app
-app: $(BINARY) driver
+app: $(BINARY)
 	@echo "Assembling $(APP_NAME) bundle..."
 	@mkdir -p $(APP_MACOS) $(APP_RESOURCES)
 	@cp $(BINARY) $(APP_MACOS)/xyscope-bin
@@ -60,11 +52,8 @@ app: $(BINARY) driver
 	@chmod +x $(APP_MACOS)/XYScope
 	@echo "Copying resources..."
 	@cp $(RESOURCES_SRC)/Info.plist $(APP_CONTENTS)/
-	@cp -r $(DRIVER_BUNDLE) $(APP_RESOURCES)/
 	@cp $(RESOURCES_SRC)/XYScope.command $(APP_RESOURCES)/
-	@cp $(RESOURCES_SRC)/install.sh $(APP_RESOURCES)/
 	@chmod +x $(APP_RESOURCES)/XYScope.command
-	@chmod +x $(APP_RESOURCES)/install.sh
 	@echo "✓ $(APP_NAME) ready"
 
 # Clean build artifacts
@@ -72,9 +61,6 @@ clean:
 	@echo "Cleaning build artifacts..."
 	rm -f core *.o $(BINARY)
 	rm -f $(APP_MACOS)/xyscope-bin
-ifeq ($(UNAME_S),Darwin)
-	@cd $(DRIVER_SRC) && $(MAKE) clean
-endif
 	@echo "✓ Clean complete"
 
 # Install driver to system (macOS only, requires sudo)

@@ -9,25 +9,44 @@ echo "XYScope Audio Visualizer"
 echo "========================"
 echo
 
-# Check if driver is installed
-if [ ! -d "/Library/Audio/Plug-Ins/HAL/XYScope.driver" ]; then
-    echo "XYScope driver not installed."
+# Check for Homebrew
+if ! command -v brew >/dev/null 2>&1; then
+    echo "Error: Homebrew is required but not installed."
+    echo "Please install Homebrew from https://brew.sh"
     echo
-    read -p "Install driver now? (requires sudo password) [y/N]: " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        ./install.sh
-        if [ $? -ne 0 ]; then
-            echo "Driver installation failed!"
-            exit 1
-        fi
-        echo "Driver installed successfully!"
-        echo "NOTE: You may need to restart your Mac for the driver to appear."
-        echo
-    else
-        echo "Cannot run without driver. Please run install.sh first."
-        exit 1
+    read -p "Press Enter to exit..."
+    exit 1
+fi
+
+# Check and install dependencies
+echo "Checking dependencies..."
+
+MISSING_DEPS=""
+if ! brew list sdl2 >/dev/null 2>&1; then
+    MISSING_DEPS="$MISSING_DEPS sdl2"
+fi
+if ! brew list sdl2_ttf >/dev/null 2>&1; then
+    MISSING_DEPS="$MISSING_DEPS sdl2_ttf"
+fi
+if ! brew list blackhole-2ch >/dev/null 2>&1; then
+    MISSING_DEPS="$MISSING_DEPS blackhole-2ch"
+fi
+
+if [ -n "$MISSING_DEPS" ]; then
+    echo "Missing dependencies:$MISSING_DEPS"
+    echo "Installing via Homebrew..."
+    brew install$MISSING_DEPS
+
+    # After installing BlackHole, restart CoreAudio
+    if [[ "$MISSING_DEPS" == *"blackhole-2ch"* ]]; then
+        echo "Restarting CoreAudio..."
+        sudo killall coreaudiod 2>/dev/null || true
+        sleep 2
+        echo "BlackHole installed!"
     fi
+
+    echo "Dependencies installed!"
+    echo
 fi
 
 # Check if multi-output device exists
@@ -35,29 +54,30 @@ if ! system_profiler SPAudioDataType | grep -q "Multi-Output Device"; then
     echo "Multi-Output Device not found!"
     echo
 
+    # Open Audio MIDI Setup first
+    open "/System/Applications/Utilities/Audio MIDI Setup.app"
+    sleep 1
+
+    # Show instructions dialog that stays on top
     osascript <<'EOF'
 tell application "System Events"
-    display dialog "Audio Setup Required
+    display dialog "Audio Setup Instructions
 
-XYScope needs a Multi-Output Device to route audio for visualization.
+Follow these steps in Audio MIDI Setup:
 
-Steps to create it:
-
-1. Audio MIDI Setup will open automatically
-2. Click the '+' button at bottom-left
-3. Select 'Create Multi-Output Device'
-4. Check BOTH boxes:
+1. Click the '+' button at bottom-left
+2. Select 'Create Multi-Output Device'
+3. Check BOTH boxes:
    ☑ MacBook Pro Speakers (must be first!)
-   ☑ XYScope 2ch
-5. Right-click Multi-Output Device → 'Use This Device For Sound Output'
-6. Close Audio MIDI Setup
-7. Run XYScope.command again
+   ☑ BlackHole 2ch
+4. Select Multi-Output Device in sidebar
+5. Set Format → Sample Rate to 96000 Hz
+6. Right-click Multi-Output Device
+   → 'Use This Device For Sound Output'
+7. Close Audio MIDI Setup
+8. Run XYScope.command again
 
-Ready to open Audio MIDI Setup?" buttons {"Cancel", "Open Audio MIDI Setup"} default button 2
-
-    if button returned of result is "Open Audio MIDI Setup" then
-        do shell script "open '/System/Applications/Utilities/Audio MIDI Setup.app'"
-    end if
+Click OK when finished with setup." buttons {"OK"} default button 1 with title "XYScope Setup"
 end tell
 EOF
 
