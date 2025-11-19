@@ -24,10 +24,21 @@
  * $Id: xyscope.cpp,v 1.175 2007/03/26 17:31:28 chris Exp $
  *
  */
-#include <GL/glut.h>
+#ifdef __APPLE__
+#define GL_SILENCE_DEPRECATION
+#include <SDL2/SDL.h>
+#include <OpenGL/gl.h>
+#include <Accelerate/Accelerate.h>
+#import <Foundation/Foundation.h>
+#import <ScreenCaptureKit/ScreenCaptureKit.h>
+#import <AVFoundation/AVFoundation.h>
+#else
+#include <SDL2/SDL.h>
 #include <GL/gl.h>
 #include <jack/jack.h>
 #include <jack/ringbuffer.h>
+#include <fftw3.h>
+#endif
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -38,7 +49,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#ifndef __APPLE__
 #include <fftw3.h>
+#endif
 
 
 /* Preferences file */
@@ -108,13 +121,36 @@
 #define DEFAULT_RB_SIZE (SAMPLE_RATE * BUFFER_SECONDS + FRAMES_PER_BUF)
 
 
-/* Jack Audio types */
-typedef jack_default_audio_sample_t sample_t;
+/* Audio types */
+#ifdef __APPLE__
+typedef float sample_t;
 
-typedef struct _frame_t {
-    sample_t left_channel;
-    sample_t right_channel;
-} frame_t;
+/* Simple ring buffer for macOS */
+typedef struct {
+    char *buf;
+    size_t size;
+    size_t write_ptr;
+    size_t read_ptr;
+} ringbuffer_t;
+
+typedef struct _thread_data {
+    pthread_t thread_id;
+    void *stream; // SCStream* (stored as void* for C compatibility)
+    void *delegate; // AudioCaptureDelegate* (stored as void* for C compatibility)
+    sample_t **input_buffer;
+    size_t frame_size;
+    ringbuffer_t *ringbuffer;
+    size_t rb_size;
+    pthread_mutex_t ringbuffer_lock;
+    pthread_cond_t data_ready;
+    unsigned int channels;
+    volatile bool can_process;
+    volatile bool pause_scope;
+    timeval last_write;
+} thread_data_t;
+
+#else
+typedef jack_default_audio_sample_t sample_t;
 
 typedef struct _thread_data {
     pthread_t thread_id;
@@ -132,10 +168,26 @@ typedef struct _thread_data {
     volatile bool new_port_available;
     timeval last_new_port;
     timeval last_write;
-} jack_thread_data_t;
+} thread_data_t;
+#endif
 
-jack_thread_data_t Thread_Data;
+typedef struct _frame_t {
+    sample_t left_channel;
+    sample_t right_channel;
+} frame_t;
 
+thread_data_t Thread_Data;
+
+/* Platform-agnostic ringbuffer macros */
+#ifdef __APPLE__
+#define RB_READ_SPACE(rb) ringbuffer_read_space(rb)
+#define RB_READ(rb, dest, cnt) ringbuffer_read(rb, dest, cnt)
+#define RB_READ_ADVANCE(rb, cnt) ringbuffer_read_advance(rb, cnt)
+#else
+#define RB_READ_SPACE(rb) jack_ringbuffer_read_space(rb)
+#define RB_READ(rb, dest, cnt) jack_ringbuffer_read(rb, dest, cnt)
+#define RB_READ_ADVANCE(rb, cnt) jack_ringbuffer_read_advance(rb, cnt)
+#endif
 
 #define ROOT_TWO 1.41421356237309504880
 
@@ -160,6 +212,196 @@ double timeDiff (timeval a, timeval b)
 }
 
 
+#ifdef __APPLE__
+/* macOS Ring buffer implementation */
+ringbuffer_t* ringbuffer_create(size_t size) {
+    ringbuffer_t *rb = (ringbuffer_t*)malloc(sizeof(ringbuffer_t));
+    size_t power_of_two = 1;
+    while (power_of_two < size) power_of_two <<= 1;
+    rb->size = power_of_two;
+    rb->buf = (char*)malloc(rb->size);
+    rb->write_ptr = 0;
+    rb->read_ptr = 0;
+    return rb;
+}
+
+void ringbuffer_free(ringbuffer_t *rb) {
+    if (rb) {
+        free(rb->buf);
+        free(rb);
+    }
+}
+
+size_t ringbuffer_write_space(ringbuffer_t *rb) {
+    size_t w = rb->write_ptr;
+    size_t r = rb->read_ptr;
+    if (w > r) {
+        return ((r - w + rb->size) & (rb->size - 1)) - 1;
+    } else if (w < r) {
+        return (r - w) - 1;
+    } else {
+        return rb->size - 1;
+    }
+}
+
+size_t ringbuffer_read_space(ringbuffer_t *rb) {
+    size_t w = rb->write_ptr;
+    size_t r = rb->read_ptr;
+    if (w > r) {
+        return w - r;
+    } else {
+        return (w - r + rb->size) & (rb->size - 1);
+    }
+}
+
+size_t ringbuffer_write(ringbuffer_t *rb, const char *src, size_t cnt) {
+    size_t free_cnt;
+    size_t cnt2;
+    size_t to_write;
+    size_t n1, n2;
+
+    free_cnt = ringbuffer_write_space(rb);
+    if (free_cnt == 0) return 0;
+
+    to_write = cnt > free_cnt ? free_cnt : cnt;
+    cnt2 = rb->write_ptr + to_write;
+
+    if (cnt2 > rb->size) {
+        n1 = rb->size - rb->write_ptr;
+        n2 = cnt2 & (rb->size - 1);
+    } else {
+        n1 = to_write;
+        n2 = 0;
+    }
+
+    memcpy(rb->buf + rb->write_ptr, src, n1);
+    rb->write_ptr = (rb->write_ptr + n1) & (rb->size - 1);
+
+    if (n2) {
+        memcpy(rb->buf + rb->write_ptr, src + n1, n2);
+        rb->write_ptr = (rb->write_ptr + n2) & (rb->size - 1);
+    }
+
+    return to_write;
+}
+
+size_t ringbuffer_read(ringbuffer_t *rb, char *dest, size_t cnt) {
+    size_t free_cnt;
+    size_t cnt2;
+    size_t to_read;
+    size_t n1, n2;
+
+    free_cnt = ringbuffer_read_space(rb);
+    if (free_cnt == 0) return 0;
+
+    to_read = cnt > free_cnt ? free_cnt : cnt;
+    cnt2 = rb->read_ptr + to_read;
+
+    if (cnt2 > rb->size) {
+        n1 = rb->size - rb->read_ptr;
+        n2 = cnt2 & (rb->size - 1);
+    } else {
+        n1 = to_read;
+        n2 = 0;
+    }
+
+    memcpy(dest, rb->buf + rb->read_ptr, n1);
+    rb->read_ptr = (rb->read_ptr + n1) & (rb->size - 1);
+
+    if (n2) {
+        memcpy(dest + n1, rb->buf + rb->read_ptr, n2);
+        rb->read_ptr = (rb->read_ptr + n2) & (rb->size - 1);
+    }
+
+    return to_read;
+}
+
+void ringbuffer_read_advance(ringbuffer_t *rb, size_t cnt) {
+    rb->read_ptr = (rb->read_ptr + cnt) & (rb->size - 1);
+}
+
+/* ScreenCaptureKit delegate for audio capture */
+@interface AudioCaptureDelegate : NSObject <SCStreamDelegate, SCStreamOutput>
+@property (nonatomic, assign) thread_data_t *threadData;
+@end
+
+@implementation AudioCaptureDelegate
+
+- (void)stream:(SCStream *)stream didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(SCStreamOutputType)type {
+    // Ignore video frames - we only want audio
+    if (type == SCStreamOutputTypeScreen) {
+        return;
+    }
+
+    if (type != SCStreamOutputTypeAudio) {
+        return;
+    }
+
+    if (_threadData->pause_scope || !_threadData->can_process) return;
+
+    gettimeofday(&_threadData->last_write, NULL);
+
+    // Get the block buffer containing audio data
+    CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
+    if (!blockBuffer) {
+        return;
+    }
+
+    // Get buffer info
+    size_t lengthAtOffset;
+    size_t totalLength;
+    char *dataPointer = NULL;
+
+    OSStatus status = CMBlockBufferGetDataPointer(blockBuffer, 0, &lengthAtOffset, &totalLength, &dataPointer);
+    if (status != noErr || !dataPointer) {
+        return;
+    }
+
+    // Get format description to determine sample layout
+    CMFormatDescriptionRef formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer);
+    const AudioStreamBasicDescription *asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc);
+
+    if (!asbd) {
+        return;
+    }
+
+    UInt32 channelCount = asbd->mChannelsPerFrame;
+    UInt32 numFrames = (UInt32)(totalLength / (sizeof(float) * channelCount));
+    float *samples = (float *)dataPointer;
+
+    // Write samples to ringbuffer
+    if (channelCount == 2) {
+        // Interleaved stereo
+        for (UInt32 i = 0; i < numFrames; i++) {
+            frame_t frame;
+            frame.left_channel = samples[i * 2];
+            frame.right_channel = samples[i * 2 + 1];
+            ringbuffer_write(_threadData->ringbuffer, (const char *)&frame, _threadData->frame_size);
+        }
+    } else if (channelCount == 1) {
+        // Mono - duplicate to both channels
+        for (UInt32 i = 0; i < numFrames; i++) {
+            frame_t frame;
+            frame.left_channel = frame.right_channel = samples[i];
+            ringbuffer_write(_threadData->ringbuffer, (const char *)&frame, _threadData->frame_size);
+        }
+    }
+
+    // Signal that data is ready
+    if (pthread_mutex_trylock(&_threadData->ringbuffer_lock) == 0) {
+        pthread_cond_signal(&_threadData->data_ready);
+        pthread_mutex_unlock(&_threadData->ringbuffer_lock);
+    }
+}
+
+- (void)stream:(SCStream *)stream didStopWithError:(NSError *)error {
+    if (error) {
+        NSLog(@"Stream stopped with error: %@", error);
+    }
+}
+
+@end
+#else
 
 /* Jack Audio callback functions */
 
@@ -217,11 +459,11 @@ void jackShutdown (void *arg)
     fprintf (stderr, "JACK shutdown\n");
     abort ();
 }
+#endif
 
 
 
-/* The audioInput object: readerThread(), setupPorts(),
- *                        connectPorts(), quitNow() */
+/* The audioInput object */
 
 class audioInput
 {
@@ -237,22 +479,56 @@ public:
         Thread_Data.ringbuffer_lock     = ringbuffer_lock;
         Thread_Data.data_ready          = data_ready;
         quit = false;
+#ifdef __APPLE__
         pthread_create (&capture_thread, NULL, readerThread, (void *) this);
+#else
+        pthread_create (&capture_thread, NULL, readerThread, (void *) this);
+#endif
     }
     ~audioInput ()
     {
-        jack_thread_data_t *t_data = getThreadData ();
+#ifdef __APPLE__
+        thread_data_t *t_data = getThreadData ();
+        if (t_data->stream) {
+            SCStream *stream = (__bridge_transfer SCStream*)t_data->stream;
+            [stream stopCaptureWithCompletionHandler:^(NSError *error) {}];
+        }
+        if (t_data->delegate) {
+            AudioCaptureDelegate *delegate = (__bridge_transfer AudioCaptureDelegate*)t_data->delegate;
+            delegate = nil;
+        }
+        ringbuffer_free(t_data->ringbuffer);
+#else
+        thread_data_t *t_data = getThreadData ();
         jack_client_close (t_data->client);
         jack_ringbuffer_free (t_data->ringbuffer);
+#endif
     }
 
     static void* readerThread (void* arg)
     {
         audioInput* ai             = (audioInput *) arg;
-        jack_thread_data_t *t_data = ai->getThreadData ();
-        timeval this_moment;
+        thread_data_t *t_data = ai->getThreadData ();
 
         t_data->thread_id = ai->capture_thread;
+
+#ifdef __APPLE__
+        t_data->input_buffer       = NULL;
+        t_data->frame_size         = sizeof (frame_t);
+        t_data->rb_size            = DEFAULT_RB_SIZE;
+        t_data->channels           = 2;
+        t_data->can_process        = false;
+        t_data->pause_scope        = false;
+        gettimeofday (&t_data->last_write, NULL);
+
+        ai->setupPorts ();
+        // can_process will be set to true asynchronously when capture starts
+
+        while (! ai->quit) {
+            usleep (1000);
+        }
+#else
+        timeval this_moment;
 
         t_data->client = jack_client_new ("xyscope");
         if (t_data->client == NULL) {
@@ -293,12 +569,126 @@ public:
             }
             usleep (1000);
         }
+#endif
         return ai;
     }
 
     void setupPorts ()
     {
-        jack_thread_data_t *t_data = getThreadData ();
+#ifdef __APPLE__
+        thread_data_t *t_data = getThreadData ();
+
+        printf ("Setting up CoreAudio input...\n");
+
+        // Create ringbuffer
+        t_data->ringbuffer = ringbuffer_create(t_data->frame_size * t_data->rb_size);
+        bzero(t_data->ringbuffer->buf, t_data->ringbuffer->size);
+
+        printf("Setting up ScreenCaptureKit for system audio capture...\n");
+        printf("Note: This requires screen recording permission.\n");
+
+        // Check macOS version
+        if (@available(macOS 12.3, *)) {
+            printf("macOS version OK for ScreenCaptureKit\n");
+        } else {
+            fprintf(stderr, "ScreenCaptureKit requires macOS 12.3 or later\n");
+            exit(1);
+        }
+
+        // Setup ScreenCaptureKit on main thread
+        dispatch_async(dispatch_get_main_queue(), ^{
+            // Create delegate
+            AudioCaptureDelegate *delegate = [[AudioCaptureDelegate alloc] init];
+            delegate.threadData = t_data;
+            t_data->delegate = (__bridge_retained void*)delegate;
+
+            // Request screen capture content
+            [SCShareableContent getShareableContentExcludingDesktopWindows:YES
+                                                          onScreenWindowsOnly:NO
+                                                            completionHandler:^(SCShareableContent *content, NSError *error) {
+                if (error || !content) {
+                    fprintf(stderr, "Failed to get shareable content: %s\n",
+                            error ? [[error localizedDescription] UTF8String] : "unknown error");
+                    return;
+                }
+
+                printf("Got shareable content, setting up stream...\n");
+
+                // Configure stream for audio only (no video)
+                SCStreamConfiguration *config = [[SCStreamConfiguration alloc] init];
+                config.capturesAudio = YES;
+                config.sampleRate = SAMPLE_RATE;
+                config.channelCount = 2;
+                config.excludesCurrentProcessAudio = YES;
+
+                // Minimal video configuration (ScreenCaptureKit requires a display filter even for audio-only)
+                config.width = 2;
+                config.height = 2;
+                config.pixelFormat = kCVPixelFormatType_32BGRA;
+                config.showsCursor = NO;
+
+                // Create content filter - use first display for system audio
+                SCDisplay *display = content.displays.firstObject;
+                if (!display) {
+                    fprintf(stderr, "No displays available\n");
+                    return;
+                }
+
+                SCContentFilter *filter = [[SCContentFilter alloc] initWithDisplay:display excludingWindows:@[]];
+
+                // Create stream
+                SCStream *stream = [[SCStream alloc] initWithFilter:filter
+                                                      configuration:config
+                                                           delegate:delegate];
+
+                // Add audio output
+                NSError *outputError = nil;
+                [stream addStreamOutput:delegate
+                                   type:SCStreamOutputTypeAudio
+                        sampleHandlerQueue:dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0)
+                                  error:&outputError];
+
+                if (outputError) {
+                    fprintf(stderr, "Failed to add audio stream output: %s\n",
+                            [[outputError localizedDescription] UTF8String]);
+                    return;
+                }
+
+                // Add screen output handler (we'll ignore the frames, but need to handle them)
+                NSError *videoError = nil;
+                [stream addStreamOutput:delegate
+                                   type:SCStreamOutputTypeScreen
+                        sampleHandlerQueue:dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0)
+                                  error:&videoError];
+
+                if (videoError) {
+                    fprintf(stderr, "Warning: Failed to add video stream output: %s\n",
+                            [[videoError localizedDescription] UTF8String]);
+                    // Continue anyway - audio might still work
+                }
+
+                // Start streaming
+                [stream startCaptureWithCompletionHandler:^(NSError *startError) {
+                    if (startError) {
+                        fprintf(stderr, "Failed to start capture: %s (code: %ld, domain: %s)\n",
+                                [[startError localizedDescription] UTF8String],
+                                (long)[startError code],
+                                [[startError domain] UTF8String]);
+                        fprintf(stderr, "Make sure you've granted screen recording permission\n");
+                        return;
+                    }
+
+                    printf("ScreenCaptureKit initialized successfully - capturing system audio\n");
+                    t_data->can_process = true;
+                }];
+
+                t_data->stream = (__bridge_retained void*)stream;
+            }];
+        });
+
+        printf("ScreenCaptureKit setup started (will complete asynchronously)...\n");
+#else
+        thread_data_t *t_data = getThreadData ();
         size_t input_buffer_size;
 
         /* Allocate data structures that depend on the number of ports. */
@@ -338,11 +728,15 @@ public:
                 exit (1);
             }
         }
+#endif
     }
 
     void connectPorts ()
     {
-        jack_thread_data_t *t_data = getThreadData ();
+#ifdef __APPLE__
+        // No-op on macOS - CoreAudio auto-connects to default input device
+#else
+        thread_data_t *t_data = getThreadData ();
         const char **out_ports     = jack_get_ports (t_data->client,
                                                      NULL,
                                                      NULL,
@@ -380,18 +774,35 @@ public:
 				}
 			}
         }
+#endif
     }
 
     void quitNow ()
     {
-        jack_thread_data_t *t_data = getThreadData ();
+#ifdef __APPLE__
+        thread_data_t *t_data = getThreadData ();
+        if (t_data->stream) {
+            SCStream *stream = (__bridge_transfer SCStream*)t_data->stream;
+            [stream stopCaptureWithCompletionHandler:^(NSError *error) {}];
+            t_data->stream = NULL;
+        }
+        if (t_data->delegate) {
+            AudioCaptureDelegate *delegate = (__bridge_transfer AudioCaptureDelegate*)t_data->delegate;
+            delegate = nil;
+            t_data->delegate = NULL;
+        }
+        ringbuffer_free(t_data->ringbuffer);
+        quit = true;
+#else
+        thread_data_t *t_data = getThreadData ();
         jack_client_close (t_data->client);
         jack_ringbuffer_free (t_data->ringbuffer);
         quit = true;
+#endif
     }
 
     /* accessor methods */
-    jack_thread_data_t *getThreadData (void)
+    thread_data_t *getThreadData (void)
     {
         return &Thread_Data;
     }
@@ -421,6 +832,10 @@ typedef struct _preferences_t {
     double hue;
 } preferences_t;
 
+// Global SDL variables (declared here so scene class can access them)
+extern SDL_Window *window;
+extern SDL_GLContext gl_context;
+
 class scene
 {
 public:
@@ -430,7 +845,12 @@ public:
     frame_t *framebuf;
     int offset;
     int bump;
+#ifdef __APPLE__
+    FFTSetup fft_setup;
+    DSPSplitComplex fft_out;
+#else
     fftw_complex* fft_out;
+#endif
     size_t frames_read;
 
     double mouse[4];
@@ -516,7 +936,16 @@ public:
         framebuf             = (frame_t *) malloc (bytes_per_buf);
         offset               = -FRAMES_PER_BUF;
         bump                 = -DRAW_FRAMES;
+#ifdef __APPLE__
+        int log2n = 0;
+        int n = DRAW_FRAMES;
+        while (n > 1) { n >>= 1; log2n++; }
+        fft_setup            = vDSP_create_fftsetup(log2n, FFT_RADIX2);
+        fft_out.realp        = (float *) malloc(DRAW_FRAMES/2 * sizeof(float));
+        fft_out.imagp        = (float *) malloc(DRAW_FRAMES/2 * sizeof(float));
+#else
         fft_out              = (fftw_complex*) fftw_malloc (sizeof (fftw_complex) * DRAW_FRAMES);
+#endif
         prefs.dim[0]         = 600;
         prefs.dim[1]         = 600;
         prefs.normal_dim[0]  = 600;
@@ -584,7 +1013,7 @@ public:
 
     void drawPlot ()
     {
-        jack_thread_data_t *t_data = ai->getThreadData ();
+        thread_data_t *t_data = ai->getThreadData ();
         size_t bytes_ready, bytes_read;
         double h   = -1.0;
         double s   = 1.0;
@@ -606,15 +1035,26 @@ public:
         double max_magnitude = 0.0;
         double* avg_magnitudes;
         double** stft_results;
+#ifndef __APPLE__
         fftw_plan fft_plan;
+#endif
         vertex_count = 0;
 
-        /* if the scope is paused, there are no samples available;
+        /* if the scope is paused or audio not initialized, there are no samples available;
          * therefore we should not wait for the reader thread */
-        if (! t_data->pause_scope) {
+        if (! t_data->pause_scope && t_data->can_process) {
             pthread_setcanceltype (PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
             pthread_mutex_lock (&t_data->ringbuffer_lock);
-            pthread_cond_wait (&t_data->data_ready, &t_data->ringbuffer_lock);
+
+            // Use timed wait to avoid hanging forever if audio fails
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_nsec += 16666666; // 16.6ms timeout (one frame at 60fps)
+            if (ts.tv_nsec >= 1000000000) {
+                ts.tv_sec += 1;
+                ts.tv_nsec -= 1000000000;
+            }
+            pthread_cond_timedwait (&t_data->data_ready, &t_data->ringbuffer_lock, &ts);
         }
 
 
@@ -624,15 +1064,15 @@ public:
             bump     = -DRAW_FRAMES;
         }
         else {
-            bytes_ready = jack_ringbuffer_read_space (t_data->ringbuffer);
+            bytes_ready = RB_READ_SPACE (t_data->ringbuffer);
             if (bytes_ready != bytes_per_buf)
                 distance = bytes_ready - bytes_per_buf;
         }
         if (distance != 0)
-            jack_ringbuffer_read_advance (t_data->ringbuffer, distance);
-        bytes_read = jack_ringbuffer_read (t_data->ringbuffer,
-                                           (char *) framebuf,
-                                           bytes_per_buf);
+            RB_READ_ADVANCE (t_data->ringbuffer, distance);
+        bytes_read = RB_READ (t_data->ringbuffer,
+                              (char *) framebuf,
+                              bytes_per_buf);
 
         if (! t_data->pause_scope)
             pthread_mutex_unlock (&t_data->ringbuffer_lock);
@@ -675,6 +1115,43 @@ public:
                 // Loop over the frame buffer
                 for (unsigned int i = 0; i + window_size <= frames_read; i += window_size - overlap_size) {
                     // Copy the next window_size samples to a temporary array
+#ifdef __APPLE__
+                    float *input_data = new float[window_size];
+                    for (unsigned int j = 0; j < window_size; j++) {
+                        input_data[j] = (framebuf[i + j].left_channel + framebuf[i + j].right_channel) / 2.0;
+                    }
+
+                    // Set up vDSP FFT
+                    int log2n_win = 0;
+                    int n_win = window_size;
+                    while (n_win > 1) { n_win >>= 1; log2n_win++; }
+                    FFTSetup fft_setup_local = vDSP_create_fftsetup(log2n_win, FFT_RADIX2);
+                    DSPSplitComplex fft_data;
+                    fft_data.realp = new float[window_size/2];
+                    fft_data.imagp = new float[window_size/2];
+
+                    // Convert real input to split complex (required by vDSP)
+                    vDSP_ctoz((DSPComplex*)input_data, 2, &fft_data, 1, window_size/2);
+
+                    // Perform FFT
+                    vDSP_fft_zrip(fft_setup_local, &fft_data, 1, log2n_win, FFT_FORWARD);
+
+                    // Store the FFT results in the STFT array
+                    for (unsigned int j = 0; j < window_size/2; j++) {
+                        double real = fft_data.realp[j];
+                        double imag = fft_data.imagp[j];
+                        stft_results[i / (window_size - overlap_size)][j] = sqrt(real * real + imag * imag);
+                    }
+                    // Mirror for second half (DC and Nyquist)
+                    for (unsigned int j = window_size/2; j < window_size; j++) {
+                        stft_results[i / (window_size - overlap_size)][j] = stft_results[i / (window_size - overlap_size)][window_size - j];
+                    }
+
+                    vDSP_destroy_fftsetup(fft_setup_local);
+                    delete[] fft_data.realp;
+                    delete[] fft_data.imagp;
+                    delete[] input_data;
+#else
                     double (*temp_data)[2] = new double[window_size][2];
                     for (unsigned int j = 0; j < window_size; j++) {
                         // average both channels
@@ -696,6 +1173,7 @@ public:
                     // Clean up the temporary array
                     fftw_destroy_plan (fft_plan);
                     delete[] temp_data;
+#endif
                 }
 
                 // Calculate the average magnitude of the STFT array
@@ -884,11 +1362,29 @@ public:
         else
             y =  1.0 + y / (double) prefs.dim[1];
 
-        glRasterPos2d (x, y);
-
         len = (int) strlen (string);
-        for (i = 0; i < len; i++) {
-            glutBitmapCharacter (GLUT_BITMAP_HELVETICA_18, string[i]);
+
+        // Use glBitmap for proper text rendering
+        // Define a simple 8x13 bitmap for each printable ASCII character
+        glColor3f(1.0f, 1.0f, 1.0f);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+        for (int i = 0; i < len; i++) {
+            unsigned char c = (unsigned char)string[i];
+
+            // Simple 8x13 bitmap font (only defining a few common characters)
+            static const GLubyte space_bitmap[] = {
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00
+            };
+
+            static const GLubyte default_char[] = {
+                0xff, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81,
+                0x81, 0x81, 0x81, 0x81, 0xff  // filled rectangle for unknown chars
+            };
+
+            const GLubyte *bitmap = (c == ' ') ? space_bitmap : default_char;
+            glBitmap(8, 13, 0.0, 2.0, 9.0, 0.0, bitmap);
         }
     }
 
@@ -963,7 +1459,7 @@ public:
 
     void drawStats ()
     {
-        jack_thread_data_t *t_data = ai->getThreadData ();
+        thread_data_t *t_data = ai->getThreadData ();
         timeval this_frame_time;
         double elapsed_time;
         /* char color_threshold_string[64]; */
@@ -1012,7 +1508,7 @@ public:
 
     void drawText (void)
     {
-        jack_thread_data_t *t_data = ai->getThreadData ();
+        thread_data_t *t_data = ai->getThreadData ();
         timeval this_frame_time;
         double elapsed_time;
         bool show_timer = false;
@@ -1305,7 +1801,7 @@ public:
 
     void togglePaused (void)
     {
-        jack_thread_data_t *t_data = ai->getThreadData ();
+        thread_data_t *t_data = ai->getThreadData ();
         if (t_data->pause_scope) {
             latency = 0.0;
             text_timer[CounterTimer].show = false;
@@ -1362,7 +1858,7 @@ public:
 
     void nextStatsGroup (void)
     {
-        // jack_thread_data_t *t_data = ai->getThreadData ();
+        // thread_data_t *t_data = ai->getThreadData ();
         // gettimeofday (&t_data->last_write, NULL);
         // latency = 0.0;
         prefs.show_stats++;
@@ -1380,7 +1876,7 @@ public:
 
     void rewind (int nbufs)
     {
-        jack_thread_data_t *t_data = ai->getThreadData ();
+        thread_data_t *t_data = ai->getThreadData ();
         if (t_data->pause_scope) {
             if ((offset - FRAMES_PER_BUF * nbufs) >= -DEFAULT_RB_SIZE) {
                 offset -= FRAMES_PER_BUF * nbufs;
@@ -1392,7 +1888,7 @@ public:
 
     void fastForward (int nbufs)
     {
-        jack_thread_data_t *t_data = ai->getThreadData ();
+        thread_data_t *t_data = ai->getThreadData ();
         if (t_data->pause_scope) {
             if (offset < -FRAMES_PER_BUF * nbufs) {
                 offset += FRAMES_PER_BUF * nbufs;
@@ -1407,24 +1903,20 @@ public:
     void setWindowSize (unsigned int x, unsigned int y)
     {
         if (! prefs.is_full_screen) {
-            prefs.position[0] = glutGet (GLUT_WINDOW_X);
-            prefs.position[1] = glutGet (GLUT_WINDOW_Y);
+            SDL_GetWindowPosition(window, &prefs.position[0], &prefs.position[1]);
         }
-        glutPositionWindow (prefs.position[0], prefs.position[1]);
-        glutReshapeWindow (x, y);
+        SDL_SetWindowPosition(window, prefs.position[0], prefs.position[1]);
+        SDL_SetWindowSize(window, x, y);
         prefs.is_full_screen = false;
     }
 
     void setFullScreen (void)
     {
         if (! prefs.is_full_screen) {
-            prefs.position[0]   = glutGet (GLUT_WINDOW_X);
-            prefs.position[1]   = glutGet (GLUT_WINDOW_Y);
-            prefs.normal_dim[0] = glutGet (GLUT_WINDOW_WIDTH);
-            prefs.normal_dim[1] = glutGet (GLUT_WINDOW_HEIGHT);
+            SDL_GetWindowPosition(window, &prefs.position[0], &prefs.position[1]);
+            SDL_GetWindowSize(window, &prefs.normal_dim[0], &prefs.normal_dim[1]);
         }
-        glutPositionWindow (0, 0);
-        glutFullScreen ();
+        SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
         prefs.is_full_screen = true;
         show_mouse           = false;
         mouse_is_dirty       = true;
@@ -1587,7 +2079,7 @@ void display ()
 
     /* wash, rinse, repeat */
     glFinish ();
-    glutSwapBuffers ();
+    // SDL_GL_SwapWindow is called in main loop
 }
 
 void idle (void)
@@ -1595,17 +2087,26 @@ void idle (void)
     timeval this_moment;
     double elapsed_time;
 
+#ifdef __APPLE__
+    // Pump the NSRunLoop so ScreenCaptureKit async callbacks execute
+    [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantPast]];
+#endif
+
     /* restore our window title after coming out of full screen mode */
     if (scn.window_is_dirty) {
-        glutSetWindowTitle ("XY Scope");
-        glutSetIconTitle ("XY Scope");
-        scn.prefs.dim[0] = glutGet (GLUT_WINDOW_WIDTH);
-        scn.prefs.dim[1] = glutGet (GLUT_WINDOW_HEIGHT);
+        SDL_SetWindowTitle (window, "XY Scope");
+
+        // Use drawable size for viewport (handles Retina/HiDPI displays)
+        int drawable_w, drawable_h;
+        SDL_GL_GetDrawableSize(window, &drawable_w, &drawable_h);
+        scn.prefs.dim[0] = drawable_w;
+        scn.prefs.dim[1] = drawable_h;
+
         if (scn.prefs.scale_locked)
             scn.setSides (1.0 / scn.prefs.scale_factor, 1);
         else
             scn.rescale ();
-        glViewport (0, 0, scn.prefs.dim[0], scn.prefs.dim[1]);
+        glViewport (0, 0, drawable_w, drawable_h);
         scn.window_is_dirty = false;
     }
 
@@ -1619,10 +2120,8 @@ void idle (void)
         }
     }
     if (scn.mouse_is_dirty) {
-        if (scn.show_mouse)
-            glutSetCursor (GLUT_CURSOR_LEFT_ARROW);
-        else
-            glutSetCursor (GLUT_CURSOR_NONE);
+        SDL_ShowCursor(scn.show_mouse ? SDL_ENABLE : SDL_DISABLE);
+        scn.mouse_is_dirty = false;
     }
 
     if (RESPONSIBLE_FOR_FRAME_RATE) {
@@ -1634,7 +2133,7 @@ void idle (void)
             usleep ((useconds_t)(1000000.0 * remainder));
         }
     }
-    glutPostRedisplay ();
+    // Rendering happens in main loop, no need to request redisplay
 }
 
 void special (int key, int xPos, int yPos)
@@ -1835,30 +2334,67 @@ void passiveMotion (int x, int y)
     scn.showMouse ();
 }
 
+// Global SDL variables (definition)
+SDL_Window *window = NULL;
+SDL_GLContext gl_context = NULL;
+
 int main (int argc, char * const argv[])
 {
     int FH;
-    glutInit (&argc, (char **) argv);
-    glutInitDisplayMode (GLUT_DOUBLE | GLUT_RGB);
+
+    // Load preferences
     if ((FH = open (DEFAULT_PREF_FILE, O_RDONLY))) {
         read (FH, (void *) &scn.prefs, sizeof (preferences_t));
         close (FH);
     }
-    glutInitWindowSize (scn.prefs.dim[0], scn.prefs.dim[1]);
-    glutInitWindowPosition (scn.prefs.position[0], scn.prefs.position[1]);
-    glutCreateWindow ("XY Scope");
-    glGenTextures (1, &scn.textures);
-    if (scn.prefs.is_full_screen)
-        scn.setFullScreen ();
 
-    glutDisplayFunc (display);
-    glutReshapeFunc (reshape);
-    glutSpecialFunc (special);
-    glutKeyboardFunc (keyboard);
-    glutMouseFunc (mouse);
-    glutMotionFunc (motion);
-    glutPassiveMotionFunc (passiveMotion);
-    glutIdleFunc (idle);
+    // Initialize SDL
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+        fprintf(stderr, "SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
+        return 1;
+    }
+
+    // Set OpenGL attributes
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+
+    // Create window
+    window = SDL_CreateWindow("XY Scope",
+                              scn.prefs.position[0],
+                              scn.prefs.position[1],
+                              scn.prefs.dim[0],
+                              scn.prefs.dim[1],
+                              SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+
+    if (!window) {
+        fprintf(stderr, "Window could not be created! SDL_Error: %s\n", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
+
+    // Create OpenGL context
+    gl_context = SDL_GL_CreateContext(window);
+    if (!gl_context) {
+        fprintf(stderr, "OpenGL context could not be created! SDL_Error: %s\n", SDL_GetError());
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+
+    // Enable VSync
+    SDL_GL_SetSwapInterval(1);
+
+    glGenTextures (1, &scn.textures);
+
+    // Set initial viewport
+    int drawable_w, drawable_h;
+    SDL_GL_GetDrawableSize(window, &drawable_w, &drawable_h);
+    reshape(drawable_w, drawable_h);
+
+    if (scn.prefs.is_full_screen) {
+        SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    }
 
     scn.showDisplayMode (NOT_TIMED);
     scn.showLineWidth (NOT_TIMED);
@@ -1869,7 +2405,73 @@ int main (int argc, char * const argv[])
     scn.showSplines (NOT_TIMED);
     scn.showScale (NOT_TIMED);
 
-    glutMainLoop ();
+    // Main event loop
+    bool running = true;
+    SDL_Event event;
+
+    while (running) {
+        // Handle events
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) {
+                running = false;
+            } else if (event.type == SDL_KEYDOWN) {
+                SDL_Keycode key = event.key.keysym.sym;
+
+                // Handle special keys (F-keys, arrows, etc.)
+                if (key >= SDLK_F1 && key <= SDLK_F12) {
+                    special(key - SDLK_F1 + 1, 0, 0);  // F1 = 1, F2 = 2, etc.
+                } else if (key == SDLK_UP) {
+                    special(101, 0, 0);
+                } else if (key == SDLK_DOWN) {
+                    special(103, 0, 0);
+                } else if (key == SDLK_LEFT) {
+                    special(100, 0, 0);
+                } else if (key == SDLK_RIGHT) {
+                    special(102, 0, 0);
+                } else if (key == SDLK_PAGEUP) {
+                    special(104, 0, 0);
+                } else if (key == SDLK_PAGEDOWN) {
+                    special(105, 0, 0);
+                } else if (key == SDLK_HOME) {
+                    special(106, 0, 0);
+                } else if (key == SDLK_END) {
+                    special(107, 0, 0);
+                } else if (key == SDLK_ESCAPE) {
+                    running = false;
+                } else if (key < 256) {
+                    // Regular ASCII keys
+                    keyboard((unsigned char)key, 0, 0);
+                }
+            } else if (event.type == SDL_WINDOWEVENT) {
+                if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
+                    reshape(event.window.data1, event.window.data2);
+                }
+            } else if (event.type == SDL_MOUSEMOTION) {
+                if (event.motion.state) {
+                    motion(event.motion.x, event.motion.y);
+                } else {
+                    passiveMotion(event.motion.x, event.motion.y);
+                }
+            } else if (event.type == SDL_MOUSEBUTTONDOWN || event.type == SDL_MOUSEBUTTONUP) {
+                int state = (event.type == SDL_MOUSEBUTTONDOWN) ? 0 : 1;
+                mouse(event.button.button - 1, state, event.button.x, event.button.y);
+            }
+        }
+
+        // Idle processing
+        idle();
+
+        // Display
+        display();
+
+        // Swap buffers
+        SDL_GL_SwapWindow(window);
+    }
+
+    // Cleanup
+    SDL_GL_DeleteContext(gl_context);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
 
     return 0;
 }
