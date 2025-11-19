@@ -31,8 +31,8 @@
 #include <OpenGL/gl.h>
 #include <Accelerate/Accelerate.h>
 #import <Foundation/Foundation.h>
-#import <ScreenCaptureKit/ScreenCaptureKit.h>
-#import <AVFoundation/AVFoundation.h>
+#import <CoreAudio/CoreAudio.h>
+#import <AudioToolbox/AudioToolbox.h>
 #else
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
@@ -137,8 +137,7 @@ typedef struct {
 
 typedef struct _thread_data {
     pthread_t thread_id;
-    void *stream; // SCStream* (stored as void* for C compatibility)
-    void *delegate; // AudioCaptureDelegate* (stored as void* for C compatibility)
+    AudioComponentInstance audio_unit;
     sample_t **input_buffer;
     size_t frame_size;
     ringbuffer_t *ringbuffer;
@@ -322,87 +321,68 @@ void ringbuffer_read_advance(ringbuffer_t *rb, size_t cnt) {
     rb->read_ptr = (rb->read_ptr + cnt) & (rb->size - 1);
 }
 
-/* ScreenCaptureKit delegate for audio capture */
-@interface AudioCaptureDelegate : NSObject <SCStreamDelegate, SCStreamOutput>
-@property (nonatomic, assign) thread_data_t *threadData;
-@end
+/* CoreAudio input callback */
+static OSStatus audioInputCallback(void *inRefCon,
+                                   AudioUnitRenderActionFlags *ioActionFlags,
+                                   const AudioTimeStamp *inTimeStamp,
+                                   UInt32 inBusNumber,
+                                   UInt32 inNumberFrames,
+                                   AudioBufferList *ioData) {
+    thread_data_t *t_data = (thread_data_t *)inRefCon;
+    static int callback_count = 0;
 
-@implementation AudioCaptureDelegate
-
-- (void)stream:(SCStream *)stream didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(SCStreamOutputType)type {
-    // Ignore video frames - we only want audio
-    if (type == SCStreamOutputTypeScreen) {
-        return;
+    if (t_data->pause_scope || !t_data->can_process) {
+        return noErr;
     }
 
-    if (type != SCStreamOutputTypeAudio) {
-        return;
+    // Debug: print first few callbacks
+    if (callback_count < 5) {
+        fprintf(stderr, "Audio callback %d: %u frames\n", callback_count, inNumberFrames);
+        callback_count++;
     }
 
-    if (_threadData->pause_scope || !_threadData->can_process) return;
+    gettimeofday(&t_data->last_write, NULL);
 
-    gettimeofday(&_threadData->last_write, NULL);
+    // Use pre-allocated buffers from input_buffer
+    AudioBufferList bufferList;
+    bufferList.mNumberBuffers = 2;
+    bufferList.mBuffers[0].mNumberChannels = 1;
+    bufferList.mBuffers[0].mDataByteSize = inNumberFrames * sizeof(float);
+    bufferList.mBuffers[0].mData = t_data->input_buffer[0];
+    bufferList.mBuffers[1].mNumberChannels = 1;
+    bufferList.mBuffers[1].mDataByteSize = inNumberFrames * sizeof(float);
+    bufferList.mBuffers[1].mData = t_data->input_buffer[1];
 
-    // Get the block buffer containing audio data
-    CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
-    if (!blockBuffer) {
-        return;
-    }
+    // Render the audio
+    OSStatus status = AudioUnitRender(t_data->audio_unit, ioActionFlags, inTimeStamp,
+                                     inBusNumber, inNumberFrames, &bufferList);
 
-    // Get buffer info
-    size_t lengthAtOffset;
-    size_t totalLength;
-    char *dataPointer = NULL;
-
-    OSStatus status = CMBlockBufferGetDataPointer(blockBuffer, 0, &lengthAtOffset, &totalLength, &dataPointer);
-    if (status != noErr || !dataPointer) {
-        return;
-    }
-
-    // Get format description to determine sample layout
-    CMFormatDescriptionRef formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer);
-    const AudioStreamBasicDescription *asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc);
-
-    if (!asbd) {
-        return;
-    }
-
-    UInt32 channelCount = asbd->mChannelsPerFrame;
-    UInt32 numFrames = (UInt32)(totalLength / (sizeof(float) * channelCount));
-    float *samples = (float *)dataPointer;
-
-    // Write samples to ringbuffer
-    if (channelCount == 2) {
-        // Interleaved stereo
-        for (UInt32 i = 0; i < numFrames; i++) {
-            frame_t frame;
-            frame.left_channel = samples[i * 2];
-            frame.right_channel = samples[i * 2 + 1];
-            ringbuffer_write(_threadData->ringbuffer, (const char *)&frame, _threadData->frame_size);
+    if (status != noErr) {
+        if (callback_count < 10) {
+            fprintf(stderr, "AudioUnitRender error: %d\n", status);
         }
-    } else if (channelCount == 1) {
-        // Mono - duplicate to both channels
-        for (UInt32 i = 0; i < numFrames; i++) {
-            frame_t frame;
-            frame.left_channel = frame.right_channel = samples[i];
-            ringbuffer_write(_threadData->ringbuffer, (const char *)&frame, _threadData->frame_size);
-        }
+        return status;
+    }
+
+    float *leftSamples = (float *)t_data->input_buffer[0];
+    float *rightSamples = (float *)t_data->input_buffer[1];
+
+    // Write stereo frames to ringbuffer
+    for (UInt32 i = 0; i < inNumberFrames; i++) {
+        frame_t frame;
+        frame.left_channel = leftSamples[i];
+        frame.right_channel = rightSamples[i];
+        ringbuffer_write(t_data->ringbuffer, (const char *)&frame, t_data->frame_size);
     }
 
     // Signal that data is ready
-    if (pthread_mutex_trylock(&_threadData->ringbuffer_lock) == 0) {
-        pthread_cond_signal(&_threadData->data_ready);
-        pthread_mutex_unlock(&_threadData->ringbuffer_lock);
+    if (pthread_mutex_trylock(&t_data->ringbuffer_lock) == 0) {
+        pthread_cond_signal(&t_data->data_ready);
+        pthread_mutex_unlock(&t_data->ringbuffer_lock);
     }
-}
 
-- (void)stream:(SCStream *)stream didStopWithError:(NSError *)error {
-    if (error) {
-        NSLog(@"Stream stopped with error: %@", error);
-    }
+    return noErr;
 }
-
-@end
 #else
 
 /* Jack Audio callback functions */
@@ -410,7 +390,7 @@ void ringbuffer_read_advance(ringbuffer_t *rb, size_t cnt) {
 /* The callback function to tell us new ports are available */
 void newPort (jack_port_id_t port_id, int something, void *arg)
 {
-    jack_thread_data_t *t_data = (jack_thread_data_t *) arg;
+    thread_data_t *t_data = (thread_data_t *) arg;
     gettimeofday (&t_data->last_new_port, NULL);
     t_data->new_port_available = true;
 }
@@ -418,7 +398,7 @@ void newPort (jack_port_id_t port_id, int something, void *arg)
 /* The callback function for Jack Audio to provide us with audio data */
 int process (jack_nframes_t nframes, void *arg)
 {
-    jack_thread_data_t *t_data = (jack_thread_data_t *) arg;
+    thread_data_t *t_data = (thread_data_t *) arg;
     sample_t **input_buffer = t_data->input_buffer;
     frame_t frame;
     unsigned int p;
@@ -491,12 +471,10 @@ public:
     {
 #ifdef __APPLE__
         thread_data_t *t_data = getThreadData ();
-        if (t_data->stream) {
-            SCStream *stream = (__bridge_transfer SCStream*)t_data->stream;
-            [stream stopCaptureWithCompletionHandler:^(NSError *error) {}];
-        }
-        if (t_data->delegate) {
-            (void)(__bridge_transfer AudioCaptureDelegate*)t_data->delegate;
+        if (t_data->audio_unit) {
+            AudioOutputUnitStop(t_data->audio_unit);
+            AudioUnitUninitialize(t_data->audio_unit);
+            AudioComponentInstanceDispose(t_data->audio_unit);
         }
         ringbuffer_free(t_data->ringbuffer);
 #else
@@ -581,113 +559,171 @@ public:
 
         printf ("Setting up CoreAudio input...\n");
 
+        // Allocate input buffers for audio callback
+        size_t input_buffer_size = t_data->channels * sizeof(sample_t *);
+        t_data->input_buffer = (sample_t **) malloc(input_buffer_size);
+        for (unsigned int i = 0; i < t_data->channels; i++) {
+            t_data->input_buffer[i] = (sample_t *) malloc(FRAMES_PER_BUF * sizeof(sample_t));
+        }
+
         // Create ringbuffer
         t_data->ringbuffer = ringbuffer_create(t_data->frame_size * t_data->rb_size);
         bzero(t_data->ringbuffer->buf, t_data->ringbuffer->size);
 
-        printf("Setting up ScreenCaptureKit for system audio capture...\n");
-        printf("Note: This requires screen recording permission.\n");
+        // Find XYScope device
+        AudioDeviceID xyscopeDevice = 0;
+        AudioObjectPropertyAddress propertyAddress = {
+            kAudioHardwarePropertyDevices,
+            kAudioObjectPropertyScopeGlobal,
+            kAudioObjectPropertyElementMain
+        };
+        UInt32 dataSize = 0;
+        AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &propertyAddress, 0, NULL, &dataSize);
+        UInt32 deviceCount = dataSize / sizeof(AudioDeviceID);
+        AudioDeviceID *devices = (AudioDeviceID*)malloc(dataSize);
+        AudioObjectGetPropertyData(kAudioObjectSystemObject, &propertyAddress, 0, NULL, &dataSize, devices);
 
-        // Check macOS version
-        if (@available(macOS 12.3, *)) {
-            printf("macOS version OK for ScreenCaptureKit\n");
-        } else {
-            fprintf(stderr, "ScreenCaptureKit requires macOS 12.3 or later\n");
+        for (UInt32 i = 0; i < deviceCount; i++) {
+            CFStringRef deviceName = NULL;
+            dataSize = sizeof(deviceName);
+            AudioObjectPropertyAddress nameAddress = {
+                kAudioDevicePropertyDeviceNameCFString,
+                kAudioObjectPropertyScopeGlobal,
+                kAudioObjectPropertyElementMain
+            };
+            AudioObjectGetPropertyData(devices[i], &nameAddress, 0, NULL, &dataSize, &deviceName);
+            if (deviceName) {
+                char name[256];
+                CFStringGetCString(deviceName, name, sizeof(name), kCFStringEncodingUTF8);
+                printf("Found audio device: %s\n", name);
+                if (strstr(name, "XYScope") != NULL) {
+                    xyscopeDevice = devices[i];
+                    printf("Using XYScope device for audio input\n");
+                    CFRelease(deviceName);
+                    break;
+                }
+                CFRelease(deviceName);
+            }
+        }
+        free(devices);
+
+        if (!xyscopeDevice) {
+            fprintf(stderr, "Error: XYScope device not found!\n");
+            fprintf(stderr, "Make sure XYScope.driver is installed and XYScope + Speakers is set as default output.\n");
             exit(1);
         }
 
-        // Setup ScreenCaptureKit on main thread
-        dispatch_async(dispatch_get_main_queue(), ^{
-            // Create delegate
-            AudioCaptureDelegate *delegate = [[AudioCaptureDelegate alloc] init];
-            delegate.threadData = t_data;
-            t_data->delegate = (__bridge_retained void*)delegate;
+        // Create Audio Unit for HAL Output (configured for input)
+        AudioComponentDescription desc;
+        desc.componentType = kAudioUnitType_Output;
+        desc.componentSubType = kAudioUnitSubType_HALOutput;
+        desc.componentManufacturer = kAudioUnitManufacturer_Apple;
+        desc.componentFlags = 0;
+        desc.componentFlagsMask = 0;
 
-            // Request screen capture content
-            [SCShareableContent getShareableContentExcludingDesktopWindows:YES
-                                                          onScreenWindowsOnly:NO
-                                                            completionHandler:^(SCShareableContent *content, NSError *error) {
-                if (error || !content) {
-                    fprintf(stderr, "Failed to get shareable content: %s\n",
-                            error ? [[error localizedDescription] UTF8String] : "unknown error");
-                    return;
-                }
+        AudioComponent component = AudioComponentFindNext(NULL, &desc);
+        if (!component) {
+            fprintf(stderr, "Error: Cannot find HAL output component\n");
+            exit(1);
+        }
 
-                printf("Got shareable content, setting up stream...\n");
+        OSStatus status = AudioComponentInstanceNew(component, &t_data->audio_unit);
+        if (status != noErr) {
+            fprintf(stderr, "Error: Cannot create audio unit: %d\n", status);
+            exit(1);
+        }
 
-                // Configure stream for audio only (no video)
-                SCStreamConfiguration *config = [[SCStreamConfiguration alloc] init];
-                config.capturesAudio = YES;
-                config.sampleRate = SAMPLE_RATE;
-                config.channelCount = 2;
-                config.excludesCurrentProcessAudio = YES;
+        // Enable IO for input
+        UInt32 enableIO = 1;
+        status = AudioUnitSetProperty(t_data->audio_unit,
+                                     kAudioOutputUnitProperty_EnableIO,
+                                     kAudioUnitScope_Input,
+                                     1, // input bus
+                                     &enableIO,
+                                     sizeof(enableIO));
+        if (status != noErr) {
+            fprintf(stderr, "Error: Cannot enable input IO: %d\n", status);
+            exit(1);
+        }
 
-                // Minimal video configuration (ScreenCaptureKit requires a display filter even for audio-only)
-                config.width = 2;
-                config.height = 2;
-                config.pixelFormat = kCVPixelFormatType_32BGRA;
-                config.showsCursor = NO;
+        // Disable IO for output
+        enableIO = 0;
+        status = AudioUnitSetProperty(t_data->audio_unit,
+                                     kAudioOutputUnitProperty_EnableIO,
+                                     kAudioUnitScope_Output,
+                                     0, // output bus
+                                     &enableIO,
+                                     sizeof(enableIO));
+        if (status != noErr) {
+            fprintf(stderr, "Error: Cannot disable output IO: %d\n", status);
+            exit(1);
+        }
 
-                // Create content filter - use first display for system audio
-                SCDisplay *display = content.displays.firstObject;
-                if (!display) {
-                    fprintf(stderr, "No displays available\n");
-                    return;
-                }
+        // Set current device to XYScope
+        status = AudioUnitSetProperty(t_data->audio_unit,
+                                     kAudioOutputUnitProperty_CurrentDevice,
+                                     kAudioUnitScope_Global,
+                                     0,
+                                     &xyscopeDevice,
+                                     sizeof(xyscopeDevice));
+        if (status != noErr) {
+            fprintf(stderr, "Error: Cannot set current device: %d\n", status);
+            exit(1);
+        }
 
-                SCContentFilter *filter = [[SCContentFilter alloc] initWithDisplay:display excludingWindows:@[]];
+        // Set format to stereo float
+        AudioStreamBasicDescription streamFormat;
+        streamFormat.mSampleRate = SAMPLE_RATE;
+        streamFormat.mFormatID = kAudioFormatLinearPCM;
+        streamFormat.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked | kAudioFormatFlagIsNonInterleaved;
+        streamFormat.mFramesPerPacket = 1;
+        streamFormat.mChannelsPerFrame = 2;
+        streamFormat.mBitsPerChannel = 32;
+        streamFormat.mBytesPerPacket = sizeof(float);
+        streamFormat.mBytesPerFrame = sizeof(float);
 
-                // Create stream
-                SCStream *stream = [[SCStream alloc] initWithFilter:filter
-                                                      configuration:config
-                                                           delegate:delegate];
+        status = AudioUnitSetProperty(t_data->audio_unit,
+                                     kAudioUnitProperty_StreamFormat,
+                                     kAudioUnitScope_Output,
+                                     1, // input bus
+                                     &streamFormat,
+                                     sizeof(streamFormat));
+        if (status != noErr) {
+            fprintf(stderr, "Error: Cannot set stream format: %d\n", status);
+            exit(1);
+        }
 
-                // Add audio output
-                NSError *outputError = nil;
-                [stream addStreamOutput:delegate
-                                   type:SCStreamOutputTypeAudio
-                        sampleHandlerQueue:dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0)
-                                  error:&outputError];
+        // Set up input callback
+        AURenderCallbackStruct callbackStruct;
+        callbackStruct.inputProc = audioInputCallback;
+        callbackStruct.inputProcRefCon = t_data;
 
-                if (outputError) {
-                    fprintf(stderr, "Failed to add audio stream output: %s\n",
-                            [[outputError localizedDescription] UTF8String]);
-                    return;
-                }
+        status = AudioUnitSetProperty(t_data->audio_unit,
+                                     kAudioOutputUnitProperty_SetInputCallback,
+                                     kAudioUnitScope_Global,
+                                     0,
+                                     &callbackStruct,
+                                     sizeof(callbackStruct));
+        if (status != noErr) {
+            fprintf(stderr, "Error: Cannot set input callback: %d\n", status);
+            exit(1);
+        }
 
-                // Add screen output handler (we'll ignore the frames, but need to handle them)
-                NSError *videoError = nil;
-                [stream addStreamOutput:delegate
-                                   type:SCStreamOutputTypeScreen
-                        sampleHandlerQueue:dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0)
-                                  error:&videoError];
+        // Initialize and start the audio unit
+        status = AudioUnitInitialize(t_data->audio_unit);
+        if (status != noErr) {
+            fprintf(stderr, "Error: Cannot initialize audio unit: %d\n", status);
+            exit(1);
+        }
 
-                if (videoError) {
-                    fprintf(stderr, "Warning: Failed to add video stream output: %s\n",
-                            [[videoError localizedDescription] UTF8String]);
-                    // Continue anyway - audio might still work
-                }
+        status = AudioOutputUnitStart(t_data->audio_unit);
+        if (status != noErr) {
+            fprintf(stderr, "Error: Cannot start audio unit: %d\n", status);
+            exit(1);
+        }
 
-                // Start streaming
-                [stream startCaptureWithCompletionHandler:^(NSError *startError) {
-                    if (startError) {
-                        fprintf(stderr, "Failed to start capture: %s (code: %ld, domain: %s)\n",
-                                [[startError localizedDescription] UTF8String],
-                                (long)[startError code],
-                                [[startError domain] UTF8String]);
-                        fprintf(stderr, "Make sure you've granted screen recording permission\n");
-                        return;
-                    }
-
-                    printf("ScreenCaptureKit initialized successfully - capturing system audio\n");
-                    t_data->can_process = true;
-                }];
-
-                t_data->stream = (__bridge_retained void*)stream;
-            }];
-        });
-
-        printf("ScreenCaptureKit setup started (will complete asynchronously)...\n");
+        printf("CoreAudio initialized successfully - reading from XYScope device\n");
+        t_data->can_process = true;
 #else
         thread_data_t *t_data = getThreadData ();
         size_t input_buffer_size;
@@ -782,14 +818,11 @@ public:
     {
 #ifdef __APPLE__
         thread_data_t *t_data = getThreadData ();
-        if (t_data->stream) {
-            SCStream *stream = (__bridge_transfer SCStream*)t_data->stream;
-            [stream stopCaptureWithCompletionHandler:^(NSError *error) {}];
-            t_data->stream = NULL;
-        }
-        if (t_data->delegate) {
-            (void)(__bridge_transfer AudioCaptureDelegate*)t_data->delegate;
-            t_data->delegate = NULL;
+        if (t_data->audio_unit) {
+            AudioOutputUnitStop(t_data->audio_unit);
+            AudioUnitUninitialize(t_data->audio_unit);
+            AudioComponentInstanceDispose(t_data->audio_unit);
+            t_data->audio_unit = NULL;
         }
         ringbuffer_free(t_data->ringbuffer);
         quit = true;
@@ -1089,6 +1122,18 @@ public:
         /* set up the OpenGL */
         glMatrixMode (GL_PROJECTION);
         glLoadIdentity ();
+
+        static bool ortho_logged = false;
+        if (!ortho_logged) {
+            fprintf(stderr, "glOrtho: left=%.6f right=%.6f bottom=%.6f top=%.6f\n",
+                    prefs.side[3], prefs.side[2], prefs.side[1], prefs.side[0]);
+            fprintf(stderr, "Window: dim=[%d,%d] drawable=[%d,%d] aspect=%.3f\n",
+                    prefs.normal_dim[0], prefs.normal_dim[1],
+                    prefs.dim[0], prefs.dim[1],
+                    (double)prefs.dim[0] / (double)prefs.dim[1]);
+            ortho_logged = true;
+        }
+
         glOrtho (prefs.side[3], prefs.side[2],
                  prefs.side[1], prefs.side[0],
                  -10.0, 10.0);
@@ -2131,11 +2176,6 @@ void idle (void)
     timeval this_moment;
     double elapsed_time;
 
-#ifdef __APPLE__
-    // Pump the NSRunLoop so ScreenCaptureKit async callbacks execute
-    [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantPast]];
-#endif
-
     /* restore our window title after coming out of full screen mode */
     if (scn.window_is_dirty) {
         SDL_SetWindowTitle (window, "XY Scope");
@@ -2145,6 +2185,12 @@ void idle (void)
         SDL_GL_GetDrawableSize(window, &drawable_w, &drawable_h);
         scn.prefs.dim[0] = drawable_w;
         scn.prefs.dim[1] = drawable_h;
+
+        // Also save window size in points (for window recreation)
+        int window_w, window_h;
+        SDL_GetWindowSize(window, &window_w, &window_h);
+        scn.prefs.normal_dim[0] = window_w;
+        scn.prefs.normal_dim[1] = window_h;
 
         if (scn.prefs.scale_locked)
             scn.setSides (1.0 / scn.prefs.scale_factor, 1);
@@ -2419,8 +2465,8 @@ int main (int argc, char * const argv[])
     window = SDL_CreateWindow("XY Scope",
                               scn.prefs.position[0],
                               scn.prefs.position[1],
-                              scn.prefs.dim[0],
-                              scn.prefs.dim[1],
+                              scn.prefs.normal_dim[0],
+                              scn.prefs.normal_dim[1],
                               SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
 
     if (!window) {

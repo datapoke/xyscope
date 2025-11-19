@@ -6,6 +6,8 @@ RUN apt-get update && \
         freeglut3-dev \
         libjack-dev \
         libfftw3-dev \
+        libsdl2-dev \
+        libsdl2-ttf-dev \
         pulseaudio-module-jack \
     && rm -rf /var/lib/apt/lists/*
 
