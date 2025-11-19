@@ -2223,7 +2223,6 @@ void special (int key, int xPos, int yPos)
             scn.toggleFullScreen ();
             break;
         default:
-            fprintf (stderr, "pressed special key %d\n", key);
             break;
     }
 }
@@ -2327,7 +2326,6 @@ void keyboard (unsigned char key, int xPos, int yPos)
             scn.setLineWidth (scn.getLineWidth () - 1);
             break;
         default:
-            fprintf (stderr, "pressed key %d\n", (int) key);
             break;
     }
 }
@@ -2474,6 +2472,7 @@ int main (int argc, char * const argv[])
                 running = false;
             } else if (event.type == SDL_KEYDOWN) {
                 SDL_Keycode key = event.key.keysym.sym;
+                SDL_Keymod mod = SDL_GetModState();
 
                 // Handle special keys (F-keys, arrows, etc.)
                 if (key >= SDLK_F1 && key <= SDLK_F12) {
@@ -2497,8 +2496,36 @@ int main (int argc, char * const argv[])
                 } else if (key == SDLK_ESCAPE) {
                     running = false;
                 } else if (key < 256) {
-                    // Regular ASCII keys
-                    keyboard((unsigned char)key, 0, 0);
+                    // Regular ASCII keys - handle shift modifier
+                    unsigned char ch = (unsigned char)key;
+
+                    // Convert lowercase to uppercase if shift is held
+                    if ((mod & KMOD_SHIFT) && ch >= 'a' && ch <= 'z') {
+                        ch = ch - 'a' + 'A';
+                    }
+                    // Handle shifted number keys for special characters
+                    else if (mod & KMOD_SHIFT) {
+                        switch(ch) {
+                            case '1': ch = '!'; break;
+                            case '2': ch = '@'; break;
+                            case '3': ch = '#'; break;
+                            case '4': ch = '$'; break;
+                            case '5': ch = '%'; break;
+                            case '6': ch = '^'; break;
+                            case '7': ch = '&'; break;
+                            case '8': ch = '*'; break;
+                            case '9': ch = '('; break;
+                            case '0': ch = ')'; break;
+                            case '-': ch = '_'; break;
+                            case '=': ch = '+'; break;
+                            case '[': ch = '{'; break;
+                            case ']': ch = '}'; break;
+                            case ',': ch = '<'; break;
+                            case '.': ch = '>'; break;
+                        }
+                    }
+
+                    keyboard(ch, 0, 0);
                 }
             } else if (event.type == SDL_WINDOWEVENT) {
                 if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
