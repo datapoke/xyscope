@@ -51,9 +51,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#ifndef __APPLE__
-#include <fftw3.h>
-#endif
 
 
 /* Preferences file */
