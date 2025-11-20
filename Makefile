@@ -24,8 +24,10 @@ ifeq ($(UNAME_S),Darwin)
 else
     # Linux
     CXX = g++
-    CXX_FLAGS = -Wall -O3 -march=native -mtune=native -std=c++11 -x c++
-    LD_LIBS = -lpthread -lSDL2 -lSDL2_ttf -lGL -ljack -lfftw3
+    PIPEWIRE_CFLAGS = $(shell pkg-config --cflags libpipewire-0.3)
+    PIPEWIRE_LIBS = $(shell pkg-config --libs libpipewire-0.3)
+    CXX_FLAGS = -Wall -O3 -march=native -mtune=native -std=c++11 -x c++ $(PIPEWIRE_CFLAGS)
+    LD_LIBS = -lpthread -lSDL2 -lSDL2_ttf -lGL $(PIPEWIRE_LIBS) -lfftw3
 endif
 
 # Default target: build everything

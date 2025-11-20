@@ -37,8 +37,8 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <GL/gl.h>
-#include <jack/jack.h>
-#include <jack/ringbuffer.h>
+#include <pipewire/pipewire.h>
+#include <spa/param/audio/format-utils.h>
 #include <fftw3.h>
 #endif
 #include <stdlib.h>
@@ -98,7 +98,7 @@
  *
  * e.g. (44100 * 60 + 44100 / 60) * 8 = 21173880 bytes or 20.2MB
  *
- * That being said, the jack ringbuffer will round up to the next
+ * That being said, the custom ringbuffer will round up to the next
  * power of two, in the above case giving us a 32.0MB ringbuffer.
  */
 #define BUFFER_SECONDS 1.0
@@ -124,10 +124,9 @@
 
 
 /* Audio types */
-#ifdef __APPLE__
 typedef float sample_t;
 
-/* Simple ring buffer for macOS */
+/* Custom ring buffer (used on both macOS and Linux) */
 typedef struct {
     char *buf;
     size_t size;
@@ -135,6 +134,7 @@ typedef struct {
     size_t read_ptr;
 } ringbuffer_t;
 
+#ifdef __APPLE__
 typedef struct _thread_data {
     pthread_t thread_id;
     AudioComponentInstance audio_unit;
@@ -151,23 +151,19 @@ typedef struct _thread_data {
 } thread_data_t;
 
 #else
-typedef jack_default_audio_sample_t sample_t;
-
 typedef struct _thread_data {
     pthread_t thread_id;
-    jack_client_t *client;
-    jack_port_t **ports;
+    struct pw_thread_loop *loop;
+    struct pw_stream *stream;
     sample_t **input_buffer;
     size_t frame_size;
-    jack_ringbuffer_t *ringbuffer;
-    jack_nframes_t rb_size;
+    ringbuffer_t *ringbuffer;
+    size_t rb_size;
     pthread_mutex_t ringbuffer_lock;
     pthread_cond_t data_ready;
     unsigned int channels;
     volatile bool can_process;
     volatile bool pause_scope;
-    volatile bool new_port_available;
-    timeval last_new_port;
     timeval last_write;
 } thread_data_t;
 #endif
@@ -179,16 +175,10 @@ typedef struct _frame_t {
 
 thread_data_t Thread_Data;
 
-/* Platform-agnostic ringbuffer macros */
-#ifdef __APPLE__
+/* Platform-agnostic ringbuffer macros - both platforms now use custom ringbuffer */
 #define RB_READ_SPACE(rb) ringbuffer_read_space(rb)
 #define RB_READ(rb, dest, cnt) ringbuffer_read(rb, dest, cnt)
 #define RB_READ_ADVANCE(rb, cnt) ringbuffer_read_advance(rb, cnt)
-#else
-#define RB_READ_SPACE(rb) jack_ringbuffer_read_space(rb)
-#define RB_READ(rb, dest, cnt) jack_ringbuffer_read(rb, dest, cnt)
-#define RB_READ_ADVANCE(rb, cnt) jack_ringbuffer_read_advance(rb, cnt)
-#endif
 
 #define ROOT_TWO 1.41421356237309504880
 
@@ -213,8 +203,7 @@ double timeDiff (timeval a, timeval b)
 }
 
 
-#ifdef __APPLE__
-/* macOS Ring buffer implementation */
+/* Custom ring buffer implementation (used on both macOS and Linux) */
 ringbuffer_t* ringbuffer_create(size_t size) {
     ringbuffer_t *rb = (ringbuffer_t*)malloc(sizeof(ringbuffer_t));
     size_t power_of_two = 1;
@@ -321,6 +310,7 @@ void ringbuffer_read_advance(ringbuffer_t *rb, size_t cnt) {
     rb->read_ptr = (rb->read_ptr + cnt) & (rb->size - 1);
 }
 
+#ifdef __APPLE__
 /* CoreAudio input callback */
 static OSStatus audioInputCallback(void *inRefCon,
                                    AudioUnitRenderActionFlags *ioActionFlags,
@@ -385,62 +375,55 @@ static OSStatus audioInputCallback(void *inRefCon,
 }
 #else
 
-/* Jack Audio callback functions */
-
-/* The callback function to tell us new ports are available */
-void newPort (jack_port_id_t port_id, int something, void *arg)
+/* Pipewire stream callback */
+static void on_process(void *userdata)
 {
-    thread_data_t *t_data = (thread_data_t *) arg;
-    gettimeofday (&t_data->last_new_port, NULL);
-    t_data->new_port_available = true;
-}
-
-/* The callback function for Jack Audio to provide us with audio data */
-int process (jack_nframes_t nframes, void *arg)
-{
-    thread_data_t *t_data = (thread_data_t *) arg;
-    sample_t **input_buffer = t_data->input_buffer;
+    thread_data_t *t_data = (thread_data_t *)userdata;
+    struct pw_buffer *b;
+    struct spa_buffer *buf;
+    float *samples;
+    uint32_t n_frames;
     frame_t frame;
-    unsigned int p;
-    size_t i;
 
     /* Do nothing if the scope is paused or we are not ready. */
-    if (t_data->pause_scope || ! t_data->can_process)
-        return 0;
+    if (t_data->pause_scope || !t_data->can_process)
+        return;
 
-    /* start the latency timer */
-    gettimeofday (&t_data->last_write, NULL);
+    b = pw_stream_dequeue_buffer(t_data->stream);
+    if (b == NULL)
+        return;
 
-    /* get the input buffers from jack */
-    for (p = 0; p < t_data->channels; p++)
-        t_data->input_buffer[p]
-            = (sample_t *) jack_port_get_buffer (t_data->ports[p], nframes);
+    buf = b->buffer;
+    if (buf->datas[0].data == NULL)
+        return;
 
-    /* scene::drawPlot() requires interleaved data.  It is simpler here
-     * to just queue interleaved samples to a single ringbuffer. */
-    for (i = 0; i < nframes; i++) {
-        frame.left_channel  = (sample_t) * (input_buffer[LEFT_PORT]  + i);
-        frame.right_channel = (sample_t) * (input_buffer[RIGHT_PORT] + i);
-        jack_ringbuffer_write (t_data->ringbuffer,
-                               (const char *) &frame,
-                               t_data->frame_size);
+    gettimeofday(&t_data->last_write, NULL);
+
+    /* Process interleaved stereo samples */
+    samples = (float *)buf->datas[0].data;
+    n_frames = buf->datas[0].chunk->size / (sizeof(float) * t_data->channels);
+
+    for (uint32_t i = 0; i < n_frames; i++) {
+        frame.left_channel = samples[i * t_data->channels];
+        frame.right_channel = samples[i * t_data->channels + 1];
+        ringbuffer_write(t_data->ringbuffer,
+                        (const char *)&frame,
+                        t_data->frame_size);
     }
 
-    if (pthread_mutex_trylock (&t_data->ringbuffer_lock) == 0) {
-        /* drawPlot() will wait for this signal before reading from
-         * the ringbuffer and displaying the most recent framebuf */
-        pthread_cond_signal (&t_data->data_ready);
-        pthread_mutex_unlock (&t_data->ringbuffer_lock);
+    if (pthread_mutex_trylock(&t_data->ringbuffer_lock) == 0) {
+        pthread_cond_signal(&t_data->data_ready);
+        pthread_mutex_unlock(&t_data->ringbuffer_lock);
     }
 
-    return 0;
+    pw_stream_queue_buffer(t_data->stream, b);
 }
 
-void jackShutdown (void *arg)
-{
-    fprintf (stderr, "JACK shutdown\n");
-    abort ();
-}
+static const struct pw_stream_events stream_events = {
+    PW_VERSION_STREAM_EVENTS,
+    .process = on_process,
+};
+
 #endif
 
 
@@ -478,9 +461,21 @@ public:
         }
         ringbuffer_free(t_data->ringbuffer);
 #else
-        thread_data_t *t_data = getThreadData ();
-        jack_client_close (t_data->client);
-        jack_ringbuffer_free (t_data->ringbuffer);
+        thread_data_t *t_data = getThreadData();
+
+        if (t_data->stream) {
+            pw_thread_loop_lock(t_data->loop);
+            pw_stream_destroy(t_data->stream);
+            pw_thread_loop_unlock(t_data->loop);
+        }
+
+        if (t_data->loop) {
+            pw_thread_loop_stop(t_data->loop);
+            pw_thread_loop_destroy(t_data->loop);
+        }
+
+        ringbuffer_free(t_data->ringbuffer);
+        pw_deinit();
 #endif
     }
 
@@ -507,13 +502,8 @@ public:
             usleep (1000);
         }
 #else
-        timeval this_moment;
-
-        t_data->client = jack_client_new ("xyscope");
-        if (t_data->client == NULL) {
-            fprintf (stderr, "JACK server not running?\n");
-            exit (1);
-        }
+        /* Initialize Pipewire */
+        pw_init(NULL, NULL);
 
         t_data->input_buffer       = NULL;
         t_data->frame_size         = sizeof (frame_t);
@@ -522,31 +512,27 @@ public:
         t_data->channels           = 2;
         t_data->can_process        = false;
         t_data->pause_scope        = false;
-        t_data->new_port_available = false;
-        gettimeofday (&t_data->last_new_port, NULL);
         gettimeofday (&t_data->last_write, NULL);
 
-        jack_set_process_callback (t_data->client, process, t_data);
-        jack_set_port_registration_callback (t_data->client, newPort, t_data);
-        jack_on_shutdown (t_data->client, jackShutdown, t_data);
-
-        if (jack_activate (t_data->client)) {
-            fprintf (stderr, "cannot activate client");
+        /* Create thread loop for Pipewire */
+        t_data->loop = pw_thread_loop_new("xyscope", NULL);
+        if (t_data->loop == NULL) {
+            fprintf(stderr, "Failed to create Pipewire thread loop\n");
+            exit(1);
         }
-        ai->setupPorts ();
 
-        t_data->can_process = true;  /* process() can start, now */
+        ai->setupPorts();
 
-        while (! ai->quit) {
-            if (t_data->new_port_available) {
-                gettimeofday (&this_moment, NULL);
-                if (timeDiff (t_data->last_new_port, this_moment) > 0.5) {
-				    fprintf (stderr, "reconnecting\n");
-                    t_data->new_port_available = false;
-                    ai->connectPorts ();
-                }
-            }
-            usleep (1000);
+        /* Start the thread loop */
+        if (pw_thread_loop_start(t_data->loop) < 0) {
+            fprintf(stderr, "Failed to start Pipewire thread loop\n");
+            exit(1);
+        }
+
+        t_data->can_process = true;
+
+        while (!ai->quit) {
+            usleep(1000);
         }
 #endif
         return ai;
@@ -725,93 +711,83 @@ public:
         printf("CoreAudio initialized successfully - reading from BlackHole device\n");
         t_data->can_process = true;
 #else
-        thread_data_t *t_data = getThreadData ();
+        thread_data_t *t_data = getThreadData();
         size_t input_buffer_size;
 
-        /* Allocate data structures that depend on the number of ports. */
-        t_data->ports = (jack_port_t **) malloc (sizeof (jack_port_t *)
-                                                 * t_data->channels);
-        input_buffer_size = t_data->channels * sizeof (sample_t *);
-        t_data->input_buffer = (sample_t **) malloc (input_buffer_size);
-        printf ("requesting %.1fMB (%.1f second) ringbuffer\n",
-                (1 / (1024.0 * 1024.0)
-                 * ((double) t_data->rb_size * (double) t_data->frame_size)),
-                (double) BUFFER_SECONDS);
-        t_data->ringbuffer = jack_ringbuffer_create (t_data->frame_size
-                                                     * t_data->rb_size);
+        /* Allocate ringbuffer */
+        input_buffer_size = t_data->channels * sizeof(sample_t *);
+        t_data->input_buffer = (sample_t **)malloc(input_buffer_size);
+        printf("requesting %.1fMB (%.1f second) ringbuffer\n",
+               (1 / (1024.0 * 1024.0)
+                * ((double)t_data->rb_size * (double)t_data->frame_size)),
+               (double)BUFFER_SECONDS);
+        t_data->ringbuffer = ringbuffer_create(t_data->frame_size * t_data->rb_size);
 
-        /* When JACK is running realtime, jack_activate() will have
-         * called mlockall() to lock our pages into memory.  But, we
-         * still need to touch any newly allocated pages before
-         * process() starts using them.  Otherwise, a page fault could
-         * create a delay that would force JACK to shut us down. */
-        bzero (t_data->input_buffer, input_buffer_size);
-        bzero (t_data->ringbuffer->buf, t_data->ringbuffer->size);
-        printf ("initialized %.1fMB (%.1f second) ringbuffer\n",
-                (1 / (1024.0 * 1024.0)
-                 * (double) t_data->ringbuffer->size),
-                 ((double) t_data->ringbuffer->size
-                  / ((double) SAMPLE_RATE * (double) t_data->frame_size)));
+        bzero(t_data->input_buffer, input_buffer_size);
+        bzero(t_data->ringbuffer->buf, t_data->ringbuffer->size);
+        printf("initialized %.1fMB (%.1f second) ringbuffer\n",
+               (1 / (1024.0 * 1024.0) * (double)t_data->ringbuffer->size),
+               ((double)t_data->ringbuffer->size
+                / ((double)SAMPLE_RATE * (double)t_data->frame_size)));
 
-        for (unsigned int i = 0; i < t_data->channels; i++) {
-            char name[64];
-            snprintf (name, sizeof(name), "in%d", i+1);
-            if ((t_data->ports[i] = jack_port_register (t_data->client, name,
-                                                        JACK_DEFAULT_AUDIO_TYPE,
-                                                        JackPortIsInput,
-                                                        0)) == 0) {
-                fprintf (stderr, "cannot register input port \"%s\"!\n", name);
-                jack_client_close (t_data->client);
-                exit (1);
-            }
+        /* Create Pipewire stream */
+        pw_thread_loop_lock(t_data->loop);
+
+        t_data->stream = pw_stream_new_simple(
+            pw_thread_loop_get_loop(t_data->loop),
+            "xyscope",
+            pw_properties_new(
+                PW_KEY_MEDIA_TYPE, "Audio",
+                PW_KEY_MEDIA_CATEGORY, "Capture",
+                PW_KEY_MEDIA_ROLE, "Music",
+                PW_KEY_STREAM_CAPTURE_SINK, "true",
+                NULL),
+            &stream_events,
+            t_data);
+
+        if (t_data->stream == NULL) {
+            fprintf(stderr, "Failed to create Pipewire stream\n");
+            pw_thread_loop_unlock(t_data->loop);
+            exit(1);
         }
+
+        /* Set up audio format parameters */
+        uint8_t buffer[1024];
+        struct spa_pod_builder b = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
+        const struct spa_pod *params[1];
+
+        struct spa_audio_info_raw info = {};
+        info.format = SPA_AUDIO_FORMAT_F32;
+        info.rate = SAMPLE_RATE;
+        info.channels = t_data->channels;
+        info.position[0] = SPA_AUDIO_CHANNEL_FL;  /* Front Left */
+        info.position[1] = SPA_AUDIO_CHANNEL_FR;  /* Front Right */
+
+        params[0] = spa_format_audio_raw_build(&b, SPA_PARAM_EnumFormat, &info);
+
+        /* Connect the stream */
+        if (pw_stream_connect(t_data->stream,
+                             PW_DIRECTION_INPUT,
+                             PW_ID_ANY,
+                             (enum pw_stream_flags)(PW_STREAM_FLAG_AUTOCONNECT |
+                                                   PW_STREAM_FLAG_MAP_BUFFERS |
+                                                   PW_STREAM_FLAG_RT_PROCESS),
+                             params, 1) < 0) {
+            fprintf(stderr, "Failed to connect Pipewire stream\n");
+            pw_thread_loop_unlock(t_data->loop);
+            exit(1);
+        }
+
+        pw_thread_loop_unlock(t_data->loop);
+        printf("Pipewire stream created and connected\n");
 #endif
     }
 
     void connectPorts ()
     {
-#ifdef __APPLE__
-        // No-op on macOS - CoreAudio auto-connects to default input device
-#else
-        thread_data_t *t_data = getThreadData ();
-        const char **out_ports     = jack_get_ports (t_data->client,
-                                                     NULL,
-                                                     NULL,
-                                                     0);
-        for (int i = 0; out_ports[i]; i++) {
-            const char *port_name = out_ports[i];
-            printf ("noticed port: %s\n", port_name);
-
-            int left_connected = jack_port_connected_to(t_data->ports[0],
-			                                            port_name);
-			if (!left_connected) {
-                int left = strstr(port_name, "output_FL") != NULL;
-				if (left == 1) {
-            		printf ("connecting port %s to input 0\n", port_name);
-                	if (jack_connect (t_data->client,
-                                  	port_name,
-                                  	jack_port_name (t_data->ports[0]))) {
-                    	fprintf (stderr, "cannot connect to %s\n", port_name);
-                    	jack_client_close (t_data->client);
-                	}
-				}
-			}
-            int right_connected = jack_port_connected_to(t_data->ports[1],
-			                                             port_name);
-			if (!right_connected) {
-                int right = strstr(port_name, "output_FR") != NULL;
-				if (right == 1) {
-            		printf ("connecting port %s to input 1\n", port_name);
-                	if (jack_connect (t_data->client,
-                                  	port_name,
-                                  	jack_port_name (t_data->ports[1]))) {
-                    	fprintf (stderr, "cannot connect to %s\n", port_name);
-                    	jack_client_close (t_data->client);
-                	}
-				}
-			}
-        }
-#endif
+        // No-op on both platforms now
+        // macOS: CoreAudio auto-connects to BlackHole device
+        // Linux: Pipewire auto-connects with PW_STREAM_FLAG_AUTOCONNECT
     }
 
     void quitNow ()
@@ -827,9 +803,23 @@ public:
         ringbuffer_free(t_data->ringbuffer);
         quit = true;
 #else
-        thread_data_t *t_data = getThreadData ();
-        jack_client_close (t_data->client);
-        jack_ringbuffer_free (t_data->ringbuffer);
+        thread_data_t *t_data = getThreadData();
+
+        if (t_data->stream) {
+            pw_thread_loop_lock(t_data->loop);
+            pw_stream_destroy(t_data->stream);
+            t_data->stream = NULL;
+            pw_thread_loop_unlock(t_data->loop);
+        }
+
+        if (t_data->loop) {
+            pw_thread_loop_stop(t_data->loop);
+            pw_thread_loop_destroy(t_data->loop);
+            t_data->loop = NULL;
+        }
+
+        ringbuffer_free(t_data->ringbuffer);
+        pw_deinit();
         quit = true;
 #endif
     }
@@ -2452,6 +2442,7 @@ int main (int argc, char * const argv[])
     } else {
         font = TTF_OpenFont("/System/Library/Fonts/Monaco.ttf", 28);
         if (!font) font = TTF_OpenFont("/System/Library/Fonts/Courier.ttc", 28);
+        if (!font) font = TTF_OpenFont("/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf", 28);
         if (font) {
             fprintf(stderr, "Font loaded successfully\n");
         } else {
