@@ -24,18 +24,17 @@
  * $Id: xyscope.cpp,v 1.175 2007/03/26 17:31:28 chris Exp $
  *
  */
-#ifdef __APPLE__
-#define GL_SILENCE_DEPRECATION
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
+
+#ifdef __APPLE__
+#define GL_SILENCE_DEPRECATION
 #include <OpenGL/gl.h>
 #include <Accelerate/Accelerate.h>
 #import <Foundation/Foundation.h>
 #import <CoreAudio/CoreAudio.h>
 #import <AudioToolbox/AudioToolbox.h>
 #else
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
 #include <GL/gl.h>
 #include <pipewire/pipewire.h>
 #include <spa/param/audio/format-utils.h>
@@ -44,6 +43,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <pthread.h>
 #include <sys/time.h>
 #include <math.h>
@@ -131,27 +131,14 @@ typedef struct {
     size_t read_ptr;
 } ringbuffer_t;
 
+typedef struct _thread_data {
+    pthread_t thread_id;
 #ifdef __APPLE__
-typedef struct _thread_data {
-    pthread_t thread_id;
     AudioComponentInstance audio_unit;
-    sample_t **input_buffer;
-    size_t frame_size;
-    ringbuffer_t *ringbuffer;
-    size_t rb_size;
-    pthread_mutex_t ringbuffer_lock;
-    pthread_cond_t data_ready;
-    unsigned int channels;
-    volatile bool can_process;
-    volatile bool pause_scope;
-    timeval last_write;
-} thread_data_t;
-
 #else
-typedef struct _thread_data {
-    pthread_t thread_id;
     struct pw_thread_loop *loop;
     struct pw_stream *stream;
+#endif
     sample_t **input_buffer;
     size_t frame_size;
     ringbuffer_t *ringbuffer;
@@ -163,7 +150,6 @@ typedef struct _thread_data {
     volatile bool pause_scope;
     timeval last_write;
 } thread_data_t;
-#endif
 
 typedef struct _frame_t {
     sample_t left_channel;
@@ -172,12 +158,7 @@ typedef struct _frame_t {
 
 thread_data_t Thread_Data;
 
-/* Platform-agnostic ringbuffer macros - both platforms now use custom ringbuffer */
-#define RB_READ_SPACE(rb) ringbuffer_read_space(rb)
-#define RB_READ(rb, dest, cnt) ringbuffer_read(rb, dest, cnt)
-#define RB_READ_ADVANCE(rb, cnt) ringbuffer_read_advance(rb, cnt)
-
-#define ROOT_TWO 1.41421356237309504880
+#define SQRT_TWO 1.41421356237309504880
 
 #define LEFT_PORT  0
 #define RIGHT_PORT 1
@@ -307,6 +288,15 @@ void ringbuffer_read_advance(ringbuffer_t *rb, size_t cnt) {
     rb->read_ptr = (rb->read_ptr + cnt) & (rb->size - 1);
 }
 
+/* Signal reader thread that data is ready */
+static inline void signal_data_ready(thread_data_t *t_data)
+{
+    if (pthread_mutex_trylock(&t_data->ringbuffer_lock) == 0) {
+        pthread_cond_signal(&t_data->data_ready);
+        pthread_mutex_unlock(&t_data->ringbuffer_lock);
+    }
+}
+
 #ifdef __APPLE__
 /* CoreAudio input callback */
 static OSStatus audioInputCallback(void *inRefCon,
@@ -316,16 +306,9 @@ static OSStatus audioInputCallback(void *inRefCon,
                                    UInt32 inNumberFrames,
                                    AudioBufferList *ioData) {
     thread_data_t *t_data = (thread_data_t *)inRefCon;
-    static int callback_count = 0;
 
     if (t_data->pause_scope || !t_data->can_process) {
         return noErr;
-    }
-
-    // Debug: print first few callbacks
-    if (callback_count < 5) {
-        fprintf(stderr, "Audio callback %d: %u frames\n", callback_count, inNumberFrames);
-        callback_count++;
     }
 
     gettimeofday(&t_data->last_write, NULL);
@@ -344,12 +327,8 @@ static OSStatus audioInputCallback(void *inRefCon,
     OSStatus status = AudioUnitRender(t_data->audio_unit, ioActionFlags, inTimeStamp,
                                      inBusNumber, inNumberFrames, &bufferList);
 
-    if (status != noErr) {
-        if (callback_count < 10) {
-            fprintf(stderr, "AudioUnitRender error: %d\n", status);
-        }
+    if (status != noErr)
         return status;
-    }
 
     float *leftSamples = (float *)t_data->input_buffer[0];
     float *rightSamples = (float *)t_data->input_buffer[1];
@@ -362,12 +341,7 @@ static OSStatus audioInputCallback(void *inRefCon,
         ringbuffer_write(t_data->ringbuffer, (const char *)&frame, t_data->frame_size);
     }
 
-    // Signal that data is ready
-    if (pthread_mutex_trylock(&t_data->ringbuffer_lock) == 0) {
-        pthread_cond_signal(&t_data->data_ready);
-        pthread_mutex_unlock(&t_data->ringbuffer_lock);
-    }
-
+    signal_data_ready(t_data);
     return noErr;
 }
 #else
@@ -408,11 +382,7 @@ static void on_process(void *userdata)
                         t_data->frame_size);
     }
 
-    if (pthread_mutex_trylock(&t_data->ringbuffer_lock) == 0) {
-        pthread_cond_signal(&t_data->data_ready);
-        pthread_mutex_unlock(&t_data->ringbuffer_lock);
-    }
-
+    signal_data_ready(t_data);
     pw_stream_queue_buffer(t_data->stream, b);
 }
 
@@ -422,8 +392,6 @@ static const struct pw_stream_events stream_events = {
 };
 
 #endif
-
-
 
 /* The audioInput object */
 
@@ -441,11 +409,7 @@ public:
         Thread_Data.ringbuffer_lock     = ringbuffer_lock;
         Thread_Data.data_ready          = data_ready;
         quit = false;
-#ifdef __APPLE__
-        pthread_create (&capture_thread, NULL, readerThread, (void *) this);
-#else
-        pthread_create (&capture_thread, NULL, readerThread, (void *) this);
-#endif
+        pthread_create(&capture_thread, NULL, readerThread, (void *)this);
     }
     ~audioInput ()
     {
@@ -478,40 +442,24 @@ public:
 
     static void* readerThread (void* arg)
     {
-        audioInput* ai             = (audioInput *) arg;
-        thread_data_t *t_data = ai->getThreadData ();
+        audioInput* ai = (audioInput *)arg;
+        thread_data_t *t_data = ai->getThreadData();
 
         t_data->thread_id = ai->capture_thread;
+        t_data->input_buffer = NULL;
+        t_data->frame_size = sizeof(frame_t);
+        t_data->rb_size = DEFAULT_RB_SIZE;
+        t_data->channels = 2;
+        t_data->can_process = false;
+        t_data->pause_scope = false;
+        gettimeofday(&t_data->last_write, NULL);
 
 #ifdef __APPLE__
-        t_data->input_buffer       = NULL;
-        t_data->frame_size         = sizeof (frame_t);
-        t_data->rb_size            = DEFAULT_RB_SIZE;
-        t_data->channels           = 2;
-        t_data->can_process        = false;
-        t_data->pause_scope        = false;
-        gettimeofday (&t_data->last_write, NULL);
-
-        ai->setupPorts ();
-        // can_process will be set to true asynchronously when capture starts
-
-        while (! ai->quit) {
-            usleep (1000);
-        }
+        ai->setupPorts();
 #else
-        /* Initialize Pipewire */
+        t_data->ringbuffer = NULL;
         pw_init(NULL, NULL);
 
-        t_data->input_buffer       = NULL;
-        t_data->frame_size         = sizeof (frame_t);
-        t_data->ringbuffer         = NULL;
-        t_data->rb_size            = DEFAULT_RB_SIZE;
-        t_data->channels           = 2;
-        t_data->can_process        = false;
-        t_data->pause_scope        = false;
-        gettimeofday (&t_data->last_write, NULL);
-
-        /* Create thread loop for Pipewire */
         t_data->loop = pw_thread_loop_new("xyscope", NULL);
         if (t_data->loop == NULL) {
             fprintf(stderr, "Failed to create Pipewire thread loop\n");
@@ -520,18 +468,17 @@ public:
 
         ai->setupPorts();
 
-        /* Start the thread loop */
         if (pw_thread_loop_start(t_data->loop) < 0) {
             fprintf(stderr, "Failed to start Pipewire thread loop\n");
             exit(1);
         }
 
         t_data->can_process = true;
+#endif
 
         while (!ai->quit) {
             usleep(1000);
         }
-#endif
         return ai;
     }
 
@@ -776,49 +723,12 @@ public:
         }
 
         pw_thread_loop_unlock(t_data->loop);
-        printf("Pipewire stream created and connected\n");
 #endif
-    }
-
-    void connectPorts ()
-    {
-        // No-op on both platforms now
-        // macOS: CoreAudio auto-connects to BlackHole device
-        // Linux: Pipewire auto-connects with PW_STREAM_FLAG_AUTOCONNECT
     }
 
     void quitNow ()
     {
-#ifdef __APPLE__
-        thread_data_t *t_data = getThreadData ();
-        if (t_data->audio_unit) {
-            AudioOutputUnitStop(t_data->audio_unit);
-            AudioUnitUninitialize(t_data->audio_unit);
-            AudioComponentInstanceDispose(t_data->audio_unit);
-            t_data->audio_unit = NULL;
-        }
-        ringbuffer_free(t_data->ringbuffer);
         quit = true;
-#else
-        thread_data_t *t_data = getThreadData();
-
-        if (t_data->stream) {
-            pw_thread_loop_lock(t_data->loop);
-            pw_stream_destroy(t_data->stream);
-            t_data->stream = NULL;
-            pw_thread_loop_unlock(t_data->loop);
-        }
-
-        if (t_data->loop) {
-            pw_thread_loop_stop(t_data->loop);
-            pw_thread_loop_destroy(t_data->loop);
-            t_data->loop = NULL;
-        }
-
-        ringbuffer_free(t_data->ringbuffer);
-        pw_deinit();
-        quit = true;
-#endif
     }
 
     /* accessor methods */
@@ -856,6 +766,18 @@ typedef struct _preferences_t {
 extern TTF_Font *font;
 extern SDL_Window *window;
 extern SDL_GLContext gl_context;
+
+/* Helper functions for value wrapping and normalization */
+static inline void wrapValue(double *val, double max) {
+    if (*val > max) *val -= max * 2;
+    if (*val <= -max) *val += max * 2;
+}
+
+static inline double normalizeHue(double h) {
+    if (h > 360.0) h = fmod(h, 360.0);
+    if (h < 0.0) h = 360.0 + fmod(h, 360.0);
+    return h;
+}
 
 class scene
 {
@@ -926,14 +848,13 @@ public:
     timeval mouse_dirty_time;
 
     #define NUM_COLOR_MODES 2
-    char color_mode_names[NUM_COLOR_MODES][64];
     enum {
         ColorStandardMode = 0,
         ColorDeltaMode    = 1
     } color_mode_handles;
+    const char *color_mode_names[NUM_COLOR_MODES] = {"Standard", "Delta"};
 
     #define NUM_DISPLAY_MODES 5
-    char display_mode_names[NUM_DISPLAY_MODES][64];
     enum {
         DisplayStandardMode  = 0,
         DisplayRadiusMode    = 1,
@@ -941,17 +862,12 @@ public:
         DisplayFrequencyMode = 3,
         DisplayTimeMode      = 4
     } display_mode_handles;
+    const char *display_mode_names[NUM_DISPLAY_MODES] = {
+        "Standard", "Radius", "Length", "Frequency", "Time"
+    };
 
     scene ()
     {
-        strcpy (color_mode_names[ColorStandardMode], "Standard");
-        strcpy (color_mode_names[ColorDeltaMode], "Delta");
-        strcpy (display_mode_names[DisplayStandardMode], "Standard");
-        strcpy (display_mode_names[DisplayRadiusMode], "Radius");
-        strcpy (display_mode_names[DisplayLengthMode], "Length");
-        strcpy (display_mode_names[DisplayFrequencyMode], "Frequency");
-        strcpy (display_mode_names[DisplayTimeMode], "Time");
-
         frame_size           = sizeof (frame_t);
         bytes_per_buf        = DRAW_FRAMES * frame_size;
         framebuf             = (frame_t *) malloc (bytes_per_buf);
@@ -1025,7 +941,6 @@ public:
             prefs.position[0] = glutGet (GLUT_WINDOW_X);
             prefs.position[1] = glutGet (GLUT_WINDOW_Y);
             */
-            fprintf (stderr, "saving preferences\n");
             write (FH, (void *) &prefs, sizeof (preferences_t));
             close (FH);
         }
@@ -1085,15 +1000,15 @@ public:
             bump     = -DRAW_FRAMES;
         }
         else {
-            bytes_ready = RB_READ_SPACE (t_data->ringbuffer);
+            bytes_ready = ringbuffer_read_space(t_data->ringbuffer);
             if (bytes_ready != bytes_per_buf)
                 distance = bytes_ready - bytes_per_buf;
         }
         if (distance != 0)
-            RB_READ_ADVANCE (t_data->ringbuffer, distance);
-        bytes_read = RB_READ (t_data->ringbuffer,
-                              (char *) framebuf,
-                              bytes_per_buf);
+            ringbuffer_read_advance(t_data->ringbuffer, distance);
+        bytes_read = ringbuffer_read(t_data->ringbuffer,
+                                      (char *) framebuf,
+                                      bytes_per_buf);
 
         if (! t_data->pause_scope)
             pthread_mutex_unlock (&t_data->ringbuffer_lock);
@@ -1109,17 +1024,6 @@ public:
         /* set up the OpenGL */
         glMatrixMode (GL_PROJECTION);
         glLoadIdentity ();
-
-        static bool ortho_logged = false;
-        if (!ortho_logged) {
-            fprintf(stderr, "glOrtho: left=%.6f right=%.6f bottom=%.6f top=%.6f\n",
-                    prefs.side[3], prefs.side[2], prefs.side[1], prefs.side[0]);
-            fprintf(stderr, "Window: dim=[%d,%d] drawable=[%d,%d] aspect=%.3f\n",
-                    prefs.normal_dim[0], prefs.normal_dim[1],
-                    prefs.dim[0], prefs.dim[1],
-                    (double)prefs.dim[0] / (double)prefs.dim[1]);
-            ortho_logged = true;
-        }
 
         glOrtho (prefs.side[3], prefs.side[2],
                  prefs.side[1], prefs.side[0],
@@ -1236,7 +1140,7 @@ public:
         for (unsigned int i = 0; i < frames_read; i++) {
             lc = framebuf[i].left_channel;
             rc = framebuf[i].right_channel;
-            d  = hypot (lc - olc, rc - orc) / ROOT_TWO;
+            d  = hypot (lc - olc, rc - orc) / SQRT_TWO;
             switch (prefs.color_mode) {
                 case ColorStandardMode:
                     break;
@@ -1248,7 +1152,7 @@ public:
                 case DisplayStandardMode:
                     break;
                 case DisplayRadiusMode:
-                    h = ((hypot (lc, rc) / ROOT_TWO)
+                    h = ((hypot (lc, rc) / SQRT_TWO)
                          * 360.0 * prefs.color_range
                          * prefs.scale_factor) + prefs.hue;
                     break;
@@ -1280,10 +1184,7 @@ public:
                 case DisplayLengthMode:
                 case DisplayFrequencyMode:
                 case DisplayTimeMode:
-                    if (h > 360.0)
-                        h = (double) (((int) h) % 360);
-                    if (h < 0.0)
-                        h = 360.0 - (double) (((int) h) % 360);
+                    h = normalizeHue(h);
                     break;
                 default:
                     break;
@@ -1346,10 +1247,7 @@ public:
                 break;
         }
 
-        if (prefs.hue > 360.0)
-            prefs.hue = (double) (((int) prefs.hue) % 360);
-        if (prefs.hue < 0.0)
-            prefs.hue = 360.0 - (double) (((int) prefs.hue) % 360);
+        prefs.hue = normalizeHue(prefs.hue);
 
         if (! prefs.auto_scale) {
             for (int i = 0; i < 4; i++)
@@ -1628,92 +1526,27 @@ public:
         }
     }
 
-    void showAutoScale (bool timed)
+    void showTimedText(int timer_idx, bool auto_pos, bool timed, const char *fmt, ...)
     {
-        text_timer_t *timer  = &text_timer[AutoScaleTimer];
-        timer->auto_position = true;
-        snprintf (timer->string, sizeof(timer->string),
-                 "Auto-scale: %s", prefs.auto_scale ? "on" : "off");
+        text_timer_t *timer = &text_timer[timer_idx];
+        timer->auto_position = auto_pos;
+        va_list args;
+        va_start(args, fmt);
+        vsnprintf(timer->string, sizeof(timer->string), fmt, args);
+        va_end(args);
         if (timed)
-            gettimeofday (&timer->time, NULL);
+            gettimeofday(&timer->time, NULL);
         timer->show = true;
     }
 
-    void showSplines (bool timed)
-    {
-        text_timer_t *timer  = &text_timer[SplineTimer];
-        timer->auto_position = true;
-        snprintf (timer->string, sizeof(timer->string),
-                 "Splines: %d", prefs.spline_steps);
-        if (timed)
-            gettimeofday (&timer->time, NULL);
-        timer->show = true;
-    }
-
-    void showLineWidth (bool timed)
-    {
-        text_timer_t *timer  = &text_timer[LineWidthTimer];
-        timer->auto_position = true;
-        snprintf (timer->string, sizeof(timer->string),
-                 "Line width: %d", prefs.line_width);
-        if (timed)
-            gettimeofday (&timer->time, NULL);
-        timer->show = true;
-    }
-
-    void showColorMode (bool timed)
-    {
-        text_timer_t *timer  = &text_timer[ColorModeTimer];
-        timer->auto_position = true;
-        snprintf (timer->string, sizeof(timer->string), "Color mode: %s",
-                 color_mode_names[prefs.color_mode]);
-        if (timed)
-            gettimeofday (&timer->time, NULL);
-        timer->show = true;
-    }
-
-    void showDisplayMode (bool timed)
-    {
-        text_timer_t *timer  = &text_timer[DisplayModeTimer];
-        timer->auto_position = true;
-        snprintf (timer->string, sizeof(timer->string), "Display mode: %s",
-                 display_mode_names[prefs.display_mode]);
-        if (timed)
-            gettimeofday (&timer->time, NULL);
-        timer->show = true;
-    }
-
-    void showColorRange (bool timed)
-    {
-        text_timer_t *timer  = &text_timer[ColorRangeTimer];
-        timer->auto_position = true;
-        snprintf (timer->string, sizeof(timer->string), "Color range: %.2f",
-                 prefs.color_range);
-        if (timed)
-            gettimeofday (&timer->time, NULL);
-        timer->show = true;
-    }
-
-    void showColorRate (bool timed)
-    {
-        text_timer_t *timer  = &text_timer[ColorRateTimer];
-        timer->auto_position = true;
-        snprintf (timer->string, sizeof(timer->string), "Color rate: %.2f",
-                 prefs.color_rate);
-        if (timed)
-            gettimeofday (&timer->time, NULL);
-        timer->show = true;
-    }
-
-    void showPaused (bool timed)
-    {
-        text_timer_t *timer  = &text_timer[PausedTimer];
-        timer->auto_position = true;
-        strcpy (timer->string, "Paused");
-        if (timed)
-            gettimeofday (&timer->time, NULL);
-        timer->show = true;
-    }
+    void showAutoScale(bool t) { showTimedText(AutoScaleTimer, true, t, "Auto-scale: %s", prefs.auto_scale ? "on" : "off"); }
+    void showSplines(bool t) { showTimedText(SplineTimer, true, t, "Splines: %d", prefs.spline_steps); }
+    void showLineWidth(bool t) { showTimedText(LineWidthTimer, true, t, "Line width: %d", prefs.line_width); }
+    void showColorMode(bool t) { showTimedText(ColorModeTimer, true, t, "Color mode: %s", color_mode_names[prefs.color_mode]); }
+    void showDisplayMode(bool t) { showTimedText(DisplayModeTimer, true, t, "Display mode: %s", display_mode_names[prefs.display_mode]); }
+    void showColorRange(bool t) { showTimedText(ColorRangeTimer, true, t, "Color range: %.2f", prefs.color_range); }
+    void showColorRate(bool t) { showTimedText(ColorRateTimer, true, t, "Color rate: %.2f", prefs.color_rate); }
+    void showPaused(bool t) { showTimedText(PausedTimer, true, t, "Paused"); }
 
     void showScale (bool timed)
     {
@@ -2048,20 +1881,14 @@ public:
     void setColorRange (double range)
     {
         prefs.color_range = range;
-        if (prefs.color_range >  100.0)
-            prefs.color_range -= 200.0;
-        if (prefs.color_range <= -100.0)
-            prefs.color_range += 200.0;
+        wrapValue(&prefs.color_range, 100.0);
         showColorRange (TIMED);
     }
 
     void setColorRate (double rate)
     {
         prefs.color_rate = rate;
-        if (prefs.color_rate >  180.0)
-            prefs.color_rate -= 360.0;
-        if (prefs.color_rate <= -180.0)
-            prefs.color_rate += 360.0;
+        wrapValue(&prefs.color_rate, 180.0);
         showColorRate (TIMED);
     }
 
