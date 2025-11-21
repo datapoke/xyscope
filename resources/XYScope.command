@@ -90,4 +90,12 @@ fi
 echo "Launching XYScope visualizer..."
 echo "Play some audio to see the visualization!"
 echo
-exec ../MacOS/xyscope-bin
+
+# Launch xyscope detached from terminal
+nohup ../MacOS/xyscope-bin >/dev/null 2>&1 &
+
+# Wait a few seconds for audio connection
+sleep 3
+
+# Close this terminal window
+osascript -e 'tell application "Terminal" to close (every window whose name contains "XYScope.command")' >/dev/null 2>&1 &
