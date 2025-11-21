@@ -32,17 +32,19 @@ if ! brew list blackhole-2ch >/dev/null 2>&1; then
     MISSING_DEPS="$MISSING_DEPS blackhole-2ch"
 fi
 
+FIRST_TIME_SETUP=false
 if [ -n "$MISSING_DEPS" ]; then
+    FIRST_TIME_SETUP=true
     echo "Missing dependencies:$MISSING_DEPS"
     echo "Installing via Homebrew..."
     brew install$MISSING_DEPS
 
     # After installing BlackHole, restart CoreAudio
     if [[ "$MISSING_DEPS" == *"blackhole-2ch"* ]]; then
+        sleep 2
         echo "Restarting CoreAudio..."
         sudo killall coreaudiod 2>/dev/null || true
         sleep 2
-        echo "BlackHole installed!"
     fi
 
     echo "Dependencies installed!"
@@ -51,6 +53,7 @@ fi
 
 # Check if multi-output device exists
 if ! system_profiler SPAudioDataType | grep -q "Multi-Output Device"; then
+    FIRST_TIME_SETUP=true
     echo "Multi-Output Device not found!"
     echo
 
@@ -59,7 +62,8 @@ if ! system_profiler SPAudioDataType | grep -q "Multi-Output Device"; then
     sleep 1
 
     # Show instructions dialog that stays on top
-    osascript <<'EOF'
+    (
+    nohup osascript <<'EOF'
 tell application "System Events"
     display dialog "Audio Setup Instructions
 
@@ -80,16 +84,11 @@ Follow these steps in Audio MIDI Setup:
 Click OK when finished with setup." buttons {"OK"} default button 1 with title "XYScope Setup"
 end tell
 EOF
+    ) &
 
-    echo
-    echo "After setting up the Multi-Output Device, run XYScope.command again."
+    osascript -e 'tell application "Terminal" to close (every window whose name contains "XYScope.command")' >/dev/null 2>&1 &
     exit 0
 fi
-
-# Everything is set up - launch xyscope!
-echo "Launching XYScope visualizer..."
-echo "Play some audio to see the visualization!"
-echo
 
 # Launch xyscope detached from terminal
 nohup ../MacOS/xyscope-bin >/dev/null 2>&1 &
@@ -97,5 +96,4 @@ nohup ../MacOS/xyscope-bin >/dev/null 2>&1 &
 # Wait a few seconds for audio connection
 sleep 3
 
-# Close this terminal window
 osascript -e 'tell application "Terminal" to close (every window whose name contains "XYScope.command")' >/dev/null 2>&1 &
