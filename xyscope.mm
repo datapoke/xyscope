@@ -484,21 +484,21 @@ public:
 
     void setupPorts ()
     {
-#ifdef __APPLE__
-        thread_data_t *t_data = getThreadData ();
-
-        printf ("Setting up CoreAudio input...\n");
-
-        // Allocate input buffers for audio callback
+        thread_data_t *t_data = getThreadData();
         size_t input_buffer_size = t_data->channels * sizeof(sample_t *);
-        t_data->input_buffer = (sample_t **) malloc(input_buffer_size);
-        for (unsigned int i = 0; i < t_data->channels; i++) {
-            t_data->input_buffer[i] = (sample_t *) malloc(FRAMES_PER_BUF * sizeof(sample_t));
-        }
 
-        // Create ringbuffer
+        // Common allocation for both platforms
+        t_data->input_buffer = (sample_t **)malloc(input_buffer_size);
         t_data->ringbuffer = ringbuffer_create(t_data->frame_size * t_data->rb_size);
         bzero(t_data->ringbuffer->buf, t_data->ringbuffer->size);
+
+#ifdef __APPLE__
+        printf("Setting up CoreAudio input...\n");
+
+        // macOS needs per-channel buffers for AudioUnitRender
+        for (unsigned int i = 0; i < t_data->channels; i++) {
+            t_data->input_buffer[i] = (sample_t *)malloc(FRAMES_PER_BUF * sizeof(sample_t));
+        }
 
         // Find BlackHole device
         AudioDeviceID blackholeDevice = 0;
@@ -655,20 +655,11 @@ public:
         printf("CoreAudio initialized successfully - reading from BlackHole device\n");
         t_data->can_process = true;
 #else
-        thread_data_t *t_data = getThreadData();
-        size_t input_buffer_size;
-
-        /* Allocate ringbuffer */
-        input_buffer_size = t_data->channels * sizeof(sample_t *);
-        t_data->input_buffer = (sample_t **)malloc(input_buffer_size);
         printf("requesting %.1fMB (%.1f second) ringbuffer\n",
                (1 / (1024.0 * 1024.0)
                 * ((double)t_data->rb_size * (double)t_data->frame_size)),
                (double)BUFFER_SECONDS);
-        t_data->ringbuffer = ringbuffer_create(t_data->frame_size * t_data->rb_size);
-
         bzero(t_data->input_buffer, input_buffer_size);
-        bzero(t_data->ringbuffer->buf, t_data->ringbuffer->size);
         printf("initialized %.1fMB (%.1f second) ringbuffer\n",
                (1 / (1024.0 * 1024.0) * (double)t_data->ringbuffer->size),
                ((double)t_data->ringbuffer->size
@@ -883,18 +874,14 @@ public:
 #else
         fft_out              = (fftw_complex*) fftw_malloc (sizeof (fftw_complex) * DRAW_FRAMES);
 #endif
-        prefs.dim[0]         = 600;
-        prefs.dim[1]         = 600;
-        prefs.normal_dim[0]  = 600;
-        prefs.normal_dim[1]  = 600;
-        prefs.old_dim[0]     = 600;
-        prefs.old_dim[1]     = 600;
-        prefs.position[0]    = 0;
-        prefs.position[1]    = 0;
-        prefs.side[0]        =  1.0;
-        prefs.side[1]        = -1.0;
-        prefs.side[2]        =  1.0;
-        prefs.side[3]        = -1.0;
+        for (int i = 0; i < 2; i++) {
+            prefs.dim[i] = prefs.normal_dim[i] = prefs.old_dim[i] = 600;
+            prefs.position[i] = 0;
+        }
+        for (int i = 0; i < 4; i += 2) {
+            prefs.side[i] = 1.0;
+            prefs.side[i+1] = -1.0;
+        }
         prefs.scale_factor   = 1.0;
         prefs.scale_locked   = true;
         prefs.is_full_screen = DEFAULT_FULL_SCREEN;
@@ -923,10 +910,9 @@ public:
         show_mouse           = true;
 
         bzero (&text_timer, sizeof (text_timer_t) * NUM_TEXT_TIMERS);
-        gettimeofday (&show_intro_time, NULL);
-        gettimeofday (&last_frame_time, NULL);
-        gettimeofday (&reset_frame_time, NULL);
-        gettimeofday (&mouse_dirty_time, NULL);
+        timeval now;
+        gettimeofday(&now, NULL);
+        show_intro_time = last_frame_time = reset_frame_time = mouse_dirty_time = now;
 
         for (int i = 0; i < 4; i++)
             target_side[i] = prefs.side[i];
@@ -937,10 +923,6 @@ public:
     {
         int FH;
         if ((FH = open (DEFAULT_PREF_FILE, O_CREAT | O_WRONLY, 00660))) {
-            /*
-            prefs.position[0] = glutGet (GLUT_WINDOW_X);
-            prefs.position[1] = glutGet (GLUT_WINDOW_Y);
-            */
             write (FH, (void *) &prefs, sizeof (preferences_t));
             close (FH);
         }
@@ -1040,32 +1022,33 @@ public:
                 glColor3d (r, g, b);
                 break;
             case DisplayRadiusMode:
-                break;
             case DisplayLengthMode:
                 break;
             case DisplayFrequencyMode:
+            {
                 // Create the STFT array
                 stft_results = new double*[frames_read / (window_size - overlap_size)];
                 for (unsigned int i = 0; i < frames_read / (window_size - overlap_size); i++) {
                     stft_results[i] = new double[window_size];
                 }
+#ifdef __APPLE__
+                // Set up vDSP FFT once outside loop (performance optimization)
+                int log2n_win = 0;
+                int n_win = window_size;
+                while (n_win > 1) { n_win >>= 1; log2n_win++; }
+                FFTSetup fft_setup_local = vDSP_create_fftsetup(log2n_win, FFT_RADIX2);
+                DSPSplitComplex fft_data;
+                fft_data.realp = new float[window_size/2];
+                fft_data.imagp = new float[window_size/2];
+#endif
                 // Loop over the frame buffer
                 for (unsigned int i = 0; i + window_size <= frames_read; i += window_size - overlap_size) {
-                    // Copy the next window_size samples to a temporary array
 #ifdef __APPLE__
+                    // Copy the next window_size samples to a temporary array
                     float *input_data = new float[window_size];
                     for (unsigned int j = 0; j < window_size; j++) {
                         input_data[j] = (framebuf[i + j].left_channel + framebuf[i + j].right_channel) / 2.0;
                     }
-
-                    // Set up vDSP FFT
-                    int log2n_win = 0;
-                    int n_win = window_size;
-                    while (n_win > 1) { n_win >>= 1; log2n_win++; }
-                    FFTSetup fft_setup_local = vDSP_create_fftsetup(log2n_win, FFT_RADIX2);
-                    DSPSplitComplex fft_data;
-                    fft_data.realp = new float[window_size/2];
-                    fft_data.imagp = new float[window_size/2];
 
                     // Convert real input to split complex (required by vDSP)
                     vDSP_ctoz((DSPComplex*)input_data, 2, &fft_data, 1, window_size/2);
@@ -1084,9 +1067,6 @@ public:
                         stft_results[i / (window_size - overlap_size)][j] = stft_results[i / (window_size - overlap_size)][window_size - j];
                     }
 
-                    vDSP_destroy_fftsetup(fft_setup_local);
-                    delete[] fft_data.realp;
-                    delete[] fft_data.imagp;
                     delete[] input_data;
 #else
                     double (*temp_data)[2] = new double[window_size][2];
@@ -1112,6 +1092,12 @@ public:
                     delete[] temp_data;
 #endif
                 }
+#ifdef __APPLE__
+                // Clean up FFT resources after loop
+                vDSP_destroy_fftsetup(fft_setup_local);
+                delete[] fft_data.realp;
+                delete[] fft_data.imagp;
+#endif
 
                 // Calculate the average magnitude of the STFT array
                 avg_magnitudes = new double[frames_read / (window_size - overlap_size)];
@@ -1128,6 +1114,7 @@ public:
                     delete[] stft_results[i];
                 }
                 delete[] stft_results;
+            }
                 break;
             case DisplayTimeMode:
                 break;
@@ -1177,17 +1164,8 @@ public:
                 default:
                     break;
             };
-            switch (prefs.display_mode) {
-                case DisplayStandardMode:
-                    break;
-                case DisplayRadiusMode:
-                case DisplayLengthMode:
-                case DisplayFrequencyMode:
-                case DisplayTimeMode:
-                    h = normalizeHue(h);
-                    break;
-                default:
-                    break;
+            if (h > -1.0 && prefs.display_mode != DisplayStandardMode) {
+                h = normalizeHue(h);
             }
             if (h > -1.0) {
                 HSVtoRGB (&r, &g, &b, h, s, v);
@@ -1440,13 +1418,6 @@ public:
         char time_string[64];
 
         if (show_intro || (prefs.show_stats > 0 && prefs.show_stats < 3)) {
-            /*
-            if (prefs.color_mode == ColorDeltaMode) {
-                snprintf (color_threshold_string, sizeof(color_threshold_string), "%.5f", color_threshold);
-                drawString (-180.0, -40.0, color_threshold_string);
-            }
-             */
-
             /* calculate framerate */
             gettimeofday (&this_frame_time, NULL);
             elapsed_time = timeDiff (reset_frame_time, this_frame_time);
@@ -2209,12 +2180,6 @@ void mouse (int button, int state, int x, int y)
     else if (button == 4 && state == 1) {
         scn.zoomOut ();
     }
-    /*
-    else {
-        printf ("Mouse event: button: %d  state: %d  pos: %d, %d\n",
-                button, state, x, y);
-    }
-     */
     scn.showMouse ();
 }
 
