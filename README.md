@@ -1,4 +1,4 @@
-# XYScope - Audio Visualizer with Virtual Audio Device
+# XYScope - Audio Visualizer
 
 Real-time XY oscilloscope visualization of stereo audio using OpenGL and BlackHole virtual audio driver.
 
