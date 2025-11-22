@@ -1,6 +1,7 @@
-# XYScope - Audio Visualizer
+# XYScope - Full Detail Audio Visualizer
 
-Real-time XY oscilloscope visualization of stereo audio using OpenGL and BlackHole virtual audio driver.
+Real-time XY oscilloscope visualization of stereo audio using OpenGL and CoreAudio
+with BlackHole virtual audio driver, or Pipewire.
 
 ## Quick Start
 
@@ -23,7 +24,7 @@ Real-time XY oscilloscope visualization of stereo audio using OpenGL and BlackHo
    - Right-click Multi-Output Device → **"Use This Device For Sound Output"**
    - Close Audio MIDI Setup
 
-3. **Run XYScope.command again**
+3. **Run XYScope.app again**
    - The visualizer will launch
    - Play some audio (music, YouTube, etc.) to see the visualization
 
