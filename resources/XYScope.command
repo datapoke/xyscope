@@ -79,7 +79,7 @@ Follow these steps in Audio MIDI Setup:
 6. Right-click Multi-Output Device
    → 'Use This Device For Sound Output'
 7. Close Audio MIDI Setup
-8. Run XYScope.command again
+8. Run XYScope.app again
 
 Click OK when finished with setup." buttons {"OK"} default button 1 with title "XYScope Setup"
 end tell
