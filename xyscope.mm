@@ -98,7 +98,7 @@
  * That being said, the custom ringbuffer will round up to the next
  * power of two, in the above case giving us a 32.0MB ringbuffer.
  */
-#define BUFFER_SECONDS 1.0
+#define BUFFER_SECONDS 60.0
 
 /* How many times to draw each frame */
 #define DRAW_EACH_FRAME 2
