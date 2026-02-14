@@ -1224,7 +1224,7 @@ public:
                  smooth(&prefs.side[i], target_side[i], 0.1);
         }
         prefs.scale_factor = 2.0 / min(prefs.side[0] - prefs.side[1],
-                                        prefs.side[2] - prefs.side[3]);
+                                       prefs.side[2] - prefs.side[3]);
     }
 
     double map(double value, double fromLow, double fromHigh, double toLow, double toHigh) {
@@ -1652,7 +1652,7 @@ public:
     void toggleAutoScale(void)
     {
         max_sample_value   = min((prefs.side[0] - prefs.side[1]) / 2.1,
-                                  (prefs.side[2] - prefs.side[3]) / 2.1);
+                                 (prefs.side[2] - prefs.side[3]) / 2.1);
         prefs.auto_scale   = ! prefs.auto_scale;
         showAutoScale(TIMED);
     }
@@ -1782,6 +1782,7 @@ public:
         }
         SDL_SetWindowPosition(window, prefs.position[0], prefs.position[1]);
         SDL_SetWindowSize(window, x, y);
+		window_is_dirty      = true;
         prefs.is_full_screen = false;
     }
 
