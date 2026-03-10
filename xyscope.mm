@@ -34,6 +34,16 @@
 #import <Foundation/Foundation.h>
 #import <CoreAudio/CoreAudio.h>
 #import <AudioToolbox/AudioToolbox.h>
+#elif defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <GL/gl.h>
+#include <mmdeviceapi.h>
+#include <audioclient.h>
+#include <functiondiscoverykeys_devpkey.h>
+#include <fftw3.h>
+#include <process.h>
+#include <io.h>
 #else
 #include <GL/gl.h>
 #include <pipewire/pipewire.h>
@@ -44,13 +54,120 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
+#ifndef _WIN32
 #include <pthread.h>
 #include <sys/time.h>
-#include <math.h>
 #include <unistd.h>
+#endif
+#include <math.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+
+#ifdef _WIN32
+/* ---- Windows compatibility layer ---- */
+
+#ifndef _TIMEVAL_DEFINED
+#define _TIMEVAL_DEFINED
+struct timeval {
+    long tv_sec;
+    long tv_usec;
+};
+#endif
+
+static int gettimeofday(struct timeval *tv, void *tz) {
+    (void)tz;
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    unsigned long long t = ((unsigned long long)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
+    t -= 116444736000000000ULL;
+    t /= 10;
+    tv->tv_sec = (long)(t / 1000000ULL);
+    tv->tv_usec = (long)(t % 1000000ULL);
+    return 0;
+}
+
+#ifndef _TIMESPEC_DEFINED
+#define _TIMESPEC_DEFINED
+struct timespec {
+    long tv_sec;
+    long tv_nsec;
+};
+#endif
+
+#define CLOCK_REALTIME 0
+static int clock_gettime(int clk_id, struct timespec *ts) {
+    (void)clk_id;
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    ts->tv_sec = tv.tv_sec;
+    ts->tv_nsec = tv.tv_usec * 1000;
+    return 0;
+}
+
+#define bzero(b, len) memset((b), 0, (len))
+typedef unsigned int useconds_t;
+#define usleep(us) Sleep(((us) + 999) / 1000)
+
+#define open _open
+#define read(fd, buf, n) _read((fd), (buf), (unsigned int)(n))
+#define write(fd, buf, n) _write((fd), (buf), (unsigned int)(n))
+#define close _close
+
+/* pthreads compatibility using Win32 primitives */
+typedef CRITICAL_SECTION pthread_mutex_t;
+typedef CONDITION_VARIABLE pthread_cond_t;
+typedef HANDLE pthread_t;
+
+#define PTHREAD_CANCEL_ASYNCHRONOUS 0
+#define pthread_setcanceltype(t, o) ((void)0)
+
+static inline int pthread_mutex_lock(pthread_mutex_t *m) { EnterCriticalSection(m); return 0; }
+static inline int pthread_mutex_trylock(pthread_mutex_t *m) { return TryEnterCriticalSection(m) ? 0 : 1; }
+static inline int pthread_mutex_unlock(pthread_mutex_t *m) { LeaveCriticalSection(m); return 0; }
+static inline int pthread_cond_signal(pthread_cond_t *c) { WakeConditionVariable(c); return 0; }
+
+static int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *m, const struct timespec *abstime) {
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    long ms = (long)((abstime->tv_sec - now.tv_sec) * 1000 +
+                      abstime->tv_nsec / 1000000 - now.tv_usec / 1000);
+    if (ms < 0) ms = 0;
+    if (ms > 1000) ms = 1000;
+    SleepConditionVariableCS(c, m, (DWORD)ms);
+    return 0;
+}
+
+struct w32_thread_info {
+    void *(*func)(void *);
+    void *arg;
+};
+
+static unsigned __stdcall w32_thread_entry(void *p) {
+    struct w32_thread_info *info = (struct w32_thread_info *)p;
+    void *(*func)(void *) = info->func;
+    void *arg = info->arg;
+    free(info);
+    func(arg);
+    return 0;
+}
+
+static int pthread_create(pthread_t *t, const void *attr, void *(*func)(void *), void *arg) {
+    (void)attr;
+    struct w32_thread_info *info = (struct w32_thread_info *)malloc(sizeof(struct w32_thread_info));
+    info->func = func;
+    info->arg = arg;
+    *t = (HANDLE)_beginthreadex(NULL, 0, w32_thread_entry, info, 0, NULL);
+    return *t ? 0 : -1;
+}
+
+/* WASAPI COM GUIDs (explicit for MSVC and MinGW compatibility) */
+static const GUID XYSCOPE_CLSID_MMDeviceEnumerator = {0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E}};
+static const GUID XYSCOPE_IID_IMMDeviceEnumerator = {0xA95664D2, 0x9614, 0x4F35, {0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6}};
+static const GUID XYSCOPE_IID_IAudioClient = {0x1CB9AD4C, 0xDBFA, 0x4c32, {0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2}};
+static const GUID XYSCOPE_IID_IAudioCaptureClient = {0xC8ADBD64, 0xE71E, 0x48a0, {0xA4, 0xDE, 0x18, 0x5C, 0x39, 0x5C, 0xD3, 0x17}};
+
+#endif /* _WIN32 */
 
 
 /* Preferences file */
@@ -135,6 +252,10 @@ typedef struct _thread_data {
     pthread_t thread_id;
 #ifdef __APPLE__
     AudioComponentInstance audio_unit;
+#elif defined(_WIN32)
+    void *audio_client;       /* IAudioClient* */
+    void *capture_client;     /* IAudioCaptureClient* */
+    unsigned int wasapi_channels;
 #else
     struct pw_thread_loop *loop;
     struct pw_stream *stream;
@@ -404,26 +525,37 @@ public:
     audioInput()
     {
         bzero(&Thread_Data, sizeof(Thread_Data));
+#ifdef _WIN32
+        InitializeCriticalSection(&Thread_Data.ringbuffer_lock);
+        InitializeConditionVariable(&Thread_Data.data_ready);
+#else
         pthread_mutex_t ringbuffer_lock = PTHREAD_MUTEX_INITIALIZER;
         pthread_cond_t data_ready       = PTHREAD_COND_INITIALIZER;
         Thread_Data.ringbuffer_lock     = ringbuffer_lock;
         Thread_Data.data_ready          = data_ready;
+#endif
         quit = false;
         pthread_create(&capture_thread, NULL, readerThread, (void *)this);
     }
     ~audioInput()
     {
-#ifdef __APPLE__
         thread_data_t *t_data = getThreadData();
+#ifdef __APPLE__
         if (t_data->audio_unit) {
             AudioOutputUnitStop(t_data->audio_unit);
             AudioUnitUninitialize(t_data->audio_unit);
             AudioComponentInstanceDispose(t_data->audio_unit);
         }
-        ringbuffer_free(t_data->ringbuffer);
+#elif defined(_WIN32)
+        if (t_data->audio_client) {
+            ((IAudioClient *)t_data->audio_client)->Stop();
+            ((IAudioClient *)t_data->audio_client)->Release();
+        }
+        if (t_data->capture_client)
+            ((IAudioCaptureClient *)t_data->capture_client)->Release();
+        DeleteCriticalSection(&t_data->ringbuffer_lock);
+        CoUninitialize();
 #else
-        thread_data_t *t_data = getThreadData();
-
         if (t_data->stream) {
             pw_thread_loop_lock(t_data->loop);
             pw_stream_destroy(t_data->stream);
@@ -435,9 +567,9 @@ public:
             pw_thread_loop_destroy(t_data->loop);
         }
 
-        ringbuffer_free(t_data->ringbuffer);
         pw_deinit();
 #endif
+        ringbuffer_free(t_data->ringbuffer);
     }
 
     static void* readerThread(void* arg)
@@ -456,6 +588,9 @@ public:
 
 #ifdef __APPLE__
         ai->setupPorts();
+#elif defined(_WIN32)
+        ai->setupPorts();
+        t_data->can_process = true;
 #else
         t_data->ringbuffer = NULL;
         pw_init(NULL, NULL);
@@ -476,9 +611,57 @@ public:
         t_data->can_process = true;
 #endif
 
+#ifdef _WIN32
+        /* WASAPI capture loop - poll for audio data */
+        {
+            IAudioCaptureClient *capture = (IAudioCaptureClient *)t_data->capture_client;
+            while (!ai->quit) {
+                Sleep(1);
+                UINT32 packet_length = 0;
+                HRESULT hr = capture->GetNextPacketSize(&packet_length);
+                if (FAILED(hr)) continue;
+
+                while (packet_length > 0) {
+                    BYTE *data = NULL;
+                    UINT32 num_frames = 0;
+                    DWORD flags = 0;
+
+                    hr = capture->GetBuffer(&data, &num_frames, &flags, NULL, NULL);
+                    if (FAILED(hr)) break;
+
+                    if (!t_data->pause_scope && t_data->can_process) {
+                        if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
+                            for (UINT32 i = 0; i < num_frames; i++) {
+                                frame_t frame = {0.0f, 0.0f};
+                                ringbuffer_write(t_data->ringbuffer,
+                                                (const char *)&frame, t_data->frame_size);
+                            }
+                        } else {
+                            float *samples = (float *)data;
+                            unsigned int ch = t_data->wasapi_channels;
+                            for (UINT32 i = 0; i < num_frames; i++) {
+                                frame_t frame;
+                                frame.left_channel = samples[i * ch];
+                                frame.right_channel = (ch > 1) ? samples[i * ch + 1] : samples[i * ch];
+                                ringbuffer_write(t_data->ringbuffer,
+                                                (const char *)&frame, t_data->frame_size);
+                            }
+                        }
+                        gettimeofday(&t_data->last_write, NULL);
+                        signal_data_ready(t_data);
+                    }
+
+                    capture->ReleaseBuffer(num_frames);
+                    hr = capture->GetNextPacketSize(&packet_length);
+                    if (FAILED(hr)) break;
+                }
+            }
+        }
+#else
         while (!ai->quit) {
             usleep(1000);
         }
+#endif
         return ai;
     }
 
@@ -654,6 +837,95 @@ public:
 
         printf("CoreAudio initialized successfully - reading from BlackHole device\n");
         t_data->can_process = true;
+#elif defined(_WIN32)
+        bzero(t_data->input_buffer, input_buffer_size);
+
+        printf("Setting up WASAPI loopback capture...\n");
+
+        CoInitializeEx(NULL, COINIT_MULTITHREADED);
+
+        IMMDeviceEnumerator *enumerator = NULL;
+        HRESULT hr = CoCreateInstance(XYSCOPE_CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL,
+                                      XYSCOPE_IID_IMMDeviceEnumerator, (void **)&enumerator);
+        if (FAILED(hr)) {
+            fprintf(stderr, "Error: Cannot create device enumerator: 0x%lx\n", hr);
+            exit(1);
+        }
+
+        IMMDevice *device = NULL;
+        hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+        enumerator->Release();
+        if (FAILED(hr)) {
+            fprintf(stderr, "Error: Cannot get default audio endpoint: 0x%lx\n", hr);
+            exit(1);
+        }
+
+        /* Print the device name */
+        IPropertyStore *props = NULL;
+        device->OpenPropertyStore(STGM_READ, &props);
+        if (props) {
+            PROPVARIANT name;
+            PropVariantInit(&name);
+            props->GetValue(PKEY_Device_FriendlyName, &name);
+            if (name.vt == VT_LPWSTR) {
+                char narrow[256];
+                WideCharToMultiByte(CP_UTF8, 0, name.pwszVal, -1,
+                                    narrow, sizeof(narrow), NULL, NULL);
+                printf("Using audio device: %s\n", narrow);
+            }
+            PropVariantClear(&name);
+            props->Release();
+        }
+
+        IAudioClient *audio_client = NULL;
+        hr = device->Activate(XYSCOPE_IID_IAudioClient, CLSCTX_ALL,
+                              NULL, (void **)&audio_client);
+        device->Release();
+        if (FAILED(hr)) {
+            fprintf(stderr, "Error: Cannot activate audio client: 0x%lx\n", hr);
+            exit(1);
+        }
+
+        WAVEFORMATEX *mix_format = NULL;
+        hr = audio_client->GetMixFormat(&mix_format);
+        if (FAILED(hr)) {
+            fprintf(stderr, "Error: Cannot get mix format: 0x%lx\n", hr);
+            exit(1);
+        }
+
+        printf("WASAPI format: %d Hz, %d channels, %d bits\n",
+               (int)mix_format->nSamplesPerSec, (int)mix_format->nChannels,
+               (int)mix_format->wBitsPerSample);
+
+        t_data->wasapi_channels = mix_format->nChannels;
+
+        hr = audio_client->Initialize(AUDCLNT_SHAREMODE_SHARED,
+                                       AUDCLNT_STREAMFLAGS_LOOPBACK,
+                                       0, 0, mix_format, NULL);
+        CoTaskMemFree(mix_format);
+        if (FAILED(hr)) {
+            fprintf(stderr, "Error: Cannot initialize audio client: 0x%lx\n", hr);
+            exit(1);
+        }
+
+        IAudioCaptureClient *capture_client = NULL;
+        hr = audio_client->GetService(XYSCOPE_IID_IAudioCaptureClient,
+                                       (void **)&capture_client);
+        if (FAILED(hr)) {
+            fprintf(stderr, "Error: Cannot get capture client: 0x%lx\n", hr);
+            exit(1);
+        }
+
+        t_data->audio_client = audio_client;
+        t_data->capture_client = capture_client;
+
+        hr = audio_client->Start();
+        if (FAILED(hr)) {
+            fprintf(stderr, "Error: Cannot start audio client: 0x%lx\n", hr);
+            exit(1);
+        }
+
+        printf("WASAPI loopback initialized successfully\n");
 #else
         bzero(t_data->input_buffer, input_buffer_size);
 
@@ -2222,9 +2494,16 @@ int main(int argc, char * const argv[])
     if (TTF_Init() < 0) {
         fprintf(stderr, "TTF_Init failed: %s\n", TTF_GetError());
     } else {
+#ifdef __APPLE__
         font = TTF_OpenFont("/System/Library/Fonts/Monaco.ttf", 28);
         if (!font) font = TTF_OpenFont("/System/Library/Fonts/Courier.ttc", 28);
-        if (!font) font = TTF_OpenFont("/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf", 28);
+#elif defined(_WIN32)
+        font = TTF_OpenFont("C:\\Windows\\Fonts\\consola.ttf", 28);
+        if (!font) font = TTF_OpenFont("C:\\Windows\\Fonts\\cour.ttf", 28);
+#else
+        font = TTF_OpenFont("/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf", 28);
+        if (!font) font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 28);
+#endif
         if (!font) {
             fprintf(stderr, "Warning: Could not load font: %s\n", TTF_GetError());
         }
