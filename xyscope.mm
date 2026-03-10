@@ -87,7 +87,7 @@
 #define SAMPLE_RATE 96000
 
 /* Set this to your desired Frames Per Second */
-#define FRAME_RATE 60
+#define FRAME_RATE 120
 
 /* ringbuffer size in seconds; expect memory usage to exceed:
  *
