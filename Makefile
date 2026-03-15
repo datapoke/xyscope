@@ -31,8 +31,12 @@ else
     LD_LIBS = -lpthread -lSDL2 -lSDL2_ttf -lGL $(PIPEWIRE_LIBS) -lfftw3
 endif
 
-# Default target: build everything
+# Default target: build binary (+ app bundle on macOS)
+ifeq ($(UNAME_S),Darwin)
 all: $(BINARY) app
+else
+all: $(BINARY)
+endif
 
 # Build xyscope binary
 $(BINARY): $(SRC) Makefile
