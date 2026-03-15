@@ -2256,8 +2256,8 @@ void idle(void)
         scn.prefs.dim[1] = drawable_h;
 
         // Also save window size in points (for window recreation)
-        if (! prefs.is_full_screen) {
-            SDL_GetWindowSize(window, &prefs.normal_dim[0], &prefs.normal_dim[1]);
+        if (! scn.prefs.is_full_screen) {
+            SDL_GetWindowSize(window, &scn.prefs.normal_dim[0], &scn.prefs.normal_dim[1]);
         }
 
         if (scn.prefs.scale_locked)
