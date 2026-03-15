@@ -2,44 +2,47 @@ FROM ubuntu:24.04
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        mingw-w64 wget unzip ca-certificates \
+		ca-certificates                        \
+        mingw-w64                              \
+		wget                                   \
+		unzip                                  \
     && rm -rf /var/lib/apt/lists/*
 
 # SDL2 - MinGW dev package
 RUN wget -q https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-devel-2.30.9-mingw.tar.gz \
-    && tar xf SDL2-devel-2.30.9-mingw.tar.gz \
+    && tar xf SDL2-devel-2.30.9-mingw.tar.gz                           \
     && cp -r SDL2-2.30.9/x86_64-w64-mingw32/* /usr/x86_64-w64-mingw32/ \
     && rm -rf SDL2-devel-2.30.9-mingw.tar.gz SDL2-2.30.9
 
 # SDL2_ttf - MinGW dev package
 RUN wget -q https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.22.0/SDL2_ttf-devel-2.22.0-mingw.tar.gz \
-    && tar xf SDL2_ttf-devel-2.22.0-mingw.tar.gz \
+    && tar xf SDL2_ttf-devel-2.22.0-mingw.tar.gz                           \
     && cp -r SDL2_ttf-2.22.0/x86_64-w64-mingw32/* /usr/x86_64-w64-mingw32/ \
     && rm -rf SDL2_ttf-devel-2.22.0-mingw.tar.gz SDL2_ttf-2.22.0
 
 # FFTW3 - Windows DLL + generate import library
-RUN wget -q https://fftw.org/pub/fftw/fftw-3.3.5-dll64.zip \
+RUN wget -q https://fftw.org/pub/fftw/fftw-3.3.5-dll64.zip        \
     && mkdir /tmp/fftw && unzip fftw-3.3.5-dll64.zip -d /tmp/fftw \
-    && cp /tmp/fftw/libfftw3-3.dll /usr/x86_64-w64-mingw32/lib/ \
-    && cp /tmp/fftw/fftw3.h /usr/x86_64-w64-mingw32/include/ \
-    && x86_64-w64-mingw32-dlltool -d /tmp/fftw/libfftw3-3.def \
-       -l /usr/x86_64-w64-mingw32/lib/libfftw3.a \
+    && cp /tmp/fftw/libfftw3-3.dll /usr/x86_64-w64-mingw32/lib/   \
+    && cp /tmp/fftw/fftw3.h /usr/x86_64-w64-mingw32/include/      \
+    && x86_64-w64-mingw32-dlltool -d /tmp/fftw/libfftw3-3.def     \
+       -l /usr/x86_64-w64-mingw32/lib/libfftw3.a                  \
     && rm -rf /tmp/fftw fftw-3.3.5-dll64.zip
 
 COPY ./                             /usr/src/xyscope-windows
 COPY ./docker-entrypoint-windows.sh /usr/local/bin/
 
-RUN    cd /usr/src/xyscope-windows \
-    && mkdir -p release \
-    && x86_64-w64-mingw32-g++ -O3 -std=c++11 -x c++ xyscope.mm \
-       -I/usr/x86_64-w64-mingw32/include/SDL2 \
-       -L/usr/x86_64-w64-mingw32/lib \
-       -lmingw32 -lSDL2 -lSDL2_ttf -lfftw3 \
-       -lopengl32 -lole32 -luuid \
-       -static-libgcc -static-libstdc++ \
-       -o release/xyscope.exe \
-    && cp /usr/x86_64-w64-mingw32/bin/SDL2.dll release/ \
-    && cp /usr/x86_64-w64-mingw32/bin/SDL2_ttf.dll release/ \
-    && cp /usr/x86_64-w64-mingw32/lib/libfftw3-3.dll release/
+RUN    cd /usr/src/xyscope-windows                              \
+    && rm -rf release                                           \
+  	&& x86_64-w64-mingw32-g++ -O3 -std=c++11 -x c++ xyscope.mm  \
+         -I/usr/x86_64-w64-mingw32/include/SDL2                 \
+         -L/usr/x86_64-w64-mingw32/lib                          \
+         -lmingw32 -lSDL2 -lSDL2_ttf -lfftw3                    \
+         -lopengl32 -lole32 -luuid                              \
+         -static-libgcc -static-libstdc++                       \
+         -o release/xyscope.exe                                 \
+      && cp /usr/x86_64-w64-mingw32/bin/SDL2.dll release/       \
+      && cp /usr/x86_64-w64-mingw32/bin/SDL2_ttf.dll release/   \
+      && cp /usr/x86_64-w64-mingw32/lib/libfftw3-3.dll release/
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint-windows.sh"]
