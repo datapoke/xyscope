@@ -49,6 +49,7 @@
 #include <audioclient.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <fftw3.h>
+#include <mmsystem.h>
 #include <process.h>
 #include <io.h>
 #else
