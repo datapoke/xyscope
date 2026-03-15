@@ -1,11 +1,11 @@
 # XYScope - Full Detail Audio Visualizer
 
-Real-time XY oscilloscope visualization of stereo audio using OpenGL and CoreAudio
-with BlackHole virtual audio driver, or Pipewire.
+Real-time XY oscilloscope visualization of stereo audio using OpenGL.
+Supports macOS (CoreAudio/BlackHole), Linux (Pipewire), and Windows (WASAPI loopback).
 
 ## Quick Start
 
-### For Users (Running the App)
+### macOS
 
 1. **Double-click `XYScope.app`**
    - Opens Terminal and installs dependencies automatically
@@ -28,49 +28,79 @@ with BlackHole virtual audio driver, or Pipewire.
    - The visualizer will launch
    - Play some audio (music, YouTube, etc.) to see the visualization
 
-### For Developers (Building from Source)
+### Linux
 
-**Build Requirements:**
-- macOS 10.15+ with Xcode Command Line Tools
-- Homebrew with SDL2, SDL2_ttf, and BlackHole 2ch
-
-**Build Commands:**
+Install dependencies and build:
 ```bash
-make              # Build everything and assemble .app bundle
-make clean        # Clean build artifacts
-make rebuild      # Clean and rebuild everything
+sudo apt install libsdl2-dev libsdl2-ttf-dev libpipewire-0.3-dev libfftw3-dev
+make
+./xyscope
 ```
 
-**Project Structure:**
-```
-xyscope/
-├── xyscope.mm              Main visualizer source
-├── Makefile                Master build file
-├── resources/              App bundle resources
-│   ├── Info.plist
-│   └── XYScope.command
-└── XYScope.app/            Built app (ready to distribute)
+No virtual audio device needed — Pipewire captures system audio directly.
+
+### Windows
+
+No virtual audio device needed — WASAPI loopback captures system audio directly.
+
+**Cross-compile from Linux using Docker:**
+```bash
+docker build -f Dockerfile.windows -t xyscope-win .
+docker run -v $(pwd):/src xyscope-win
 ```
 
-**After building**, you can:
-- Move `XYScope.app` to `/Applications`
-- All sources remain in project directory for rebuilding
-- The .app is self-contained and automatically installs BlackHole
+This produces `xyscope.exe`. Bundle these DLLs alongside it:
+```bash
+docker run -v $(pwd):/src xyscope-win sh -c \
+  'cp /usr/x86_64-w64-mingw32/bin/SDL2.dll \
+      /usr/x86_64-w64-mingw32/bin/SDL2_ttf.dll \
+      /usr/x86_64-w64-mingw32/lib/libfftw3-3.dll /src/'
+```
+
+**Native build with MSVC + vcpkg:**
+```bash
+vcpkg install sdl2 sdl2-ttf fftw3
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=[vcpkg-root]/scripts/buildsystems/vcpkg.cmake
+cmake --build build --config Release
+```
+
+## Building from Source
+
+### macOS
+```bash
+brew install sdl2 sdl2_ttf blackhole-2ch
+make
+```
+
+### Linux
+```bash
+sudo apt install libsdl2-dev libsdl2-ttf-dev libpipewire-0.3-dev libfftw3-dev
+make
+```
+
+### CMake (all platforms)
+```bash
+cmake -B build
+cmake --build build
+```
 
 ## How It Works
 
+| Platform | Audio Capture | Virtual Device Required? |
+|----------|--------------|------------------------|
+| macOS    | CoreAudio → BlackHole 2ch | Yes (BlackHole) |
+| Linux    | Pipewire loopback | No |
+| Windows  | WASAPI loopback | No |
+
+The visualizer reads stereo audio samples and renders Lissajous curves in real-time using OpenGL. Left channel maps to X, right channel maps to Y.
+
+**macOS** requires a Multi-Output Device to route audio to both speakers and BlackHole:
 ```
 Audio Source → Multi-Output Device → BlackHole 2ch (visualization)
-                                  → Speakers (audio output)
+                                   → Speakers (audio output)
 ```
 
-The multi-output device sends audio to both:
-- **BlackHole 2ch** - Virtual audio device captured for visualization
-- **Your speakers** - So you can hear the audio
-
-The visualizer reads from the BlackHole virtual device at **96kHz sample rate** and renders Lissajous curves in real-time using OpenGL.
-
-**BlackHole** is an open-source virtual audio driver by [Existential Audio](https://existential.audio/blackhole/). XYScope automatically installs it via Homebrew.
+**Linux and Windows** capture system audio output directly with no extra configuration.
 
 ## Features
 
@@ -82,21 +112,44 @@ The visualizer reads from the BlackHole virtual device at **96kHz sample rate** 
 
 ## Keyboard Controls
 
-See `CLAUDE.md` for full keyboard reference.
+| Key | Action |
+|-----|--------|
+| Escape | Quit |
+| F1–F5 | Resize window / fullscreen |
+| Home/Page Up | Zoom in |
+| End/Page Down | Zoom out |
+| 0–9 | Set zoom factor |
+| Spacebar | Pause/Resume |
+| < > | Rewind/Fast-forward (when paused) |
+| [ ] | Adjust color range |
+| - + | Adjust color rate |
+| a | Toggle auto-scale |
+| b B | Adjust splines |
+| c C | Cycle color mode |
+| d D | Cycle display mode |
+| f | Toggle fullscreen |
+| h | Show/hide help |
+| r | Recenter |
+| s S | Show/hide statistics |
+| w W | Adjust line width |
 
-## Advanced
+## Project Structure
 
-**Manual Dependency Installation:**
-```bash
-brew install sdl2 sdl2_ttf blackhole-2ch
+```
+xyscope/
+├── xyscope.mm              Main visualizer source (all platforms)
+├── Makefile                Build file (macOS/Linux)
+├── CMakeLists.txt          CMake build (all platforms)
+├── Dockerfile.windows      Docker cross-compilation for Windows
+├── resources/              macOS app bundle resources
+│   ├── Info.plist
+│   └── XYScope.command
+└── XYScope.app/            macOS app (ready to distribute)
 ```
 
-**BlackHole Driver:**
-- Installed via Homebrew: `brew install blackhole-2ch`
-- Location: `/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver`
-- Project: https://existential.audio/blackhole/
-
 ## Troubleshooting
+
+### macOS
 
 **No audio visualization (black screen)?**
 - Check Multi-Output Device is selected as system output
@@ -108,13 +161,30 @@ brew install sdl2 sdl2_ttf blackhole-2ch
 - Restart CoreAudio: `sudo killall coreaudiod`
 - Check driver: `ls /Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver`
 
+### Windows
+
+**No audio visualization?**
+- Make sure audio is actually playing through the default output device
+- Check that no other application has exclusive access to the audio device
+
+### Linux
+
+**No audio visualization?**
+- Ensure Pipewire is running: `systemctl --user status pipewire`
+- Check that audio is playing through Pipewire (not raw ALSA)
+
 ## Uninstalling
 
+**macOS:**
 ```bash
 brew uninstall blackhole-2ch sdl2 sdl2_ttf
 ```
-
 Remove the Multi-Output Device in Audio MIDI Setup.
+
+**Linux:**
+```bash
+sudo apt remove libsdl2-dev libsdl2-ttf-dev libpipewire-0.3-dev libfftw3-dev
+```
 
 ## License
 
