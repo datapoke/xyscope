@@ -115,6 +115,7 @@ static int clock_gettime(int clk_id, struct timespec *ts) {
 #define bzero(b, len) memset((b), 0, (len))
 typedef unsigned int useconds_t;
 #define usleep(us) Sleep(((us) + 999) / 1000)
+#pragma comment(lib, "winmm.lib")
 
 #define open _open
 #define read(fd, buf, n) _read((fd), (buf), (unsigned int)(n))
@@ -627,6 +628,14 @@ public:
                 UINT32 packet_length = 0;
                 HRESULT hr = capture->GetNextPacketSize(&packet_length);
                 if (FAILED(hr)) continue;
+
+                /* WASAPI loopback produces no buffers during silence;
+                 * feed zeros so the ringbuffer stays fresh and latency
+                 * doesn't climb */
+                if (packet_length == 0 && !t_data->pause_scope && t_data->can_process) {
+                    gettimeofday(&t_data->last_write, NULL);
+                    signal_data_ready(t_data);
+                }
 
                 while (packet_length > 0) {
                     BYTE *data = NULL;
@@ -1147,7 +1156,7 @@ public:
 #endif
         for (int i = 0; i < 2; i++) {
             prefs.dim[i] = prefs.normal_dim[i] = prefs.old_dim[i] = 600;
-            prefs.position[i] = 0;
+            prefs.position[i] = 100;
         }
         for (int i = 0; i < 4; i += 2) {
             prefs.side[i] = 1.0;
@@ -1238,7 +1247,7 @@ public:
             // Use timed wait to avoid hanging forever if audio fails
             struct timespec ts;
             clock_gettime(CLOCK_REALTIME, &ts);
-            ts.tv_nsec += 16666666; // 16.6ms timeout (one frame at 60fps)
+            ts.tv_nsec += 1000000000 / FRAME_RATE;
             if (ts.tv_nsec >= 1000000000) {
                 ts.tv_sec += 1;
                 ts.tv_nsec -= 1000000000;
@@ -2061,7 +2070,7 @@ public:
         }
         SDL_SetWindowPosition(window, prefs.position[0], prefs.position[1]);
         SDL_SetWindowSize(window, x, y);
-		window_is_dirty      = true;
+        window_is_dirty      = true;
         prefs.is_full_screen = false;
     }
 
@@ -2247,10 +2256,9 @@ void idle(void)
         scn.prefs.dim[1] = drawable_h;
 
         // Also save window size in points (for window recreation)
-        int window_w, window_h;
-        SDL_GetWindowSize(window, &window_w, &window_h);
-        scn.prefs.normal_dim[0] = window_w;
-        scn.prefs.normal_dim[1] = window_h;
+        if (! prefs.is_full_screen) {
+            SDL_GetWindowSize(window, &prefs.normal_dim[0], &prefs.normal_dim[1]);
+        }
 
         if (scn.prefs.scale_locked)
             scn.setSides(1.0 / scn.prefs.scale_factor, 1);
@@ -2485,6 +2493,7 @@ int main(int argc, char * const argv[])
 {
 #ifdef _WIN32
     SDL_SetMainReady();
+    timeBeginPeriod(1);
 #endif
     int FH;
 
@@ -2675,6 +2684,9 @@ int main(int argc, char * const argv[])
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
     SDL_Quit();
+#ifdef _WIN32
+    timeEndPeriod(1);
+#endif
 
     return 0;
 }
