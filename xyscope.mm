@@ -24,6 +24,13 @@
  * $Id: xyscope.cpp,v 1.175 2007/03/26 17:31:28 chris Exp $
  *
  */
+#ifdef _WIN32
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
+#endif
+#define INITGUID
+#define SDL_MAIN_HANDLED
+#endif
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 
@@ -36,9 +43,6 @@
 #import <AudioToolbox/AudioToolbox.h>
 #elif defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0600
-#endif
 #include <windows.h>
 #include <GL/gl.h>
 #include <mmdeviceapi.h>
@@ -2479,6 +2483,9 @@ TTF_Font *font = NULL;
 
 int main(int argc, char * const argv[])
 {
+#ifdef _WIN32
+    SDL_SetMainReady();
+#endif
     int FH;
 
     // Load preferences
