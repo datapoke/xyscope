@@ -7,8 +7,9 @@
 UNAME_S := $(shell uname -s)
 
 SRC = xyscope.mm
-BINARY = xyscope
-APP_NAME = XYScope.app
+RELEASE_DIR = release
+BINARY = $(RELEASE_DIR)/xyscope
+APP_NAME = $(RELEASE_DIR)/XYScope.app
 APP_CONTENTS = $(APP_NAME)/Contents
 APP_MACOS = $(APP_CONTENTS)/MacOS
 APP_RESOURCES = $(APP_CONTENTS)/Resources
@@ -35,9 +36,10 @@ all: $(BINARY) app
 
 # Build xyscope binary
 $(BINARY): $(SRC) Makefile
+	@mkdir -p $(RELEASE_DIR)
 	@echo "Building xyscope binary..."
 	$(CXX) $(CXX_FLAGS) $(SRC) $(LD_FLAGS) $(LD_LIBS) -o $(BINARY)
-	@echo "✓ xyscope binary built"
+	@echo "✓ xyscope binary built → $(BINARY)"
 
 # BlackHole audio driver is now installed via Homebrew (blackhole-2ch)
 # No longer building custom driver
@@ -61,8 +63,8 @@ app: $(BINARY)
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -f core *.o $(BINARY)
-	rm -f $(APP_MACOS)/xyscope-bin
+	rm -f core *.o
+	rm -rf $(RELEASE_DIR)
 	@echo "✓ Clean complete"
 
 # Install driver to system (macOS only, requires sudo)
