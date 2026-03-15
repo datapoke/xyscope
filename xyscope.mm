@@ -36,6 +36,9 @@
 #import <AudioToolbox/AudioToolbox.h>
 #elif defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
+#endif
 #include <windows.h>
 #include <GL/gl.h>
 #include <mmdeviceapi.h>
@@ -465,7 +468,7 @@ static OSStatus audioInputCallback(void *inRefCon,
     signal_data_ready(t_data);
     return noErr;
 }
-#else
+#elif !defined(_WIN32)
 
 /* Pipewire stream callback */
 static void on_process(void *userdata)
