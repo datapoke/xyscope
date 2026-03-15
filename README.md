@@ -34,7 +34,7 @@ Install dependencies and build:
 ```bash
 sudo apt install libsdl2-dev libsdl2-ttf-dev libpipewire-0.3-dev libfftw3-dev
 make
-./xyscope
+./release/xyscope
 ```
 
 No virtual audio device needed — Pipewire captures system audio directly.
@@ -49,13 +49,7 @@ docker build -f Dockerfile.windows -t xyscope-win .
 docker run -v $(pwd):/src xyscope-win
 ```
 
-This produces `xyscope.exe`. Bundle these DLLs alongside it:
-```bash
-docker run -v $(pwd):/src xyscope-win sh -c \
-  'cp /usr/x86_64-w64-mingw32/bin/SDL2.dll \
-      /usr/x86_64-w64-mingw32/bin/SDL2_ttf.dll \
-      /usr/x86_64-w64-mingw32/lib/libfftw3-3.dll /src/'
-```
+This produces `release/xyscope.exe` with all required DLLs in `release/`.
 
 **Native build with MSVC + vcpkg:**
 ```bash
@@ -141,6 +135,9 @@ xyscope/
 ├── Makefile                Build file (macOS/Linux)
 ├── CMakeLists.txt          CMake build (all platforms)
 ├── Dockerfile.windows      Docker cross-compilation for Windows
+├── release/                Build output (gitignored)
+│   ├── xyscope             Linux/macOS binary
+│   └── xyscope.exe + DLLs  Windows build
 ├── resources/              macOS app bundle resources
 │   ├── Info.plist
 │   └── XYScope.command

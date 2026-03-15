@@ -27,12 +27,16 @@ RUN wget -q https://fftw.org/pub/fftw/fftw-3.3.10-dll64.zip \
 
 WORKDIR /src
 
-# Build command: compile .mm as C++, link Windows libraries
-CMD x86_64-w64-mingw32-g++ -O3 -std=c++11 -x c++ xyscope.mm \
+# Build command: compile .mm as C++, link Windows libraries, output to release/
+CMD mkdir -p release \
+    && x86_64-w64-mingw32-g++ -O3 -std=c++11 -x c++ xyscope.mm \
     -I/usr/x86_64-w64-mingw32/include/SDL2 \
     -L/usr/x86_64-w64-mingw32/lib \
     -lmingw32 -lSDL2main -lSDL2 -lSDL2_ttf -lfftw3 \
     -lopengl32 -lole32 -luuid \
     -static-libgcc -static-libstdc++ \
-    -o xyscope.exe \
-    && echo "Build successful: xyscope.exe"
+    -o release/xyscope.exe \
+    && cp /usr/x86_64-w64-mingw32/bin/SDL2.dll release/ \
+    && cp /usr/x86_64-w64-mingw32/bin/SDL2_ttf.dll release/ \
+    && cp /usr/x86_64-w64-mingw32/lib/libfftw3-3.dll release/ \
+    && echo "Build successful: release/xyscope.exe (+DLLs)"
