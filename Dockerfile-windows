@@ -34,6 +34,7 @@ COPY ./docker-entrypoint-windows.sh /usr/local/bin/
 
 RUN    cd /usr/src/xyscope-windows                              \
     && rm -rf release                                           \
+    && mkdir -p release                                         \
   	&& x86_64-w64-mingw32-g++ -O3 -std=c++11 -x c++ xyscope.mm  \
          -I/usr/x86_64-w64-mingw32/include/SDL2                 \
          -L/usr/x86_64-w64-mingw32/lib                          \
