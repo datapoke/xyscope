@@ -13,8 +13,9 @@ RUN apt-get update && \
 COPY ./                     /usr/src/xyscope
 COPY ./docker-entrypoint.sh /usr/local/bin/
 
-RUN    cd /usr/src/xyscope \
-    && rm -rf release/     \
+RUN    cd /usr/src/xyscope     \
+    && rm -rf release/         \
+    && mkdir -p release/linux/ \
     && make
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

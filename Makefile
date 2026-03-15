@@ -7,7 +7,11 @@
 UNAME_S := $(shell uname -s)
 
 SRC = xyscope.mm
-RELEASE_DIR = release
+ifeq ($(UNAME_S),Darwin)
+    RELEASE_DIR = release/macOS
+else
+    RELEASE_DIR = release/linux
+endif
 BINARY = $(RELEASE_DIR)/xyscope
 APP_NAME = $(RELEASE_DIR)/XYScope.app
 APP_CONTENTS = $(APP_NAME)/Contents
@@ -53,7 +57,7 @@ $(BINARY): $(SRC) Makefile
 app: $(BINARY)
 	@echo "Assembling $(APP_NAME) bundle..."
 	@mkdir -p $(APP_MACOS) $(APP_RESOURCES)
-	@cp $(BINARY) $(APP_MACOS)/xyscope-bin
+	@mv $(BINARY) $(APP_MACOS)/xyscope-bin
 	@chmod +x $(APP_MACOS)/xyscope-bin
 	@echo "Creating launcher script..."
 	@printf '#!/bin/bash\n#\n# XYScope.app launcher - opens Terminal and runs setup/visualizer\n#\n\n# Get the Resources directory\nRESOURCES_DIR="$$(cd "$$(dirname "$$0")/../Resources" && pwd)"\n\n# Open Terminal and run the launch script\nosascript <<EOF\ntell application "Terminal"\n    activate\n    do script "cd '"'"'$$RESOURCES_DIR'"'"' && ./XYScope.command"\nend tell\nEOF\n' > $(APP_MACOS)/XYScope
