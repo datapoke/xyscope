@@ -45,8 +45,7 @@ No virtual audio device needed — WASAPI loopback captures system audio directl
 
 **Cross-compile from Linux using Docker:**
 ```bash
-docker build -f Dockerfile.windows -t xyscope-win .
-docker run -v $(pwd):/src xyscope-win
+./build_windows.sh
 ```
 
 This produces `release/xyscope.exe` with all required DLLs in `release/`.
@@ -135,13 +134,14 @@ xyscope/
 ├── Makefile                Build file (macOS/Linux)
 ├── CMakeLists.txt          CMake build (all platforms)
 ├── Dockerfile.windows      Docker cross-compilation for Windows
+├── build_windows.sh        One-step Windows cross-compilation
 ├── release/                Build output (gitignored)
 │   ├── xyscope             Linux/macOS binary
+│   ├── XYScope.app/        macOS app bundle
 │   └── xyscope.exe + DLLs  Windows build
-├── resources/              macOS app bundle resources
-│   ├── Info.plist
-│   └── XYScope.command
-└── XYScope.app/            macOS app (ready to distribute)
+└── resources/              macOS app bundle resources
+    ├── Info.plist
+    └── XYScope.command
 ```
 
 ## Troubleshooting
