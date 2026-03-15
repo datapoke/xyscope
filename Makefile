@@ -9,7 +9,7 @@ UNAME_S := $(shell uname -s)
 SRC = xyscope.mm
 RELEASE_DIR = release
 BINARY = $(RELEASE_DIR)/xyscope
-APP_NAME = XYScope.app
+APP_NAME = $(RELEASE_DIR)/XYScope.app
 APP_CONTENTS = $(APP_NAME)/Contents
 APP_MACOS = $(APP_CONTENTS)/MacOS
 APP_RESOURCES = $(APP_CONTENTS)/Resources
@@ -65,7 +65,6 @@ clean:
 	@echo "Cleaning build artifacts..."
 	rm -f core *.o
 	rm -rf $(RELEASE_DIR)
-	rm -f $(APP_MACOS)/xyscope-bin
 	@echo "✓ Clean complete"
 
 # Install driver to system (macOS only, requires sudo)
