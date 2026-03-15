@@ -26,10 +26,10 @@ RUN wget -q https://fftw.org/pub/fftw/fftw-3.3.5-dll64.zip \
        -l /usr/x86_64-w64-mingw32/lib/libfftw3.a \
     && rm -rf /tmp/fftw fftw-3.3.5-dll64.zip
 
-COPY ./                     /usr/src/xyscope
-COPY ./docker-entrypoint.sh /usr/local/bin/
+COPY ./                             /usr/src/xyscope-windows
+COPY ./docker-entrypoint-windows.sh /usr/local/bin/
 
-RUN    cd /usr/src/xyscope \
+RUN    cd /usr/src/xyscope-windows \
     && mkdir -p release \
     && x86_64-w64-mingw32-g++ -O3 -std=c++11 -x c++ xyscope.mm \
        -I/usr/x86_64-w64-mingw32/include/SDL2 \
@@ -42,4 +42,4 @@ RUN    cd /usr/src/xyscope \
     && cp /usr/x86_64-w64-mingw32/bin/SDL2_ttf.dll release/ \
     && cp /usr/x86_64-w64-mingw32/lib/libfftw3-3.dll release/
 
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint-windows.sh"]
