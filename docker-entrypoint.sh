@@ -4,4 +4,4 @@ if [ -n "$1" ] ; then
 fi
 
 cd /usr/src/xyscope
-cp -v xyscope /usr/src/xyscope.dist/
+cp -rv release /usr/src/xyscope.dist/
