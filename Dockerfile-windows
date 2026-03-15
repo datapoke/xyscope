@@ -39,8 +39,8 @@ RUN    cd /usr/src/xyscope-windows/                                     \
          -I/usr/x86_64-w64-mingw32/include/SDL2                         \
          -L/usr/x86_64-w64-mingw32/lib                                  \
          -lmingw32 -lSDL2 -lSDL2_ttf -lfftw3                            \
-         -lopengl32 -lole32 -luuid -lwinmm                               \
-         -mwindows -static-libgcc -static-libstdc++                      \
+         -lopengl32 -lole32 -luuid -lwinmm                              \
+         -mwindows -static-libgcc -static-libstdc++                     \
          -o release/windows/xyscope.exe                                 \
       && cp /usr/x86_64-w64-mingw32/bin/SDL2.dll release/windows/       \
       && cp /usr/x86_64-w64-mingw32/bin/SDL2_ttf.dll release/windows/   \
