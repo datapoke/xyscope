@@ -209,20 +209,16 @@ static const GUID XYSCOPE_IID_IAudioCaptureClient = {0xC8ADBD64, 0xE71E, 0x48a0,
 /* Default display mode setting */
 #define DEFAULT_DISPLAY_MODE DisplayFrequencyMode
 
-/* Set this to your sample rate */
-#define SAMPLE_RATE 96000
-
-/* Set this to your desired Frames Per Second */
-#define FRAME_RATE 120
+/* Audio sample rate and display frame rate — detected at runtime */
+static int sample_rate = 96000;
+static int frame_rate  = 120;
 
 /* ringbuffer size in seconds; expect memory usage to exceed:
  *
- * (SAMPLE_RATE * BUFFER_SECONDS + SAMPLE_RATE / FRAME_RATE) * sizeof(frame_t)
- *
- * e.g. (44100 * 60 + 44100 / 60) * 8 = 21173880 bytes or 20.2MB
+ * (sample_rate * BUFFER_SECONDS + sample_rate / frame_rate) * sizeof(frame_t)
  *
  * That being said, the custom ringbuffer will round up to the next
- * power of two, in the above case giving us a 32.0MB ringbuffer.
+ * power of two.
  */
 #define BUFFER_SECONDS 60.0
 
@@ -236,14 +232,17 @@ static const GUID XYSCOPE_IID_IAudioCaptureClient = {0xC8ADBD64, 0xE71E, 0x48a0,
 /* End of easily configurable settings */
 
 
-/* This must be at least SAMPLE_RATE / FRAME_RATE to draw every sample */
-#define FRAMES_PER_BUF (SAMPLE_RATE / FRAME_RATE) * DRAW_EACH_FRAME
+/* Derived from sample_rate, frame_rate, DRAW_EACH_FRAME, BUFFER_SECONDS */
+static int frames_per_buf;
+static int draw_frames;
+static int default_rb_size;
 
-/* Connect the end-points with a line */
-#define DRAW_FRAMES (FRAMES_PER_BUF + 1)
+static void compute_derived_rates() {
+    frames_per_buf  = (sample_rate / frame_rate) * DRAW_EACH_FRAME;
+    draw_frames     = frames_per_buf + 1;
+    default_rb_size = (int)(sample_rate * BUFFER_SECONDS + frames_per_buf);
+}
 
-/* ringbuffer size in frames */
-#define DEFAULT_RB_SIZE (SAMPLE_RATE * BUFFER_SECONDS + FRAMES_PER_BUF)
 
 
 /* Audio types */
@@ -523,6 +522,96 @@ static const struct pw_stream_events stream_events = {
 
 #endif
 
+/* Detect the audio device's sample rate */
+#ifdef __APPLE__
+static int detect_sample_rate() {
+    AudioObjectPropertyAddress propertyAddress = {
+        kAudioHardwarePropertyDevices,
+        kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMain
+    };
+    UInt32 dataSize = 0;
+    AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &propertyAddress, 0, NULL, &dataSize);
+    if (dataSize == 0) return 96000;
+
+    UInt32 deviceCount = dataSize / sizeof(AudioDeviceID);
+    AudioDeviceID *devices = (AudioDeviceID*)malloc(dataSize);
+    AudioObjectGetPropertyData(kAudioObjectSystemObject, &propertyAddress, 0, NULL, &dataSize, devices);
+
+    for (UInt32 i = 0; i < deviceCount; i++) {
+        CFStringRef deviceName = NULL;
+        UInt32 nameSize = sizeof(deviceName);
+        AudioObjectPropertyAddress nameAddress = {
+            kAudioDevicePropertyDeviceNameCFString,
+            kAudioObjectPropertyScopeGlobal,
+            kAudioObjectPropertyElementMain
+        };
+        AudioObjectGetPropertyData(devices[i], &nameAddress, 0, NULL, &nameSize, &deviceName);
+        if (deviceName) {
+            char name[256];
+            CFStringGetCString(deviceName, name, sizeof(name), kCFStringEncodingUTF8);
+            if (strstr(name, "BlackHole") != NULL) {
+                CFRelease(deviceName);
+                Float64 nominalRate = 0;
+                UInt32 rateSize = sizeof(nominalRate);
+                AudioObjectPropertyAddress rateAddress = {
+                    kAudioDevicePropertyNominalSampleRate,
+                    kAudioObjectPropertyScopeGlobal,
+                    kAudioObjectPropertyElementMain
+                };
+                if (AudioObjectGetPropertyData(devices[i], &rateAddress, 0, NULL, &rateSize, &nominalRate) == noErr
+                    && nominalRate > 0) {
+                    printf("BlackHole device sample rate: %.0f Hz\n", nominalRate);
+                    free(devices);
+                    return (int)nominalRate;
+                }
+                break;
+            }
+            CFRelease(deviceName);
+        }
+    }
+    free(devices);
+    printf("BlackHole device not found for rate detection, using default\n");
+    return 96000;
+}
+#elif defined(_WIN32)
+static int detect_sample_rate() {
+    int rate = 48000;
+    CoInitializeEx(NULL, COINIT_MULTITHREADED);
+
+    IMMDeviceEnumerator *enumerator = NULL;
+    HRESULT hr = CoCreateInstance(XYSCOPE_CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL,
+                                  XYSCOPE_IID_IMMDeviceEnumerator, (void **)&enumerator);
+    if (SUCCEEDED(hr)) {
+        IMMDevice *device = NULL;
+        hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+        if (SUCCEEDED(hr)) {
+            IAudioClient *client = NULL;
+            hr = device->Activate(XYSCOPE_IID_IAudioClient, CLSCTX_ALL, NULL, (void **)&client);
+            if (SUCCEEDED(hr)) {
+                WAVEFORMATEX *mix_format = NULL;
+                hr = client->GetMixFormat(&mix_format);
+                if (SUCCEEDED(hr)) {
+                    rate = (int)mix_format->nSamplesPerSec;
+                    printf("WASAPI device sample rate: %d Hz\n", rate);
+                    CoTaskMemFree(mix_format);
+                }
+                client->Release();
+            }
+            device->Release();
+        }
+        enumerator->Release();
+    }
+    CoUninitialize();
+    return rate;
+}
+#else
+static int detect_sample_rate() {
+    printf("Using default sample rate (Pipewire will negotiate)\n");
+    return 48000;
+}
+#endif
+
 /* The audioInput object */
 
 class audioInput
@@ -589,7 +678,7 @@ public:
         t_data->thread_id = ai->capture_thread;
         t_data->input_buffer = NULL;
         t_data->frame_size = sizeof(frame_t);
-        t_data->rb_size = DEFAULT_RB_SIZE;
+        t_data->rb_size = default_rb_size;
         t_data->channels = 2;
         t_data->can_process = false;
         t_data->pause_scope = false;
@@ -697,7 +786,7 @@ public:
 
         // macOS needs per-channel buffers for AudioUnitRender
         for (unsigned int i = 0; i < t_data->channels; i++) {
-            t_data->input_buffer[i] = (sample_t *)malloc(FRAMES_PER_BUF * sizeof(sample_t));
+            t_data->input_buffer[i] = (sample_t *)malloc(frames_per_buf * sizeof(sample_t));
         }
 
         // Find BlackHole device
@@ -803,7 +892,7 @@ public:
 
         // Set format to stereo float
         AudioStreamBasicDescription streamFormat;
-        streamFormat.mSampleRate = SAMPLE_RATE;
+        streamFormat.mSampleRate = sample_rate;
         streamFormat.mFormatID = kAudioFormatLinearPCM;
         streamFormat.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked | kAudioFormatFlagIsNonInterleaved;
         streamFormat.mFramesPerPacket = 1;
@@ -974,7 +1063,7 @@ public:
 
         struct spa_audio_info_raw info = {};
         info.format = SPA_AUDIO_FORMAT_F32;
-        info.rate = SAMPLE_RATE;
+        info.rate = sample_rate;
         info.channels = t_data->channels;
         info.position[0] = SPA_AUDIO_CHANNEL_FL;  /* Front Left */
         info.position[1] = SPA_AUDIO_CHANNEL_FR;  /* Front Right */
@@ -1141,20 +1230,11 @@ public:
     scene()
     {
         frame_size           = sizeof(frame_t);
-        bytes_per_buf        = DRAW_FRAMES * frame_size;
-        framebuf             = (frame_t *) malloc(bytes_per_buf);
-        offset               = -FRAMES_PER_BUF;
-        bump                 = -DRAW_FRAMES;
-#ifdef __APPLE__
-        int log2n = 0;
-        int n = DRAW_FRAMES;
-        while (n > 1) { n >>= 1; log2n++; }
-        fft_setup            = vDSP_create_fftsetup(log2n, FFT_RADIX2);
-        fft_out.realp        = (float *) malloc(DRAW_FRAMES/2 * sizeof(float));
-        fft_out.imagp        = (float *) malloc(DRAW_FRAMES/2 * sizeof(float));
-#else
-        fft_out              = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * DRAW_FRAMES);
-#endif
+        framebuf             = NULL;
+        ai                   = NULL;
+        offset               = 0;
+        bump                 = 0;
+        bytes_per_buf        = 0;
         for (int i = 0; i < 2; i++) {
             prefs.dim[i] = prefs.normal_dim[i] = prefs.old_dim[i] = 600;
             prefs.position[i] = 100;
@@ -1197,9 +1277,58 @@ public:
 
         for (int i = 0; i < 4; i++)
             target_side[i] = prefs.side[i];
+    }
 
+    void init()
+    {
+        bytes_per_buf        = draw_frames * frame_size;
+        framebuf             = (frame_t *) malloc(bytes_per_buf);
+        offset               = -frames_per_buf;
+        bump                 = -draw_frames;
+#ifdef __APPLE__
+        int log2n = 0;
+        int n = draw_frames;
+        while (n > 1) { n >>= 1; log2n++; }
+        fft_setup            = vDSP_create_fftsetup(log2n, FFT_RADIX2);
+        fft_out.realp        = (float *) malloc(draw_frames/2 * sizeof(float));
+        fft_out.imagp        = (float *) malloc(draw_frames/2 * sizeof(float));
+#else
+        fft_out              = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * draw_frames);
+#endif
         ai = new audioInput();
     }
+
+    void reinit_frame_rate(int new_rate)
+    {
+        frame_rate = new_rate;
+        compute_derived_rates();
+
+        bytes_per_buf = draw_frames * frame_size;
+        free(framebuf);
+        framebuf = (frame_t *) malloc(bytes_per_buf);
+
+#ifdef __APPLE__
+        vDSP_destroy_fftsetup(fft_setup);
+        free(fft_out.realp);
+        free(fft_out.imagp);
+        int log2n = 0;
+        int n = draw_frames;
+        while (n > 1) { n >>= 1; log2n++; }
+        fft_setup     = vDSP_create_fftsetup(log2n, FFT_RADIX2);
+        fft_out.realp = (float *) malloc(draw_frames/2 * sizeof(float));
+        fft_out.imagp = (float *) malloc(draw_frames/2 * sizeof(float));
+#else
+        fftw_free(fft_out);
+        fft_out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * draw_frames);
+#endif
+
+        offset = -frames_per_buf;
+        bump   = -draw_frames;
+
+        printf("Display changed: frame rate now %d fps, frames_per_buf: %d\n",
+               frame_rate, frames_per_buf);
+    }
+
     ~scene()
     {
         int FH;
@@ -1229,8 +1358,8 @@ public:
         signed int distance = 0;
 
         /* FFT stuff */
-        unsigned int window_size  = DRAW_FRAMES / 100;
-        unsigned int overlap_size = DRAW_FRAMES / 200;
+        unsigned int window_size  = draw_frames / 100;
+        unsigned int overlap_size = draw_frames / 200;
         double max_magnitude = 0.0;
         double* avg_magnitudes;
         double** stft_results;
@@ -1248,7 +1377,7 @@ public:
             // Use timed wait to avoid hanging forever if audio fails
             struct timespec ts;
             clock_gettime(CLOCK_REALTIME, &ts);
-            ts.tv_nsec += 1000000000 / FRAME_RATE;
+            ts.tv_nsec += 1000000000 / frame_rate;
             if (ts.tv_nsec >= 1000000000) {
                 ts.tv_sec += 1;
                 ts.tv_nsec -= 1000000000;
@@ -1260,7 +1389,7 @@ public:
         /* Read data from the ring buffer */
         if (t_data->pause_scope) {
             distance = bump * frame_size;
-            bump     = -DRAW_FRAMES;
+            bump     = -draw_frames;
         }
         else {
             bytes_ready = ringbuffer_read_space(t_data->ringbuffer);
@@ -1711,7 +1840,7 @@ public:
             last_frame_time = this_frame_time;
             snprintf(fps_string, sizeof(fps_string), "%.1f fps", fps);
             drawString(20.0, 20.0, fps_string);
-            snprintf(vps_string, sizeof(vps_string), "%d vps", vertex_count * FRAME_RATE);
+            snprintf(vps_string, sizeof(vps_string), "%d vps", vertex_count * frame_rate);
             double vps_width = getTextWidth(vps_string);
             drawString(-(vps_width + 240), -60.0, vps_string);
         }
@@ -1758,8 +1887,8 @@ public:
                 text_timer[CounterTimer].show = true;
             if (text_timer[CounterTimer].show)
                 snprintf(text_timer[CounterTimer].string, sizeof(text_timer[CounterTimer].string), "%7.2f sec",
-                         (double) offset / (double) SAMPLE_RATE
-                         + (double) FRAMES_PER_BUF / (double) SAMPLE_RATE);
+                         (double) offset / (double) sample_rate
+                         + (double) frames_per_buf / (double) sample_rate);
         }
 
         for (unsigned int i = 0; i < NUM_TEXT_TIMERS; i++) {
@@ -1969,8 +2098,8 @@ public:
             text_timer[PausedTimer].show  = false;
         }
         else {
-            offset = -FRAMES_PER_BUF;
-            bump   = -DRAW_FRAMES;
+            offset = -frames_per_buf;
+            bump   = -draw_frames;
             showCounter(TIMED);
             showPaused(TIMED);
         }
@@ -2039,9 +2168,9 @@ public:
     {
         thread_data_t *t_data = ai->getThreadData();
         if (t_data->pause_scope) {
-            if ((offset - FRAMES_PER_BUF * nbufs) >= -DEFAULT_RB_SIZE) {
-                offset -= FRAMES_PER_BUF * nbufs;
-                bump   -= FRAMES_PER_BUF * nbufs;
+            if ((offset - frames_per_buf * nbufs) >= -default_rb_size) {
+                offset -= frames_per_buf * nbufs;
+                bump   -= frames_per_buf * nbufs;
             }
             showCounter(TIMED);
         }
@@ -2051,9 +2180,9 @@ public:
     {
         thread_data_t *t_data = ai->getThreadData();
         if (t_data->pause_scope) {
-            if (offset < -FRAMES_PER_BUF * nbufs) {
-                offset += FRAMES_PER_BUF * nbufs;
-                bump   += FRAMES_PER_BUF * nbufs;
+            if (offset < -frames_per_buf * nbufs) {
+                offset += frames_per_buf * nbufs;
+                bump   += frames_per_buf * nbufs;
             }
             showCounter(TIMED);
         }
@@ -2284,11 +2413,11 @@ void idle(void)
     }
 
     if (RESPONSIBLE_FOR_FRAME_RATE) {
-        /* limit our framerate to FRAME_RATE (e.g. 60) frames per second */
+        /* limit our framerate to frame_rate (e.g. 60) frames per second */
         elapsed_time = timeDiff(scn.reset_frame_time, scn.last_frame_time);
-        if (elapsed_time < (scn.frame_count / (double) FRAME_RATE)) {
+        if (elapsed_time < (scn.frame_count / (double) frame_rate)) {
             double remainder = (scn.frame_count
-                                / (double) FRAME_RATE - elapsed_time);
+                                / (double) frame_rate - elapsed_time);
             usleep((useconds_t)(1000000.0 * remainder));
         }
     }
@@ -2363,10 +2492,10 @@ void keyboard(unsigned char key, int xPos, int yPos)
             scn.fastForward(1);
             break;
         case '<':
-            scn.rewind(FRAME_RATE / DRAW_EACH_FRAME);
+            scn.rewind(frame_rate / DRAW_EACH_FRAME);
             break;
         case '>':
-            scn.fastForward(FRAME_RATE / DRAW_EACH_FRAME);
+            scn.fastForward(frame_rate / DRAW_EACH_FRAME);
             break;
         case '_':
             scn.setColorRate(scn.getColorRate() - 0.01);
@@ -2574,6 +2703,23 @@ int main(int argc, char * const argv[])
         SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
     }
 
+    // Detect rates and initialize audio
+    {
+        SDL_DisplayMode mode;
+        int display_index = SDL_GetWindowDisplayIndex(window);
+        if (SDL_GetCurrentDisplayMode(display_index, &mode) == 0 && mode.refresh_rate > 0) {
+            frame_rate = mode.refresh_rate;
+        } else {
+            frame_rate = 60;
+        }
+    }
+    sample_rate = detect_sample_rate();
+    compute_derived_rates();
+    printf("Using sample rate: %d Hz, frame rate: %d fps\n", sample_rate, frame_rate);
+    printf("  frames_per_buf: %d, draw_frames: %d, rb_size: %d\n",
+           frames_per_buf, draw_frames, default_rb_size);
+    scn.init();
+
     scn.showDisplayMode(NOT_TIMED);
     scn.showLineWidth(NOT_TIMED);
     scn.showColorRange(NOT_TIMED);
@@ -2652,6 +2798,15 @@ int main(int argc, char * const argv[])
             } else if (event.type == SDL_WINDOWEVENT) {
                 if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
                     reshape(event.window.data1, event.window.data2);
+                }
+                else if (event.window.event == SDL_WINDOWEVENT_DISPLAY_CHANGED) {
+                    SDL_DisplayMode mode;
+                    int di = SDL_GetWindowDisplayIndex(window);
+                    if (SDL_GetCurrentDisplayMode(di, &mode) == 0
+                        && mode.refresh_rate > 0
+                        && mode.refresh_rate != frame_rate) {
+                        scn.reinit_frame_rate(mode.refresh_rate);
+                    }
                 }
             } else if (event.type == SDL_MOUSEMOTION) {
                 if (event.motion.state) {
