@@ -1,6 +1,5 @@
 #
-# XYScope Master Makefile
-# Builds xyscope binary and audio driver, assembles .app bundle
+# XYScope Makefile
 #
 
 # Detect operating system
@@ -17,8 +16,6 @@ APP_NAME = $(RELEASE_DIR)/XYScope.app
 APP_CONTENTS = $(APP_NAME)/Contents
 APP_MACOS = $(APP_CONTENTS)/MacOS
 APP_RESOURCES = $(APP_CONTENTS)/Resources
-DRIVER_SRC = driver
-DRIVER_BUNDLE = XYScope.driver
 RESOURCES_SRC = resources
 
 ifeq ($(UNAME_S),Darwin)
@@ -46,13 +43,10 @@ endif
 $(BINARY): $(SRC) Makefile
 	@mkdir -p $(RELEASE_DIR)
 	@echo "Building xyscope binary..."
-	$(CXX) $(CXX_FLAGS) $(SRC) $(LD_FLAGS) $(LD_LIBS) -o $(BINARY)
+	$(CXX) $(CXX_FLAGS) $(SRC) $(LD_LIBS) -o $(BINARY)
 	@echo "✓ xyscope binary built → $(BINARY)"
 
-# BlackHole audio driver is now installed via Homebrew (blackhole-2ch)
-# No longer building custom driver
-
-# Assemble .app bundle
+# Assemble .app bundle (macOS only)
 .PHONY: app
 app: $(BINARY)
 	@echo "Assembling $(APP_NAME) bundle..."
@@ -75,32 +69,6 @@ clean:
 	rm -rf $(RELEASE_DIR)
 	@echo "✓ Clean complete"
 
-# Install driver to system (macOS only, requires sudo)
-.PHONY: install-driver
-install-driver: driver
-ifeq ($(UNAME_S),Darwin)
-	@echo "Installing driver to /Library/Audio/Plug-Ins/HAL/..."
-	sudo cp -R $(DRIVER_BUNDLE) /Library/Audio/Plug-Ins/HAL/
-	@echo "Restarting CoreAudio..."
-	sudo killall -9 coreaudiod
-	@echo "✓ Driver installed"
-else
-	@echo "⚠ Driver installation is macOS-only"
-endif
-
-# Uninstall driver from system (macOS only, requires sudo)
-.PHONY: uninstall-driver
-uninstall-driver:
-ifeq ($(UNAME_S),Darwin)
-	@echo "Uninstalling XYScope.driver..."
-	sudo rm -rf /Library/Audio/Plug-Ins/HAL/XYScope.driver
-	@echo "Restarting CoreAudio..."
-	sudo killall -9 coreaudiod
-	@echo "✓ Driver uninstalled"
-else
-	@echo "⚠ Driver uninstall is macOS-only"
-endif
-
 # Full rebuild
 rebuild: clean all
 
@@ -111,14 +79,10 @@ help:
 	@echo "===================="
 	@echo ""
 	@echo "Targets:"
-	@echo "  make              - Build xyscope binary, driver, and assemble .app"
-	@echo "  make xyscope      - Build just the xyscope binary"
-	@echo "  make driver       - Build just the audio driver (macOS only)"
-	@echo "  make app          - Assemble .app bundle"
-	@echo "  make clean        - Remove build artifacts"
-	@echo "  make rebuild      - Clean and rebuild everything"
-	@echo "  make install-driver   - Install driver to system (requires sudo, macOS only)"
-	@echo "  make uninstall-driver - Uninstall driver from system (requires sudo, macOS only)"
+	@echo "  make          - Build binary (+ .app bundle on macOS)"
+	@echo "  make app      - Assemble .app bundle (macOS only)"
+	@echo "  make clean    - Remove build artifacts"
+	@echo "  make rebuild  - Clean and rebuild everything"
 	@echo ""
 
 .PHONY: all clean rebuild help

@@ -1,3 +1,3 @@
 #!/bin/sh
-docker build -t xyscope .
-docker run -it --rm -v $(pwd):/usr/src/xyscope.dist xyscope
+docker build --platform linux/amd64 -t xyscope .
+docker run --platform linux/amd64 -it --rm -v $(pwd):/usr/src/xyscope.dist xyscope
