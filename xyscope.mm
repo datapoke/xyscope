@@ -2834,7 +2834,9 @@ int main(int argc, char * const argv[])
     printf("Using sample rate: %d Hz, frame rate: %d fps\n", sample_rate, frame_rate);
     printf("  frames_per_buf: %d, draw_frames: %d, rb_size: %d\n",
            frames_per_buf, draw_frames, default_rb_size);
+    printf("Calling scn.init()...\n");
     scn.init();
+    printf("scn.init() complete, setting up display...\n");
 
     scn.showAutoScale(NOT_TIMED);
     scn.showSplines(NOT_TIMED);
