@@ -1483,16 +1483,17 @@ public:
             distance = bump * frame_size;
             bump     = -draw_frames;
         }
-        else {
+        else if (t_data->ringbuffer) {
             bytes_ready = ringbuffer_read_space(t_data->ringbuffer);
             if (bytes_ready != bytes_per_buf)
                 distance = bytes_ready - bytes_per_buf;
         }
-        if (distance != 0)
+        if (distance != 0 && t_data->ringbuffer)
             ringbuffer_read_advance(t_data->ringbuffer, distance);
-        bytes_read = ringbuffer_read(t_data->ringbuffer,
-                                      (char *) framebuf,
-                                      bytes_per_buf);
+        if (t_data->ringbuffer)
+            bytes_read = ringbuffer_read(t_data->ringbuffer,
+                                          (char *) framebuf,
+                                          bytes_per_buf);
 
         if (! t_data->pause_scope)
             pthread_mutex_unlock(&t_data->ringbuffer_lock);
@@ -2733,15 +2734,6 @@ int main(int argc, char * const argv[])
     }
 
     // Validate loaded preferences
-    printf("Loaded prefs: dim=%dx%d normal_dim=%dx%d old_dim=%dx%d pos=%d,%d\n",
-           scn.prefs.dim[0], scn.prefs.dim[1],
-           scn.prefs.normal_dim[0], scn.prefs.normal_dim[1],
-           scn.prefs.old_dim[0], scn.prefs.old_dim[1],
-           scn.prefs.position[0], scn.prefs.position[1]);
-    printf("  fullscreen=%d scale=%.5f spline=%u color=%u display=%u line=%u stats=%u\n",
-           scn.prefs.is_full_screen, scn.prefs.scale_factor,
-           scn.prefs.spline_steps, scn.prefs.color_mode,
-           scn.prefs.display_mode, scn.prefs.line_width, scn.prefs.show_stats);
     if (scn.prefs.normal_dim[0] < 1) scn.prefs.normal_dim[0] = 600;
     if (scn.prefs.normal_dim[1] < 1) scn.prefs.normal_dim[1] = 600;
     if (scn.prefs.display_mode >= NUM_DISPLAY_MODES)
@@ -2834,9 +2826,7 @@ int main(int argc, char * const argv[])
     printf("Using sample rate: %d Hz, frame rate: %d fps\n", sample_rate, frame_rate);
     printf("  frames_per_buf: %d, draw_frames: %d, rb_size: %d\n",
            frames_per_buf, draw_frames, default_rb_size);
-    printf("Calling scn.init()...\n");
     scn.init();
-    printf("scn.init() complete, setting up display...\n");
 
     scn.showAutoScale(NOT_TIMED);
     scn.showSplines(NOT_TIMED);
