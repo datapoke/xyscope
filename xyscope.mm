@@ -1118,7 +1118,7 @@ public:
 
         struct spa_audio_info_raw info = {};
         info.format = SPA_AUDIO_FORMAT_F32;
-        info.rate = sample_rate;
+        info.rate = 0;  /* Let Pipewire negotiate native rate */
         info.channels = t_data->channels;
         info.position[0] = SPA_AUDIO_CHANNEL_FL;  /* Front Left */
         info.position[1] = SPA_AUDIO_CHANNEL_FR;  /* Front Right */
@@ -2733,6 +2733,15 @@ int main(int argc, char * const argv[])
     }
 
     // Validate loaded preferences
+    printf("Loaded prefs: dim=%dx%d normal_dim=%dx%d old_dim=%dx%d pos=%d,%d\n",
+           scn.prefs.dim[0], scn.prefs.dim[1],
+           scn.prefs.normal_dim[0], scn.prefs.normal_dim[1],
+           scn.prefs.old_dim[0], scn.prefs.old_dim[1],
+           scn.prefs.position[0], scn.prefs.position[1]);
+    printf("  fullscreen=%d scale=%.5f spline=%u color=%u display=%u line=%u stats=%u\n",
+           scn.prefs.is_full_screen, scn.prefs.scale_factor,
+           scn.prefs.spline_steps, scn.prefs.color_mode,
+           scn.prefs.display_mode, scn.prefs.line_width, scn.prefs.show_stats);
     if (scn.prefs.normal_dim[0] < 1) scn.prefs.normal_dim[0] = 600;
     if (scn.prefs.normal_dim[1] < 1) scn.prefs.normal_dim[1] = 600;
     if (scn.prefs.display_mode >= NUM_DISPLAY_MODES)
