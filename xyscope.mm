@@ -1434,7 +1434,7 @@ public:
     void drawPlot()
     {
         thread_data_t *t_data = ai->getThreadData();
-        size_t bytes_ready, bytes_read;
+        size_t bytes_ready = 0, bytes_read = 0;
         double h   = -1.0;
         double s   = 1.0;
         double v   = 1.0;
