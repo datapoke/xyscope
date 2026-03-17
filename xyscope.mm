@@ -260,6 +260,7 @@ typedef struct _thread_data {
     pthread_t thread_id;
 #ifdef __APPLE__
     AudioComponentInstance audio_unit;
+    AudioDeviceID audio_device;
 #elif defined(_WIN32)
     void *audio_client;       /* IAudioClient* */
     void *capture_client;     /* IAudioCaptureClient* */
@@ -277,6 +278,7 @@ typedef struct _thread_data {
     unsigned int channels;
     volatile bool can_process;
     volatile bool pause_scope;
+    volatile int negotiated_sample_rate;
     timeval last_write;
 } thread_data_t;
 
@@ -473,6 +475,25 @@ static OSStatus audioInputCallback(void *inRefCon,
     signal_data_ready(t_data);
     return noErr;
 }
+
+static OSStatus onSampleRateChanged(AudioObjectID inObjectID,
+                                    UInt32 inNumberAddresses,
+                                    const AudioObjectPropertyAddress inAddresses[],
+                                    void *inClientData) {
+    thread_data_t *t_data = (thread_data_t *)inClientData;
+    Float64 newRate = 0;
+    UInt32 rateSize = sizeof(newRate);
+    AudioObjectPropertyAddress rateAddress = {
+        kAudioDevicePropertyNominalSampleRate,
+        kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMain
+    };
+    if (AudioObjectGetPropertyData(inObjectID, &rateAddress, 0, NULL,
+                                   &rateSize, &newRate) == noErr && newRate > 0) {
+        t_data->negotiated_sample_rate = (int)newRate;
+    }
+    return noErr;
+}
 #elif !defined(_WIN32)
 
 /* Pipewire stream callback */
@@ -515,8 +536,21 @@ static void on_process(void *userdata)
     pw_stream_queue_buffer(t_data->stream, b);
 }
 
+static void on_param_changed(void *userdata, uint32_t id, const struct spa_pod *param)
+{
+    thread_data_t *t_data = (thread_data_t *)userdata;
+    if (param == NULL || id != SPA_PARAM_Format)
+        return;
+
+    struct spa_audio_info_raw info;
+    if (spa_format_audio_raw_parse(param, &info) >= 0 && info.rate > 0) {
+        t_data->negotiated_sample_rate = info.rate;
+    }
+}
+
 static const struct pw_stream_events stream_events = {
     PW_VERSION_STREAM_EVENTS,
+    .param_changed = on_param_changed,
     .process = on_process,
 };
 
@@ -639,6 +673,15 @@ public:
     {
         thread_data_t *t_data = getThreadData();
 #ifdef __APPLE__
+        if (t_data->audio_device) {
+            AudioObjectPropertyAddress rateAddress = {
+                kAudioDevicePropertyNominalSampleRate,
+                kAudioObjectPropertyScopeGlobal,
+                kAudioObjectPropertyElementMain
+            };
+            AudioObjectRemovePropertyListener(t_data->audio_device, &rateAddress,
+                                              onSampleRateChanged, t_data);
+        }
         if (t_data->audio_unit) {
             AudioOutputUnitStop(t_data->audio_unit);
             AudioUnitUninitialize(t_data->audio_unit);
@@ -830,6 +873,18 @@ public:
             fprintf(stderr, "Error: BlackHole device not found!\n");
             fprintf(stderr, "Make sure BlackHole is installed (brew install blackhole-2ch) and Multi-Output Device is configured.\n");
             exit(1);
+        }
+
+        // Store device ID and listen for sample rate changes
+        t_data->audio_device = blackholeDevice;
+        {
+            AudioObjectPropertyAddress rateAddress = {
+                kAudioDevicePropertyNominalSampleRate,
+                kAudioObjectPropertyScopeGlobal,
+                kAudioObjectPropertyElementMain
+            };
+            AudioObjectAddPropertyListener(blackholeDevice, &rateAddress,
+                                           onSampleRateChanged, t_data);
         }
 
         // Create Audio Unit for HAL Output (configured for input)
@@ -1179,8 +1234,8 @@ public:
     bool show_help;
     bool show_mouse;
 
-    #define NUM_TEXT_TIMERS 10
-    #define NUM_AUTO_TEXT_TIMERS 7
+    #define NUM_TEXT_TIMERS 12
+    #define NUM_AUTO_TEXT_TIMERS 9
     typedef struct _text_timer_t {
         bool show;
         timeval time;
@@ -1192,15 +1247,17 @@ public:
     enum {
         AutoScaleTimer   = 0,
         SplineTimer      = 1,
-        ColorModeTimer   = 2, 
-        ColorRangeTimer  = 3,
-        ColorRateTimer   = 4,
-        DisplayModeTimer = 5,
-        LineWidthTimer   = 6,
+        LineWidthTimer   = 2,
+        ColorModeTimer   = 3, 
+        DisplayModeTimer = 4,
+        ColorRangeTimer  = 5,
+        ColorRateTimer   = 6,
+        SampleRateTimer  = 7,
+        FrameRateTimer   = 8,
         /* End of text timers automatically included in stats display */
-        PausedTimer      = 7,
-        ScaleTimer       = 8,
-        CounterTimer     = 9
+        PausedTimer      = 9,
+        ScaleTimer       = 10,
+        CounterTimer     = 11
     } text_timer_handles;
     text_timer_t text_timer[NUM_TEXT_TIMERS];
     timeval show_intro_time;
@@ -1211,7 +1268,8 @@ public:
     #define NUM_COLOR_MODES 2
     enum {
         ColorStandardMode = 0,
-        ColorDeltaMode    = 1
+        ColorDeltaMode    = 1,
+        DefaultColorMode  = DEFAULT_COLOR_MODE
     } color_mode_handles;
     const char *color_mode_names[NUM_COLOR_MODES] = {"Standard", "Delta"};
 
@@ -1221,7 +1279,8 @@ public:
         DisplayRadiusMode    = 1,
         DisplayLengthMode    = 2,
         DisplayFrequencyMode = 3,
-        DisplayTimeMode      = 4
+        DisplayTimeMode      = 4,
+        DefaultDisplayMode   = DEFAULT_DISPLAY_MODE
     } display_mode_handles;
     const char *display_mode_names[NUM_DISPLAY_MODES] = {
         "Standard", "Radius", "Length", "Frequency", "Time"
@@ -1327,12 +1386,45 @@ public:
 
         printf("Display changed: frame rate now %d fps, frames_per_buf: %d\n",
                frame_rate, frames_per_buf);
+        showFrameRate(TIMED);
+    }
+
+    void reinit_sample_rate(int new_rate)
+    {
+        sample_rate = new_rate;
+        compute_derived_rates();
+
+        bytes_per_buf = draw_frames * frame_size;
+        free(framebuf);
+        framebuf = (frame_t *) malloc(bytes_per_buf);
+
+#ifdef __APPLE__
+        vDSP_destroy_fftsetup(fft_setup);
+        free(fft_out.realp);
+        free(fft_out.imagp);
+        int log2n = 0;
+        int n = draw_frames;
+        while (n > 1) { n >>= 1; log2n++; }
+        fft_setup     = vDSP_create_fftsetup(log2n, FFT_RADIX2);
+        fft_out.realp = (float *) malloc(draw_frames/2 * sizeof(float));
+        fft_out.imagp = (float *) malloc(draw_frames/2 * sizeof(float));
+#else
+        fftw_free(fft_out);
+        fft_out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * draw_frames);
+#endif
+
+        offset = -frames_per_buf;
+        bump   = -draw_frames;
+
+        printf("Sample rate changed: %d Hz, frames_per_buf: %d\n",
+               sample_rate, frames_per_buf);
+        showSampleRate(TIMED);
     }
 
     ~scene()
     {
         int FH;
-        if ((FH = open(DEFAULT_PREF_FILE, O_CREAT | O_WRONLY, 00660))) {
+        if ((FH = open(DEFAULT_PREF_FILE, O_CREAT | O_WRONLY | O_TRUNC, 00660)) != -1) {
             write(FH, (void *) &prefs, sizeof(preferences_t));
             close(FH);
         }
@@ -1927,6 +2019,8 @@ public:
     void showDisplayMode(bool t) { showTimedText(DisplayModeTimer, true, t, "Display mode: %s", display_mode_names[prefs.display_mode]); }
     void showColorRange(bool t) { showTimedText(ColorRangeTimer, true, t, "Color range: %.2f", prefs.color_range); }
     void showColorRate(bool t) { showTimedText(ColorRateTimer, true, t, "Color rate: %.2f", prefs.color_rate); }
+    void showSampleRate(bool t) { showTimedText(SampleRateTimer, true, t, "Sample rate: %d Hz", sample_rate); }
+    void showFrameRate(bool t) { showTimedText(FrameRateTimer, true, t, "Frame rate: %d fps", frame_rate); }
     void showPaused(bool t) { showTimedText(PausedTimer, true, t, "Paused"); }
 
     void showScale(bool timed)
@@ -2628,10 +2722,23 @@ int main(int argc, char * const argv[])
     int FH;
 
     // Load preferences
-    if ((FH = open(DEFAULT_PREF_FILE, O_RDONLY))) {
-        read(FH, (void *) &scn.prefs, sizeof(preferences_t));
+    if ((FH = open(DEFAULT_PREF_FILE, O_RDONLY)) != -1) {
+        if (read(FH, (void *) &scn.prefs, sizeof(preferences_t))
+            != sizeof(preferences_t))
+        {
+            fprintf(stderr, "Warning: pref file size mismatch, using defaults\n");
+            scn = scene();
+        }
         close(FH);
     }
+
+    // Validate loaded preferences
+    if (scn.prefs.normal_dim[0] < 1) scn.prefs.normal_dim[0] = 600;
+    if (scn.prefs.normal_dim[1] < 1) scn.prefs.normal_dim[1] = 600;
+    if (scn.prefs.display_mode >= NUM_DISPLAY_MODES)
+        scn.prefs.display_mode = scene::DefaultDisplayMode;
+    if (scn.prefs.color_mode >= NUM_COLOR_MODES)
+        scn.prefs.color_mode = scene::DefaultColorMode;
 
     // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -2720,13 +2827,15 @@ int main(int argc, char * const argv[])
            frames_per_buf, draw_frames, default_rb_size);
     scn.init();
 
-    scn.showDisplayMode(NOT_TIMED);
-    scn.showLineWidth(NOT_TIMED);
-    scn.showColorRange(NOT_TIMED);
-    scn.showColorRate(NOT_TIMED);
-    scn.showColorMode(NOT_TIMED);
     scn.showAutoScale(NOT_TIMED);
     scn.showSplines(NOT_TIMED);
+    scn.showLineWidth(NOT_TIMED);
+    scn.showColorMode(NOT_TIMED);
+    scn.showDisplayMode(NOT_TIMED);
+    scn.showColorRange(NOT_TIMED);
+    scn.showColorRate(NOT_TIMED);
+    scn.showSampleRate(NOT_TIMED);
+    scn.showFrameRate(NOT_TIMED);
     scn.showScale(NOT_TIMED);
 
     // Main event loop
@@ -2824,6 +2933,13 @@ int main(int argc, char * const argv[])
                     scn.zoomOut();
                 }
             }
+        }
+
+        // Check for sample rate change (Pipewire negotiation)
+        {
+            int negotiated = scn.ai->getThreadData()->negotiated_sample_rate;
+            if (negotiated > 0 && negotiated != sample_rate)
+                scn.reinit_sample_rate(negotiated);
         }
 
         // Idle processing
