@@ -201,7 +201,7 @@ static const GUID XYSCOPE_IID_IAudioCaptureClient = {0xC8ADBD64, 0xE71E, 0x48a0,
 #define DEFAULT_COLOR_MODE ColorDeltaMode
 
 /* Default color range setting */
-#define DEFAULT_COLOR_RANGE 8.0
+#define DEFAULT_COLOR_RANGE 1.0
 
 /* Default color rate setting */
 #define DEFAULT_COLOR_RATE 0.0
@@ -1657,7 +1657,7 @@ public:
                         h = prefs.hue + 360.0;
                     break;
                 case DisplayFrequencyMode:
-                    h = map(avg_magnitudes[i / (window_size - overlap_size)] * prefs.color_range,
+                    h = map(avg_magnitudes[i / (window_size - overlap_size)] * prefs.color_range * window_size / 2,
                             0, max_magnitude, 0, 360) + prefs.hue;
                     break;
                 case DisplayTimeMode:
