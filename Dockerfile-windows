@@ -46,7 +46,7 @@ RUN    cd /usr/src/xyscope-windows/                                     \
          -I/usr/x86_64-w64-mingw32/include/SDL2                         \
          -L/usr/x86_64-w64-mingw32/lib                                  \
          -lmingw32 -lSDL2 -lm                                           \
-         -mwindows -static-libgcc                                       \
+         -mconsole -static-libgcc                                       \
          -o release/windows/xyscope-calibrate.exe                       \
       && cp /usr/x86_64-w64-mingw32/bin/SDL2.dll release/windows/       \
       && cp /usr/x86_64-w64-mingw32/bin/SDL2_ttf.dll release/windows/   \
