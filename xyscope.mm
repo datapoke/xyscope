@@ -2669,16 +2669,16 @@ void keyboard(unsigned char key, int xPos, int yPos)
                 scn.show_help = ! scn.show_help;
             break;
         case 'j':
-            scn.setDelay(scn.getDelay() + 1.0);
-            break;
-        case 'J':
-            scn.setDelay(scn.getDelay() + 0.01);
-            break;
-        case 'k':
             scn.setDelay(scn.getDelay() - 1.0);
             break;
-        case 'K':
+        case 'J':
             scn.setDelay(scn.getDelay() - 0.01);
+            break;
+        case 'k':
+            scn.setDelay(scn.getDelay() + 1.0);
+            break;
+        case 'K':
+            scn.setDelay(scn.getDelay() + 0.01);
             break;
         case 'r':
             scn.recenter();
