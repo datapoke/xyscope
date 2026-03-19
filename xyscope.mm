@@ -1875,7 +1875,7 @@ public:
         { "d and D",           "Display mode" },
         { "f",                 "Enter/Exit full screen mode" },
         { "h",                 "Show/Hide help" },
-        { "l and L",           "Adjust display delay" },
+        { "j/k and J/K",       "Adjust display delay" },
         { "r",                 "Recenter" },
         { "s and S",           "Show/Hide statistics" },
         { "w and W",           "Adjust line width" }
@@ -2028,7 +2028,7 @@ public:
     void showColorRate(bool t) { showTimedText(ColorRateTimer, true, t, "Color rate: %.2f", prefs.color_rate); }
     void showSampleRate(bool t) { showTimedText(SampleRateTimer, true, t, "Sample rate: %d Hz", sample_rate); }
     void showFrameRate(bool t) { showTimedText(FrameRateTimer, true, t, "Frame rate: %d fps", frame_rate); }
-    void showDelay(bool t) { showTimedText(DelayTimer, true, t, "Delay: %.1f ms", prefs.delay); }
+    void showDelay(bool t) { showTimedText(DelayTimer, true, t, "Delay: %.2f ms", prefs.delay); }
     void showPaused(bool t) { showTimedText(PausedTimer, true, t, "Paused"); }
 
     void showScale(bool timed)
@@ -2668,11 +2668,17 @@ void keyboard(unsigned char key, int xPos, int yPos)
             else
                 scn.show_help = ! scn.show_help;
             break;
-        case 'l':
+        case 'j':
             scn.setDelay(scn.getDelay() + 1.0);
             break;
-        case 'L':
+        case 'J':
+            scn.setDelay(scn.getDelay() + 0.01);
+            break;
+        case 'k':
             scn.setDelay(scn.getDelay() - 1.0);
+            break;
+        case 'K':
+            scn.setDelay(scn.getDelay() - 0.01);
             break;
         case 'r':
             scn.recenter();

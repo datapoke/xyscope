@@ -198,7 +198,7 @@ int main(int argc, char *argv[])
     if (delay_ms < 0.0) {
         printf("No impulse detected. Try increasing speaker volume.\n");
     } else {
-        printf("Detected at %.1f ms\n", delay_ms);
+        printf("Detected at %.2f ms\n", delay_ms);
         if (update_prefs(delay_ms) == 0)
             printf("Updated %s\n", PREF_FILE);
     }
