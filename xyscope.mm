@@ -2739,6 +2739,13 @@ SDL_Window *window = NULL;
 SDL_GLContext gl_context = NULL;
 TTF_Font *font = NULL;
 
+#ifdef _WIN32
+int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int show)
+{
+    return main(__argc, __argv);
+}
+#endif
+
 int main(int argc, char * const argv[])
 {
 #ifdef _WIN32

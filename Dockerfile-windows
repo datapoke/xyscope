@@ -38,12 +38,10 @@ RUN    cd /usr/src/xyscope-windows/                                     \
   	&& x86_64-w64-mingw32-g++ -O3 -std=c++11 -x c++ xyscope.mm          \
          -I/usr/x86_64-w64-mingw32/include/SDL2                         \
          -L/usr/x86_64-w64-mingw32/lib                                  \
-         -lSDL2 -lSDL2_ttf -lfftw3                                      \
+         -lmingw32 -lSDL2 -lSDL2_ttf -lfftw3                            \
          -lopengl32 -lole32 -luuid -lwinmm                              \
-         -mconsole -static-libgcc -static-libstdc++                     \
+         -mwindows -static-libgcc -static-libstdc++                     \
          -o release/windows/xyscope.exe                                 \
-      && x86_64-w64-mingw32-objcopy --subsystem=windows                 \
-         release/windows/xyscope.exe                                    \
       && x86_64-w64-mingw32-gcc -O3 xyscope-calibrate.c                 \
          -I/usr/x86_64-w64-mingw32/include/SDL2                         \
          -L/usr/x86_64-w64-mingw32/lib                                  \
