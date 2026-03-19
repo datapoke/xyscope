@@ -2742,7 +2742,7 @@ TTF_Font *font = NULL;
 int main(int argc, char * const argv[]);
 
 #ifdef _WIN32
-int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int show)
+extern "C" int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int show)
 {
     return main(__argc, __argv);
 }
