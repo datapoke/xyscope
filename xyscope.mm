@@ -29,8 +29,8 @@
 #define _WIN32_WINNT 0x0600
 #endif
 #define INITGUID
-#define SDL_MAIN_HANDLED
 #endif
+#define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 
@@ -2739,16 +2739,7 @@ SDL_Window *window = NULL;
 SDL_GLContext gl_context = NULL;
 TTF_Font *font = NULL;
 
-int main(int argc, char * const argv[]);
-
-#ifdef _WIN32
-extern "C" int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int show)
-{
-    return main(__argc, __argv);
-}
-#endif
-
-int main(int argc, char * const argv[])
+int main(int argc, char *argv[])
 {
 #ifdef _WIN32
     SDL_SetMainReady();

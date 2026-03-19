@@ -14,6 +14,15 @@
 #include <math.h>
 #include <SDL2/SDL.h>
 
+#ifdef _WIN32
+#include <windows.h>
+int main(int argc, char *argv[]);
+int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d)
+{
+    return main(__argc, __argv);
+}
+#endif
+
 #define PREF_FILE       ".xyscope.pref"
 #define PREF_SIZE       136
 #define DELAY_OFFSET    128
