@@ -28,14 +28,17 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d)
 #define DELAY_OFFSET    128
 #define SAMPLE_RATE     48000
 #define CHANNELS        1
-#define RECORD_MS       500
+#define SETTLE_MS       500
+#define RECORD_MS       1000
 #define RECORD_FRAMES   (SAMPLE_RATE * RECORD_MS / 1000)
-#define IMPULSE_FRAMES  1
-#define THRESHOLD       0.05f
+#define CLICK_MS        20
+#define CLICK_FRAMES    (SAMPLE_RATE * CLICK_MS / 1000)
+#define CLICK_FREQ      1000  /* 1kHz tone burst */
+#define THRESHOLD       0.02f
 
 /* Playback state */
 typedef struct {
-    int played;
+    int played;  /* counts samples played, 0 = not started */
 } playback_state_t;
 
 /* Recording state */
@@ -53,9 +56,10 @@ static void playback_callback(void *userdata, Uint8 *stream, int len)
     float *out = (float *)stream;
 
     for (int i = 0; i < frames; i++) {
-        if (!state->played && i == 0) {
-            out[i] = 1.0f;  /* single-sample impulse */
-            state->played = 1;
+        if (state->played < CLICK_FRAMES) {
+            /* 1kHz sine burst at full volume */
+            out[i] = sinf(2.0f * 3.14159f * CLICK_FREQ * state->played / SAMPLE_RATE);
+            state->played++;
         } else {
             out[i] = 0.0f;
         }
@@ -173,9 +177,11 @@ int main(int argc, char *argv[])
 
     printf("Playing impulse...\n");
 
-    /* Start capture first, then playback */
-    rec_state.active = 1;
+    /* Start capture and let the mic settle before playing */
     SDL_PauseAudioDevice(cap_dev, 0);
+    SDL_Delay(SETTLE_MS);
+    rec_state.active = 1;
+    rec_state.frames_written = 0;
     SDL_PauseAudioDevice(play_dev, 0);
 
     /* Wait for recording to complete */
