@@ -12,6 +12,8 @@ else
     RELEASE_DIR = release/linux
 endif
 BINARY = $(RELEASE_DIR)/xyscope
+CALIBRATE = $(RELEASE_DIR)/xyscope-calibrate
+CALIBRATE_SRC = xyscope-calibrate.c
 APP_NAME = $(RELEASE_DIR)/XYScope.app
 APP_CONTENTS = $(APP_NAME)/Contents
 APP_MACOS = $(APP_CONTENTS)/MacOS
@@ -32,11 +34,11 @@ else
     LD_LIBS = -lpthread -lSDL2 -lSDL2_ttf -lGL $(PIPEWIRE_LIBS) -lfftw3
 endif
 
-# Default target: build binary (+ app bundle on macOS)
+# Default target: build binary + calibrate (+ app bundle on macOS)
 ifeq ($(UNAME_S),Darwin)
-all: $(BINARY) app
+all: $(BINARY) $(CALIBRATE) app
 else
-all: $(BINARY)
+all: $(BINARY) $(CALIBRATE)
 endif
 
 # Build xyscope binary
@@ -45,6 +47,17 @@ $(BINARY): $(SRC) Makefile
 	@echo "Building xyscope binary..."
 	$(CXX) $(CXX_FLAGS) $(SRC) $(LD_LIBS) -o $(BINARY)
 	@echo "✓ xyscope binary built → $(BINARY)"
+
+# Build calibration tool
+$(CALIBRATE): $(CALIBRATE_SRC) Makefile
+	@mkdir -p $(RELEASE_DIR)
+	@echo "Building xyscope-calibrate..."
+ifeq ($(UNAME_S),Darwin)
+	cc -Wall -O3 -I/opt/homebrew/include $(CALIBRATE_SRC) -L/opt/homebrew/lib -lSDL2 -lm -o $(CALIBRATE)
+else
+	cc -Wall -O3 $(CALIBRATE_SRC) -lSDL2 -lm -o $(CALIBRATE)
+endif
+	@echo "✓ xyscope-calibrate built → $(CALIBRATE)"
 
 # Assemble .app bundle (macOS only)
 .PHONY: app
@@ -79,7 +92,7 @@ help:
 	@echo "===================="
 	@echo ""
 	@echo "Targets:"
-	@echo "  make          - Build binary (+ .app bundle on macOS)"
+	@echo "  make          - Build binaries (+ .app bundle on macOS)"
 	@echo "  make app      - Assemble .app bundle (macOS only)"
 	@echo "  make clean    - Remove build artifacts"
 	@echo "  make rebuild  - Clean and rebuild everything"

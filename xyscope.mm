@@ -1176,6 +1176,7 @@ typedef struct _preferences_t {
     unsigned int line_width;
     unsigned int show_stats;
     double hue;
+    double delay;
 } preferences_t;
 
 // Global SDL variables (declared here so scene class can access them)
@@ -1234,8 +1235,8 @@ public:
     bool show_help;
     bool show_mouse;
 
-    #define NUM_TEXT_TIMERS 12
-    #define NUM_AUTO_TEXT_TIMERS 9
+    #define NUM_TEXT_TIMERS 13
+    #define NUM_AUTO_TEXT_TIMERS 10
     typedef struct _text_timer_t {
         bool show;
         timeval time;
@@ -1254,10 +1255,11 @@ public:
         ColorRateTimer   = 6,
         SampleRateTimer  = 7,
         FrameRateTimer   = 8,
+        DelayTimer       = 9,
         /* End of text timers automatically included in stats display */
-        PausedTimer      = 9,
-        ScaleTimer       = 10,
-        CounterTimer     = 11
+        PausedTimer      = 10,
+        ScaleTimer       = 11,
+        CounterTimer     = 12
     } text_timer_handles;
     text_timer_t text_timer[NUM_TEXT_TIMERS];
     timeval show_intro_time;
@@ -1314,6 +1316,7 @@ public:
         prefs.line_width     = DEFAULT_LINE_WIDTH;
         prefs.show_stats     = 0;
         prefs.hue            = 0.0;
+        prefs.delay          = 0.0;
         latency              = 0.0;
         fps                  = 0.0;
         frame_count          = 0;
@@ -1325,7 +1328,7 @@ public:
         vertical_increment   = -60.0;
         color_delta          = 0.0;
         color_threshold      = 0.0;
-        show_intro           = false;
+        show_intro           = true;
         show_help            = false;
         show_mouse           = true;
 
@@ -1484,9 +1487,11 @@ public:
             bump     = -draw_frames;
         }
         else if (t_data->ringbuffer) {
+            int delay_frames = (int)(prefs.delay * 0.001 * sample_rate);
+            int delay_bytes  = delay_frames * frame_size;
             bytes_ready = ringbuffer_read_space(t_data->ringbuffer);
-            if (bytes_ready != bytes_per_buf)
-                distance = bytes_ready - bytes_per_buf;
+            if (bytes_ready != (size_t)(bytes_per_buf + delay_bytes))
+                distance = bytes_ready - bytes_per_buf - delay_bytes;
         }
         if (distance != 0 && t_data->ringbuffer)
             ringbuffer_read_advance(t_data->ringbuffer, distance);
@@ -1852,7 +1857,7 @@ public:
     {
         double left_offset   =  40.0;
         double right_offset  = 700.0;
-        unsigned int n_items =  17;
+        unsigned int n_items =  18;
 
         char help[][2][64] = {
         { "Escape",            "Quit" },
@@ -1870,6 +1875,7 @@ public:
         { "d and D",           "Display mode" },
         { "f",                 "Enter/Exit full screen mode" },
         { "h",                 "Show/Hide help" },
+        { "l and L",           "Adjust display delay" },
         { "r",                 "Recenter" },
         { "s and S",           "Show/Hide statistics" },
         { "w and W",           "Adjust line width" }
@@ -2022,6 +2028,7 @@ public:
     void showColorRate(bool t) { showTimedText(ColorRateTimer, true, t, "Color rate: %.2f", prefs.color_rate); }
     void showSampleRate(bool t) { showTimedText(SampleRateTimer, true, t, "Sample rate: %d Hz", sample_rate); }
     void showFrameRate(bool t) { showTimedText(FrameRateTimer, true, t, "Frame rate: %d fps", frame_rate); }
+    void showDelay(bool t) { showTimedText(DelayTimer, true, t, "Delay: %.1f ms", prefs.delay); }
     void showPaused(bool t) { showTimedText(PausedTimer, true, t, "Paused"); }
 
     void showScale(bool timed)
@@ -2369,6 +2376,18 @@ public:
         showColorRate(TIMED);
     }
 
+    double getDelay(void)
+    {
+        return prefs.delay;
+    }
+
+    void setDelay(double ms)
+    {
+        prefs.delay = ms;
+        if (prefs.delay < 0.0) prefs.delay = 0.0;
+        showDelay(TIMED);
+    }
+
     int getLineWidth(void)
     {
         return prefs.line_width;
@@ -2649,6 +2668,12 @@ void keyboard(unsigned char key, int xPos, int yPos)
             else
                 scn.show_help = ! scn.show_help;
             break;
+        case 'l':
+            scn.setDelay(scn.getDelay() + 1.0);
+            break;
+        case 'L':
+            scn.setDelay(scn.getDelay() - 1.0);
+            break;
         case 'r':
             scn.recenter();
             break;
@@ -2837,6 +2862,7 @@ int main(int argc, char * const argv[])
     scn.showColorRate(NOT_TIMED);
     scn.showSampleRate(NOT_TIMED);
     scn.showFrameRate(NOT_TIMED);
+    scn.showDelay(NOT_TIMED);
     scn.showScale(NOT_TIMED);
 
     // Main event loop
