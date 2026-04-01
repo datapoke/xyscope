@@ -1,0 +1,749 @@
+/sys/class/drm/card1/:
+total 0
+drwxr-xr-x 7 root root    0 Mar 16 20:06 .
+drwxr-xr-x 4 root root    0 Mar 16 20:15 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 boot_display
+drwxr-xr-x 5 root root    0 Mar 16 20:15 card1-DP-1
+drwxr-xr-x 5 root root    0 Mar 16 20:15 card1-DP-2
+drwxr-xr-x 5 root root    0 Mar 16 20:15 card1-DP-3
+drwxr-xr-x 3 root root    0 Mar 16 20:06 card1-HDMI-A-1
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dev
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../../0000:0c:00.0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../class/drm
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1/card1-DP-1:
+total 0
+drwxr-xr-x 5 root root    0 Mar 16 20:15 .
+drwxr-xr-x 7 root root    0 Mar 16 20:06 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 connector_id
+lrwxrwxrwx 1 root root    0 Mar 16 20:07 ddc -> ../../../i2c-2
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../card1
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dpms
+drwxr-xr-x 3 root root    0 Mar 16 20:15 drm_dp_aux0
+-r--r--r-- 1 root root    0 Mar 16 20:15 edid
+-r--r--r-- 1 root root 4096 Mar 16 20:15 enabled
+drwxr-xr-x 4 root root    0 Mar 16 20:15 i2c-6
+-r--r--r-- 1 root root 4096 Mar 16 20:15 modes
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 status
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../class/drm
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1/card1-DP-1/drm_dp_aux0:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dev
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../card1-DP-1
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../class/drm_dp_aux_dev
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1/card1-DP-1/drm_dp_aux0/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1/card1-DP-1/i2c-6:
+total 0
+drwxr-xr-x 4 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+--w------- 1 root root 4096 Mar 16 20:15 delete_device
+drwxr-xr-x 3 root root    0 Mar 16 20:15 i2c-dev
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+--w------- 1 root root 4096 Mar 16 20:15 new_device
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../bus/i2c
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1/card1-DP-1/i2c-6/i2c-dev:
+total 0
+drwxr-xr-x 3 root root 0 Mar 16 20:15 .
+drwxr-xr-x 4 root root 0 Mar 16 20:15 ..
+drwxr-xr-x 3 root root 0 Mar 16 20:15 i2c-6
+
+/sys/class/drm/card1/card1-DP-1/i2c-6/i2c-dev/i2c-6:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dev
+lrwxrwxrwx 1 root root    0 Mar 16 20:15 device -> ../../../i2c-6
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../../../class/i2c-dev
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1/card1-DP-1/i2c-6/i2c-dev/i2c-6/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1/card1-DP-1/i2c-6/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 4 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+
+/sys/class/drm/card1/card1-DP-1/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1/card1-DP-2:
+total 0
+drwxr-xr-x 5 root root    0 Mar 16 20:15 .
+drwxr-xr-x 7 root root    0 Mar 16 20:06 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 connector_id
+lrwxrwxrwx 1 root root    0 Mar 16 20:07 ddc -> ../../../i2c-3
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../card1
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dpms
+drwxr-xr-x 3 root root    0 Mar 16 20:15 drm_dp_aux1
+-r--r--r-- 1 root root    0 Mar 16 20:15 edid
+-r--r--r-- 1 root root 4096 Mar 16 20:15 enabled
+drwxr-xr-x 4 root root    0 Mar 16 20:15 i2c-7
+-r--r--r-- 1 root root 4096 Mar 16 20:15 modes
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 status
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../class/drm
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1/card1-DP-2/drm_dp_aux1:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dev
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../card1-DP-2
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../class/drm_dp_aux_dev
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1/card1-DP-2/drm_dp_aux1/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1/card1-DP-2/i2c-7:
+total 0
+drwxr-xr-x 4 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+--w------- 1 root root 4096 Mar 16 20:15 delete_device
+drwxr-xr-x 3 root root    0 Mar 16 20:15 i2c-dev
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+--w------- 1 root root 4096 Mar 16 20:15 new_device
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../bus/i2c
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1/card1-DP-2/i2c-7/i2c-dev:
+total 0
+drwxr-xr-x 3 root root 0 Mar 16 20:15 .
+drwxr-xr-x 4 root root 0 Mar 16 20:15 ..
+drwxr-xr-x 3 root root 0 Mar 16 20:15 i2c-7
+
+/sys/class/drm/card1/card1-DP-2/i2c-7/i2c-dev/i2c-7:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dev
+lrwxrwxrwx 1 root root    0 Mar 16 20:15 device -> ../../../i2c-7
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../../../class/i2c-dev
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1/card1-DP-2/i2c-7/i2c-dev/i2c-7/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1/card1-DP-2/i2c-7/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 4 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+
+/sys/class/drm/card1/card1-DP-2/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1/card1-DP-3:
+total 0
+drwxr-xr-x 5 root root    0 Mar 16 20:15 .
+drwxr-xr-x 7 root root    0 Mar 16 20:06 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 connector_id
+lrwxrwxrwx 1 root root    0 Mar 16 20:07 ddc -> ../../../i2c-4
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../card1
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dpms
+drwxr-xr-x 3 root root    0 Mar 16 20:15 drm_dp_aux2
+-r--r--r-- 1 root root    0 Mar 16 20:15 edid
+-r--r--r-- 1 root root 4096 Mar 16 20:15 enabled
+drwxr-xr-x 4 root root    0 Mar 16 20:15 i2c-8
+-r--r--r-- 1 root root 4096 Mar 16 20:15 modes
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 status
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../class/drm
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1/card1-DP-3/drm_dp_aux2:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dev
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../card1-DP-3
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../class/drm_dp_aux_dev
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1/card1-DP-3/drm_dp_aux2/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1/card1-DP-3/i2c-8:
+total 0
+drwxr-xr-x 4 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+--w------- 1 root root 4096 Mar 16 20:15 delete_device
+drwxr-xr-x 3 root root    0 Mar 16 20:15 i2c-dev
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+--w------- 1 root root 4096 Mar 16 20:15 new_device
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../bus/i2c
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1/card1-DP-3/i2c-8/i2c-dev:
+total 0
+drwxr-xr-x 3 root root 0 Mar 16 20:15 .
+drwxr-xr-x 4 root root 0 Mar 16 20:15 ..
+drwxr-xr-x 3 root root 0 Mar 16 20:15 i2c-8
+
+/sys/class/drm/card1/card1-DP-3/i2c-8/i2c-dev/i2c-8:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dev
+lrwxrwxrwx 1 root root    0 Mar 16 20:15 device -> ../../../i2c-8
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../../../class/i2c-dev
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1/card1-DP-3/i2c-8/i2c-dev/i2c-8/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1/card1-DP-3/i2c-8/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 4 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+
+/sys/class/drm/card1/card1-DP-3/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1/card1-HDMI-A-1:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:06 .
+drwxr-xr-x 7 root root    0 Mar 16 20:06 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:06 connector_id
+lrwxrwxrwx 1 root root    0 Mar 16 19:56 ddc -> ../../../i2c-5
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../card1
+-r--r--r-- 1 root root 4096 Mar 16 20:06 dpms
+-r--r--r-- 1 root root    0 Mar 16 20:06 edid
+-r--r--r-- 1 root root 4096 Mar 16 20:06 enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:06 modes
+drwxr-xr-x 2 root root    0 Mar 16 20:06 power
+-rw-r--r-- 1 root root 4096 Mar 16 20:06 status
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../class/drm
+-rw-r--r-- 1 root root 4096 Mar 16 20:06 uevent
+
+/sys/class/drm/card1/card1-HDMI-A-1/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:06 .
+drwxr-xr-x 3 root root    0 Mar 16 20:06 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 7 root root    0 Mar 16 20:06 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1-DP-1/:
+total 0
+drwxr-xr-x 5 root root    0 Mar 16 20:15 .
+drwxr-xr-x 7 root root    0 Mar 16 20:06 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 connector_id
+lrwxrwxrwx 1 root root    0 Mar 16 20:07 ddc -> ../../../i2c-2
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../card1
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dpms
+drwxr-xr-x 3 root root    0 Mar 16 20:15 drm_dp_aux0
+-r--r--r-- 1 root root    0 Mar 16 20:15 edid
+-r--r--r-- 1 root root 4096 Mar 16 20:15 enabled
+drwxr-xr-x 4 root root    0 Mar 16 20:15 i2c-6
+-r--r--r-- 1 root root 4096 Mar 16 20:15 modes
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 status
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../class/drm
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1-DP-1/drm_dp_aux0:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dev
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../card1-DP-1
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../class/drm_dp_aux_dev
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1-DP-1/drm_dp_aux0/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1-DP-1/i2c-6:
+total 0
+drwxr-xr-x 4 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+--w------- 1 root root 4096 Mar 16 20:15 delete_device
+drwxr-xr-x 3 root root    0 Mar 16 20:15 i2c-dev
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+--w------- 1 root root 4096 Mar 16 20:15 new_device
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../bus/i2c
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1-DP-1/i2c-6/i2c-dev:
+total 0
+drwxr-xr-x 3 root root 0 Mar 16 20:15 .
+drwxr-xr-x 4 root root 0 Mar 16 20:15 ..
+drwxr-xr-x 3 root root 0 Mar 16 20:15 i2c-6
+
+/sys/class/drm/card1-DP-1/i2c-6/i2c-dev/i2c-6:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dev
+lrwxrwxrwx 1 root root    0 Mar 16 20:15 device -> ../../../i2c-6
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../../../class/i2c-dev
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1-DP-1/i2c-6/i2c-dev/i2c-6/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1-DP-1/i2c-6/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 4 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+
+/sys/class/drm/card1-DP-1/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1-DP-2/:
+total 0
+drwxr-xr-x 5 root root    0 Mar 16 20:15 .
+drwxr-xr-x 7 root root    0 Mar 16 20:06 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 connector_id
+lrwxrwxrwx 1 root root    0 Mar 16 20:07 ddc -> ../../../i2c-3
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../card1
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dpms
+drwxr-xr-x 3 root root    0 Mar 16 20:15 drm_dp_aux1
+-r--r--r-- 1 root root    0 Mar 16 20:15 edid
+-r--r--r-- 1 root root 4096 Mar 16 20:15 enabled
+drwxr-xr-x 4 root root    0 Mar 16 20:15 i2c-7
+-r--r--r-- 1 root root 4096 Mar 16 20:15 modes
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 status
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../class/drm
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1-DP-2/drm_dp_aux1:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dev
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../card1-DP-2
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../class/drm_dp_aux_dev
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1-DP-2/drm_dp_aux1/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1-DP-2/i2c-7:
+total 0
+drwxr-xr-x 4 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+--w------- 1 root root 4096 Mar 16 20:15 delete_device
+drwxr-xr-x 3 root root    0 Mar 16 20:15 i2c-dev
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+--w------- 1 root root 4096 Mar 16 20:15 new_device
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../bus/i2c
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1-DP-2/i2c-7/i2c-dev:
+total 0
+drwxr-xr-x 3 root root 0 Mar 16 20:15 .
+drwxr-xr-x 4 root root 0 Mar 16 20:15 ..
+drwxr-xr-x 3 root root 0 Mar 16 20:15 i2c-7
+
+/sys/class/drm/card1-DP-2/i2c-7/i2c-dev/i2c-7:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dev
+lrwxrwxrwx 1 root root    0 Mar 16 20:15 device -> ../../../i2c-7
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../../../class/i2c-dev
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1-DP-2/i2c-7/i2c-dev/i2c-7/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1-DP-2/i2c-7/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 4 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+
+/sys/class/drm/card1-DP-2/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1-DP-3/:
+total 0
+drwxr-xr-x 5 root root    0 Mar 16 20:15 .
+drwxr-xr-x 7 root root    0 Mar 16 20:06 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 connector_id
+lrwxrwxrwx 1 root root    0 Mar 16 20:07 ddc -> ../../../i2c-4
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../card1
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dpms
+drwxr-xr-x 3 root root    0 Mar 16 20:15 drm_dp_aux2
+-r--r--r-- 1 root root    0 Mar 16 20:15 edid
+-r--r--r-- 1 root root 4096 Mar 16 20:15 enabled
+drwxr-xr-x 4 root root    0 Mar 16 20:15 i2c-8
+-r--r--r-- 1 root root 4096 Mar 16 20:15 modes
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 status
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../class/drm
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1-DP-3/drm_dp_aux2:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dev
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../card1-DP-3
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../class/drm_dp_aux_dev
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1-DP-3/drm_dp_aux2/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1-DP-3/i2c-8:
+total 0
+drwxr-xr-x 4 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+--w------- 1 root root 4096 Mar 16 20:15 delete_device
+drwxr-xr-x 3 root root    0 Mar 16 20:15 i2c-dev
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+--w------- 1 root root 4096 Mar 16 20:15 new_device
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../bus/i2c
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1-DP-3/i2c-8/i2c-dev:
+total 0
+drwxr-xr-x 3 root root 0 Mar 16 20:15 .
+drwxr-xr-x 4 root root 0 Mar 16 20:15 ..
+drwxr-xr-x 3 root root 0 Mar 16 20:15 i2c-8
+
+/sys/class/drm/card1-DP-3/i2c-8/i2c-dev/i2c-8:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dev
+lrwxrwxrwx 1 root root    0 Mar 16 20:15 device -> ../../../i2c-8
+-r--r--r-- 1 root root 4096 Mar 16 20:15 name
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../../../../class/i2c-dev
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/card1-DP-3/i2c-8/i2c-dev/i2c-8/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1-DP-3/i2c-8/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 4 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+
+/sys/class/drm/card1-DP-3/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 5 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/card1-HDMI-A-1/:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:06 .
+drwxr-xr-x 7 root root    0 Mar 16 20:06 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:06 connector_id
+lrwxrwxrwx 1 root root    0 Mar 16 19:56 ddc -> ../../../i2c-5
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../card1
+-r--r--r-- 1 root root 4096 Mar 16 20:06 dpms
+-r--r--r-- 1 root root    0 Mar 16 20:06 edid
+-r--r--r-- 1 root root 4096 Mar 16 20:06 enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:06 modes
+drwxr-xr-x 2 root root    0 Mar 16 20:06 power
+-rw-r--r-- 1 root root 4096 Mar 16 20:06 status
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../../class/drm
+-rw-r--r-- 1 root root 4096 Mar 16 20:06 uevent
+
+/sys/class/drm/card1-HDMI-A-1/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:06 .
+drwxr-xr-x 3 root root    0 Mar 16 20:06 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage
+
+/sys/class/drm/renderD128/:
+total 0
+drwxr-xr-x 3 root root    0 Mar 16 20:15 .
+drwxr-xr-x 4 root root    0 Mar 16 20:15 ..
+-r--r--r-- 1 root root 4096 Mar 16 20:15 boot_display
+-r--r--r-- 1 root root 4096 Mar 16 20:15 dev
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 device -> ../../../0000:0c:00.0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 power
+lrwxrwxrwx 1 root root    0 Mar 16 13:25 subsystem -> ../../../../../../../../class/drm
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 uevent
+
+/sys/class/drm/renderD128/power:
+total 0
+drwxr-xr-x 2 root root    0 Mar 16 20:15 .
+drwxr-xr-x 3 root root    0 Mar 16 20:15 ..
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 async
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 autosuspend_delay_ms
+-rw-r--r-- 1 root root 4096 Mar 16 20:15 control
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_kids
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_active_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_enabled
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_status
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_suspended_time
+-r--r--r-- 1 root root 4096 Mar 16 20:15 runtime_usage

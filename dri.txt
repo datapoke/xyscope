@@ -1,0 +1,859 @@
+/sys/kernel/debug/dri/:
+total 0
+drwxr-xr-x 48 root root 0 Mar 16 19:44 .
+drwx------ 53 root root 0 Mar 16 13:24 ..
+drwxr-xr-x 23 root root 0 Mar 16 13:24 0000:0c:00.0
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 1 -> 0000:0c:00.0
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 128 -> 0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:24 bridges
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-18
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-2
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-21
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-22
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-25
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-26
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-27
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-28
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-29
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-3
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-30
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-32
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-34
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-35
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-36
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-37
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-38
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-39
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-40
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-41
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-42
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-43
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-44
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-45
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-46
+drwxr-xr-x  2 root root 0 Mar 16 13:25 client-47
+drwxr-xr-x  2 root root 0 Mar 16 13:26 client-49
+drwxr-xr-x  2 root root 0 Mar 16 13:26 client-51
+drwxr-xr-x  2 root root 0 Mar 16 13:26 client-52
+drwxr-xr-x  2 root root 0 Mar 16 13:26 client-59
+drwxr-xr-x  2 root root 0 Mar 16 13:26 client-62
+drwxr-xr-x  2 root root 0 Mar 16 17:56 client-645
+drwxr-xr-x  2 root root 0 Mar 16 13:26 client-65
+drwxr-xr-x  2 root root 0 Mar 16 18:08 client-654
+drwxr-xr-x  2 root root 0 Mar 16 18:08 client-655
+drwxr-xr-x  2 root root 0 Mar 16 18:08 client-656
+drwxr-xr-x  2 root root 0 Mar 16 13:26 client-67
+drwxr-xr-x  2 root root 0 Mar 16 13:26 client-68
+drwxr-xr-x  2 root root 0 Mar 16 13:26 client-70
+drwxr-xr-x  2 root root 0 Mar 16 19:44 client-715
+drwxr-xr-x  2 root root 0 Mar 16 13:26 client-73
+drwxr-xr-x  2 root root 0 Mar 16 13:26 client-75
+drwxr-xr-x  2 root root 0 Mar 16 13:26 client-77
+drwxr-xr-x  2 root root 0 Mar 16 13:26 client-80
+drwxr-xr-x  2 root root 0 Mar 16 13:26 client-82
+
+/sys/kernel/debug/dri/0000:0c:00.0:
+total 0
+drwxr-xr-x 23 root root          0 Mar 16 13:24 .
+drwxr-xr-x 48 root root          0 Mar 16 19:44 ..
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_benchmark
+-rw-------  1 root root          0 Mar 16 13:25 amdgpu_compute_sched_mask
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_discovery
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_dm_capabilities
+-rw-r--r--  1 root root          0 Mar 16 13:25 amdgpu_dm_dcc_en
+-rw-r--r--  1 root root          0 Mar 16 13:25 amdgpu_dm_disable_hpd
+-rw-r--r--  1 root root          0 Mar 16 13:25 amdgpu_dm_dmcub_trace_event_en
+-rw-r--r--  1 root root          0 Mar 16 13:25 amdgpu_dm_dmub_fw_state
+-rw-r--r--  1 root root          0 Mar 16 13:25 amdgpu_dm_dmub_tracebuffer
+-rw-r--r--  1 root root          0 Mar 16 13:25 amdgpu_dm_dmub_trace_mask
+-rw-r--r--  1 root root          0 Mar 16 13:25 amdgpu_dm_dp_ignore_cable_id
+-rw-r--r--  1 root root          0 Mar 16 13:25 amdgpu_dm_dp_set_mst_en_for_sst
+-rw-r--r--  1 root root          0 Mar 16 13:25 amdgpu_dm_dtn_log
+-rw-r--r--  1 root root          0 Mar 16 13:25 amdgpu_dm_force_timing_sync
+-rw-r--r--  1 root root          0 Mar 16 13:25 amdgpu_dm_skip_detection_link_training
+-rw-r--r--  1 root root          0 Mar 16 13:25 amdgpu_dm_trigger_hpd_mst
+-rw-r--r--  1 root root          0 Mar 16 13:25 amdgpu_dm_visual_confirm
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_comp_1.0.0
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_comp_1.0.1
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_comp_1.1.0
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_comp_1.1.1
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_comp_1.2.0
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_comp_1.2.1
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_comp_1.3.0
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_comp_1.3.1
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_gfx_0.0.0
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_jpeg_dec
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_kiq_0.2.1.0
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_sdma0
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_sdma1
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_vcn_dec
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_vcn_enc0
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_error_vcn_enc1
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_evict_gtt
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_evict_vram
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_fence_info
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_firmware_info
+--w-------  1 root root          0 Mar 16 13:25 amdgpu_force_sclk
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_gca_config
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_gds_mm
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_gem_info
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_gfxoff
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_gfxoff_count
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_gfxoff_residency
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_gfxoff_status
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_gpr
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_gprwave
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_gpu_recover
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_gtt_mm
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_gws_mm
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_iomem
+-r--r--r--  1 root root       2048 Mar 16 13:25 amdgpu_mqd_comp_1.0.0
+-r--r--r--  1 root root       2048 Mar 16 13:25 amdgpu_mqd_comp_1.0.1
+-r--r--r--  1 root root       2048 Mar 16 13:25 amdgpu_mqd_comp_1.1.0
+-r--r--r--  1 root root       2048 Mar 16 13:25 amdgpu_mqd_comp_1.1.1
+-r--r--r--  1 root root       2048 Mar 16 13:25 amdgpu_mqd_comp_1.2.0
+-r--r--r--  1 root root       2048 Mar 16 13:25 amdgpu_mqd_comp_1.2.1
+-r--r--r--  1 root root       2048 Mar 16 13:25 amdgpu_mqd_comp_1.3.0
+-r--r--r--  1 root root       2048 Mar 16 13:25 amdgpu_mqd_comp_1.3.1
+-r--r--r--  1 root root       2048 Mar 16 13:25 amdgpu_mqd_gfx_0.0.0
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_mqd_kiq_0.2.1.0
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_mst_topology
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_oa_mm
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_pm_info
+-rw-------  1 root root          0 Mar 16 13:25 amdgpu_preempt_ib
+-r--------  1 root root     524288 Mar 16 13:25 amdgpu_regs
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_regs2
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_regs_didt
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_regs_pcie
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_regs_smc
+-r--r--r--  1 root root       8204 Mar 16 13:25 amdgpu_ring_comp_1.0.0
+-r--r--r--  1 root root       8204 Mar 16 13:25 amdgpu_ring_comp_1.0.1
+-r--r--r--  1 root root       8204 Mar 16 13:25 amdgpu_ring_comp_1.1.0
+-r--r--r--  1 root root       8204 Mar 16 13:25 amdgpu_ring_comp_1.1.1
+-r--r--r--  1 root root       8204 Mar 16 13:25 amdgpu_ring_comp_1.2.0
+-r--r--r--  1 root root       8204 Mar 16 13:25 amdgpu_ring_comp_1.2.1
+-r--r--r--  1 root root       8204 Mar 16 13:25 amdgpu_ring_comp_1.3.0
+-r--r--r--  1 root root       8204 Mar 16 13:25 amdgpu_ring_comp_1.3.1
+-r--r--r--  1 root root       8204 Mar 16 13:25 amdgpu_ring_gfx_0.0.0
+-r--r--r--  1 root root       4108 Mar 16 13:25 amdgpu_ring_jpeg_dec
+-r--r--r--  1 root root    1048588 Mar 16 13:25 amdgpu_ring_kiq_0.2.1.0
+-r--r--r--  1 root root       8204 Mar 16 13:25 amdgpu_ring_sdma0
+-r--r--r--  1 root root       8204 Mar 16 13:25 amdgpu_ring_sdma1
+-r--r--r--  1 root root       4108 Mar 16 13:25 amdgpu_ring_vcn_dec
+-r--r--r--  1 root root       4108 Mar 16 13:25 amdgpu_ring_vcn_enc0
+-r--r--r--  1 root root       4108 Mar 16 13:25 amdgpu_ring_vcn_enc1
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_sa_info
+-rw-------  1 root root          0 Mar 16 13:25 amdgpu_sdma_sched_mask
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_sensors
+-rw-------  1 root root          0 Mar 16 13:25 amdgpu_smu_debug
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_test_ib
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_vbios
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_vm_info
+-r--r--r--  1 root root 8573157376 Mar 16 13:25 amdgpu_vram
+-r--r--r--  1 root root          0 Mar 16 13:25 amdgpu_vram_mm
+-r--------  1 root root          0 Mar 16 13:25 amdgpu_wave
+-r--r--r--  1 root root          0 Mar 16 13:25 clients
+drwxr-xr-x  3 root root          0 Mar 16 13:25 crtc-0
+drwxr-xr-x  3 root root          0 Mar 16 13:25 crtc-1
+drwxr-xr-x  3 root root          0 Mar 16 13:25 crtc-2
+drwxr-xr-x  3 root root          0 Mar 16 13:25 crtc-3
+drwxr-xr-x  3 root root          0 Mar 16 13:25 crtc-4
+drwxr-xr-x  3 root root          0 Mar 16 13:25 crtc-5
+drwxr-xr-x  2 root root          0 Mar 16 13:25 DP-1
+drwxr-xr-x  2 root root          0 Mar 16 13:25 DP-2
+drwxr-xr-x  2 root root          0 Mar 16 13:25 DP-3
+drwxr-xr-x  2 root root          0 Mar 16 13:25 encoder-0
+drwxr-xr-x  2 root root          0 Mar 16 13:25 encoder-1
+drwxr-xr-x  2 root root          0 Mar 16 13:25 encoder-2
+drwxr-xr-x  2 root root          0 Mar 16 13:25 encoder-3
+drwxr-xr-x  2 root root          0 Mar 16 13:25 encoder-4
+drwxr-xr-x  2 root root          0 Mar 16 13:25 encoder-5
+drwxr-xr-x  2 root root          0 Mar 16 13:25 encoder-6
+drwxr-xr-x  2 root root          0 Mar 16 13:25 encoder-7
+drwxr-xr-x  2 root root          0 Mar 16 13:25 encoder-8
+drwxr-xr-x  2 root root          0 Mar 16 13:25 encoder-9
+-r--r--r--  1 root root          0 Mar 16 13:25 framebuffer
+-r--r--r--  1 root root          0 Mar 16 13:25 gem_names
+drwxr-xr-x  3 root root          0 Mar 16 13:25 HDMI-A-1
+-r--r--r--  1 root root          0 Mar 16 13:25 internal_clients
+-r--r--r--  1 root root          0 Mar 16 13:25 name
+-r--r--r--  1 root root   33554432 Mar 16 13:25 psp_spirom_dump
+-r--r--r--  1 root root          0 Mar 16 13:25 state
+drwxr-xr-x  2 root root          0 Mar 16 13:25 ta_if
+-r--r--r--  1 root root          0 Mar 16 13:25 ttm_page_pool
+
+/sys/kernel/debug/dri/0000:0c:00.0/crtc-0:
+total 0
+drwxr-xr-x  3 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-rw-r--r--  1 root root 0 Mar 16 13:25 amdgpu_current_bpc
+-rw-r--r--  1 root root 0 Mar 16 13:25 amdgpu_current_colorspace
+drwxr-xr-x  2 root root 0 Mar 16 13:25 crc
+
+/sys/kernel/debug/dri/0000:0c:00.0/crtc-0/crc:
+total 0
+drwxr-xr-x 2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 3 root root 0 Mar 16 13:25 ..
+-rw-r--r-- 1 root root 0 Mar 16 13:25 control
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_update
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_x_end
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_x_start
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_y_end
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_y_start
+-r--r--r-- 1 root root 0 Mar 16 13:25 data
+
+/sys/kernel/debug/dri/0000:0c:00.0/crtc-1:
+total 0
+drwxr-xr-x  3 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-rw-r--r--  1 root root 0 Mar 16 13:25 amdgpu_current_bpc
+-rw-r--r--  1 root root 0 Mar 16 13:25 amdgpu_current_colorspace
+drwxr-xr-x  2 root root 0 Mar 16 13:25 crc
+
+/sys/kernel/debug/dri/0000:0c:00.0/crtc-1/crc:
+total 0
+drwxr-xr-x 2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 3 root root 0 Mar 16 13:25 ..
+-rw-r--r-- 1 root root 0 Mar 16 13:25 control
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_update
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_x_end
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_x_start
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_y_end
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_y_start
+-r--r--r-- 1 root root 0 Mar 16 13:25 data
+
+/sys/kernel/debug/dri/0000:0c:00.0/crtc-2:
+total 0
+drwxr-xr-x  3 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-rw-r--r--  1 root root 0 Mar 16 13:25 amdgpu_current_bpc
+-rw-r--r--  1 root root 0 Mar 16 13:25 amdgpu_current_colorspace
+drwxr-xr-x  2 root root 0 Mar 16 13:25 crc
+
+/sys/kernel/debug/dri/0000:0c:00.0/crtc-2/crc:
+total 0
+drwxr-xr-x 2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 3 root root 0 Mar 16 13:25 ..
+-rw-r--r-- 1 root root 0 Mar 16 13:25 control
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_update
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_x_end
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_x_start
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_y_end
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_y_start
+-r--r--r-- 1 root root 0 Mar 16 13:25 data
+
+/sys/kernel/debug/dri/0000:0c:00.0/crtc-3:
+total 0
+drwxr-xr-x  3 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-rw-r--r--  1 root root 0 Mar 16 13:25 amdgpu_current_bpc
+-rw-r--r--  1 root root 0 Mar 16 13:25 amdgpu_current_colorspace
+drwxr-xr-x  2 root root 0 Mar 16 13:25 crc
+
+/sys/kernel/debug/dri/0000:0c:00.0/crtc-3/crc:
+total 0
+drwxr-xr-x 2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 3 root root 0 Mar 16 13:25 ..
+-rw-r--r-- 1 root root 0 Mar 16 13:25 control
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_update
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_x_end
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_x_start
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_y_end
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_y_start
+-r--r--r-- 1 root root 0 Mar 16 13:25 data
+
+/sys/kernel/debug/dri/0000:0c:00.0/crtc-4:
+total 0
+drwxr-xr-x  3 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-rw-r--r--  1 root root 0 Mar 16 13:25 amdgpu_current_bpc
+-rw-r--r--  1 root root 0 Mar 16 13:25 amdgpu_current_colorspace
+drwxr-xr-x  2 root root 0 Mar 16 13:25 crc
+
+/sys/kernel/debug/dri/0000:0c:00.0/crtc-4/crc:
+total 0
+drwxr-xr-x 2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 3 root root 0 Mar 16 13:25 ..
+-rw-r--r-- 1 root root 0 Mar 16 13:25 control
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_update
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_x_end
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_x_start
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_y_end
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_y_start
+-r--r--r-- 1 root root 0 Mar 16 13:25 data
+
+/sys/kernel/debug/dri/0000:0c:00.0/crtc-5:
+total 0
+drwxr-xr-x  3 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-rw-r--r--  1 root root 0 Mar 16 13:25 amdgpu_current_bpc
+-rw-r--r--  1 root root 0 Mar 16 13:25 amdgpu_current_colorspace
+drwxr-xr-x  2 root root 0 Mar 16 13:25 crc
+
+/sys/kernel/debug/dri/0000:0c:00.0/crtc-5/crc:
+total 0
+drwxr-xr-x 2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 3 root root 0 Mar 16 13:25 ..
+-rw-r--r-- 1 root root 0 Mar 16 13:25 control
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_update
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_x_end
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_x_start
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_y_end
+-rw-r--r-- 1 root root 0 Mar 16 13:25 crc_win_y_start
+-r--r--r-- 1 root root 0 Mar 16 13:25 data
+
+/sys/kernel/debug/dri/0000:0c:00.0/DP-1:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-rw-r--r--  1 root root 0 Mar 16 13:25 dp_dsc_fec_support
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_bits_per_pixel
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_chunk_size
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_clock_en
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_disable_passthrough
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_pic_height
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_pic_width
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_slice_bpg
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_slice_height
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_slice_width
+-rw-r--r--  1 root root 0 Mar 16 13:25 edid_override
+-rw-r--r--  1 root root 0 Mar 16 13:25 force
+-rw-r--r--  1 root root 0 Mar 16 13:25 force_yuv420_output
+-rw-r--r--  1 root root 0 Mar 16 13:25 hdcp_sink_capability
+-rw-r--r--  1 root root 0 Mar 16 13:25 internal_display
+-rw-r--r--  1 root root 0 Mar 16 13:25 is_dpia_link
+-rw-r--r--  1 root root 0 Mar 16 13:25 is_mst_connector
+-rw-r--r--  1 root root 0 Mar 16 13:25 link_settings
+-rw-r--r--  1 root root 0 Mar 16 13:25 lttpr_status
+-rw-r--r--  1 root root 0 Mar 16 13:25 max_bpc
+-rw-r--r--  1 root root 0 Mar 16 13:25 mst_link_settings
+-rw-r--r--  1 root root 0 Mar 16 13:25 mst_progress_status
+-rw-r--r--  1 root root 0 Mar 16 13:25 odm_combine_segments
+-r--r--r--  1 root root 0 Mar 16 13:25 output_bpc
+-rw-r--r--  1 root root 0 Mar 16 13:25 phy_settings
+-rw-r--r--  1 root root 0 Mar 16 13:25 sdp_message
+-rw-r--r--  1 root root 0 Mar 16 13:25 test_pattern
+-rw-r--r--  1 root root 0 Mar 16 13:25 trigger_hotplug
+-r--r--r--  1 root root 0 Mar 16 13:25 vrr_range
+
+/sys/kernel/debug/dri/0000:0c:00.0/DP-2:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-rw-r--r--  1 root root 0 Mar 16 13:25 dp_dsc_fec_support
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_bits_per_pixel
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_chunk_size
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_clock_en
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_disable_passthrough
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_pic_height
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_pic_width
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_slice_bpg
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_slice_height
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_slice_width
+-rw-r--r--  1 root root 0 Mar 16 13:25 edid_override
+-rw-r--r--  1 root root 0 Mar 16 13:25 force
+-rw-r--r--  1 root root 0 Mar 16 13:25 force_yuv420_output
+-rw-r--r--  1 root root 0 Mar 16 13:25 hdcp_sink_capability
+-rw-r--r--  1 root root 0 Mar 16 13:25 internal_display
+-rw-r--r--  1 root root 0 Mar 16 13:25 is_dpia_link
+-rw-r--r--  1 root root 0 Mar 16 13:25 is_mst_connector
+-rw-r--r--  1 root root 0 Mar 16 13:25 link_settings
+-rw-r--r--  1 root root 0 Mar 16 13:25 lttpr_status
+-rw-r--r--  1 root root 0 Mar 16 13:25 max_bpc
+-rw-r--r--  1 root root 0 Mar 16 13:25 mst_link_settings
+-rw-r--r--  1 root root 0 Mar 16 13:25 mst_progress_status
+-rw-r--r--  1 root root 0 Mar 16 13:25 odm_combine_segments
+-r--r--r--  1 root root 0 Mar 16 13:25 output_bpc
+-rw-r--r--  1 root root 0 Mar 16 13:25 phy_settings
+-rw-r--r--  1 root root 0 Mar 16 13:25 sdp_message
+-rw-r--r--  1 root root 0 Mar 16 13:25 test_pattern
+-rw-r--r--  1 root root 0 Mar 16 13:25 trigger_hotplug
+-r--r--r--  1 root root 0 Mar 16 13:25 vrr_range
+
+/sys/kernel/debug/dri/0000:0c:00.0/DP-3:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-rw-r--r--  1 root root 0 Mar 16 13:25 dp_dsc_fec_support
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_bits_per_pixel
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_chunk_size
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_clock_en
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_disable_passthrough
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_pic_height
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_pic_width
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_slice_bpg
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_slice_height
+-rw-r--r--  1 root root 0 Mar 16 13:25 dsc_slice_width
+-rw-r--r--  1 root root 0 Mar 16 13:25 edid_override
+-rw-r--r--  1 root root 0 Mar 16 13:25 force
+-rw-r--r--  1 root root 0 Mar 16 13:25 force_yuv420_output
+-rw-r--r--  1 root root 0 Mar 16 13:25 hdcp_sink_capability
+-rw-r--r--  1 root root 0 Mar 16 13:25 internal_display
+-rw-r--r--  1 root root 0 Mar 16 13:25 is_dpia_link
+-rw-r--r--  1 root root 0 Mar 16 13:25 is_mst_connector
+-rw-r--r--  1 root root 0 Mar 16 13:25 link_settings
+-rw-r--r--  1 root root 0 Mar 16 13:25 lttpr_status
+-rw-r--r--  1 root root 0 Mar 16 13:25 max_bpc
+-rw-r--r--  1 root root 0 Mar 16 13:25 mst_link_settings
+-rw-r--r--  1 root root 0 Mar 16 13:25 mst_progress_status
+-rw-r--r--  1 root root 0 Mar 16 13:25 odm_combine_segments
+-r--r--r--  1 root root 0 Mar 16 13:25 output_bpc
+-rw-r--r--  1 root root 0 Mar 16 13:25 phy_settings
+-rw-r--r--  1 root root 0 Mar 16 13:25 sdp_message
+-rw-r--r--  1 root root 0 Mar 16 13:25 test_pattern
+-rw-r--r--  1 root root 0 Mar 16 13:25 trigger_hotplug
+-r--r--r--  1 root root 0 Mar 16 13:25 vrr_range
+
+/sys/kernel/debug/dri/0000:0c:00.0/encoder-0:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-r--r--r--  1 root root 0 Mar 16 13:25 bridges
+
+/sys/kernel/debug/dri/0000:0c:00.0/encoder-1:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-r--r--r--  1 root root 0 Mar 16 13:25 bridges
+
+/sys/kernel/debug/dri/0000:0c:00.0/encoder-2:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-r--r--r--  1 root root 0 Mar 16 13:25 bridges
+
+/sys/kernel/debug/dri/0000:0c:00.0/encoder-3:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-r--r--r--  1 root root 0 Mar 16 13:25 bridges
+
+/sys/kernel/debug/dri/0000:0c:00.0/encoder-4:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-r--r--r--  1 root root 0 Mar 16 13:25 bridges
+
+/sys/kernel/debug/dri/0000:0c:00.0/encoder-5:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-r--r--r--  1 root root 0 Mar 16 13:25 bridges
+
+/sys/kernel/debug/dri/0000:0c:00.0/encoder-6:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-r--r--r--  1 root root 0 Mar 16 13:25 bridges
+
+/sys/kernel/debug/dri/0000:0c:00.0/encoder-7:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-r--r--r--  1 root root 0 Mar 16 13:25 bridges
+
+/sys/kernel/debug/dri/0000:0c:00.0/encoder-8:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-r--r--r--  1 root root 0 Mar 16 13:25 bridges
+
+/sys/kernel/debug/dri/0000:0c:00.0/encoder-9:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-r--r--r--  1 root root 0 Mar 16 13:25 bridges
+
+/sys/kernel/debug/dri/0000:0c:00.0/HDMI-A-1:
+total 0
+drwxr-xr-x  3 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+-rw-r--r--  1 root root 0 Mar 16 13:25 edid_override
+-rw-r--r--  1 root root 0 Mar 16 13:25 force
+-rw-r--r--  1 root root 0 Mar 16 13:25 force_yuv420_output
+-rw-r--r--  1 root root 0 Mar 16 13:25 hdcp_sink_capability
+-rw-r--r--  1 root root 0 Mar 16 13:25 hdmi_cec_state
+drwxr-xr-x  2 root root 0 Mar 16 13:25 infoframes
+-rw-r--r--  1 root root 0 Mar 16 13:25 internal_display
+-rw-r--r--  1 root root 0 Mar 16 13:25 odm_combine_segments
+-r--r--r--  1 root root 0 Mar 16 20:08 output_bpc
+-rw-r--r--  1 root root 0 Mar 16 13:25 trigger_hotplug
+-r--r--r--  1 root root 0 Mar 16 13:25 vrr_range
+
+/sys/kernel/debug/dri/0000:0c:00.0/HDMI-A-1/infoframes:
+total 0
+drwxr-xr-x 2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 3 root root 0 Mar 16 13:25 ..
+-r-------- 1 root root 0 Mar 16 13:25 audio
+-r-------- 1 root root 0 Mar 16 13:25 avi
+-r-------- 1 root root 0 Mar 16 13:25 hdmi
+-r-------- 1 root root 0 Mar 16 13:25 hdr_drm
+-r-------- 1 root root 0 Mar 16 13:25 spd
+
+/sys/kernel/debug/dri/0000:0c:00.0/ta_if:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 23 root root 0 Mar 16 13:24 ..
+--w-------  1 root root 0 Mar 16 13:25 ta_invoke
+--w-------  1 root root 0 Mar 16 13:25 ta_load
+--w-------  1 root root 0 Mar 16 13:25 ta_unload
+
+/sys/kernel/debug/dri/client-18:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-2:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-21:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-22:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-25:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-26:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-27:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-28:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-29:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-3:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-30:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-32:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-34:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-35:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-36:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-37:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-38:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-39:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-40:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-41:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-42:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-43:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-44:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-45:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-46:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-47:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:25 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:25 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:25 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:25 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-49:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:26 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:26 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:26 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:26 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-51:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:26 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:26 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:26 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:26 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-52:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:26 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:26 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:26 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:26 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-59:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:26 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:26 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:26 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:26 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-62:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:26 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:26 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:26 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:26 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-645:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 17:56 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 17:56 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 17:56 proc_info
+-r--r--r--  1 root root 0 Mar 16 17:56 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-65:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:26 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:26 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:26 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:26 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-654:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 18:08 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 18:08 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 18:08 proc_info
+-r--r--r--  1 root root 0 Mar 16 18:08 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-655:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 18:08 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 18:08 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 18:08 proc_info
+-r--r--r--  1 root root 0 Mar 16 18:08 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-656:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 18:08 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 18:08 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 18:08 proc_info
+-r--r--r--  1 root root 0 Mar 16 18:08 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-67:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:26 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:26 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:26 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:26 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-68:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:26 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:26 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:26 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:26 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-70:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:26 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:26 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:26 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:26 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-715:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 19:44 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 19:44 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 19:44 proc_info
+-r--r--r--  1 root root 0 Mar 16 19:44 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-73:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:26 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:26 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:26 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:26 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-75:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:26 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:26 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:26 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:26 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-77:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:26 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:26 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:26 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:26 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-80:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:26 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:26 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:26 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:26 vm_pagetable_info
+
+/sys/kernel/debug/dri/client-82:
+total 0
+drwxr-xr-x  2 root root 0 Mar 16 13:26 .
+drwxr-xr-x 48 root root 0 Mar 16 19:44 ..
+lrwxrwxrwx  1 root root 0 Mar 16 13:26 device -> ../0000:0c:00.0
+-r--r--r--  1 root root 0 Mar 16 13:26 proc_info
+-r--r--r--  1 root root 0 Mar 16 13:26 vm_pagetable_info
