@@ -13,7 +13,7 @@ else
 endif
 BINARY = $(RELEASE_DIR)/xyscope
 CALIBRATE = $(RELEASE_DIR)/xyscope-calibrate
-CALIBRATE_SRC = xyscope-calibrate.c
+CALIBRATE_SRC = xyscope-calibrate.mm
 APP_NAME = $(RELEASE_DIR)/XYScope.app
 APP_CONTENTS = $(APP_NAME)/Contents
 APP_MACOS = $(APP_CONTENTS)/MacOS
@@ -49,13 +49,13 @@ $(BINARY): $(SRC) Makefile
 	@echo "✓ xyscope binary built → $(BINARY)"
 
 # Build calibration tool
-$(CALIBRATE): $(CALIBRATE_SRC) Makefile
+$(CALIBRATE): $(CALIBRATE_SRC) xyscope-shared.h xyscope-ringbuffer.h xyscope-draw.h Makefile
 	@mkdir -p $(RELEASE_DIR)
 	@echo "Building xyscope-calibrate..."
 ifeq ($(UNAME_S),Darwin)
-	cc -Wall -O3 -I/opt/homebrew/include $(CALIBRATE_SRC) -L/opt/homebrew/lib -lSDL2 -lm -o $(CALIBRATE)
+	clang++ -Wall -O3 -std=c++11 -I/opt/homebrew/include $(CALIBRATE_SRC) -L/opt/homebrew/lib -lSDL2 -lm -framework OpenGL -o $(CALIBRATE)
 else
-	cc -Wall -O3 $(CALIBRATE_SRC) -lSDL2 -lm -o $(CALIBRATE)
+	g++ -Wall -O3 -std=c++11 -x c++ $(CALIBRATE_SRC) -lSDL2 -lGL -lm -o $(CALIBRATE)
 endif
 	@echo "✓ xyscope-calibrate built → $(CALIBRATE)"
 
