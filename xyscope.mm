@@ -72,48 +72,14 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include "xyscope-shared.h"
+#include "xyscope-ringbuffer.h"
+#include "xyscope-draw.h"
+
 #ifdef _WIN32
 /* ---- Windows compatibility layer ---- */
+/* timeval, gettimeofday, timespec, clock_gettime, bzero now in xyscope-shared.h */
 
-#ifndef _TIMEVAL_DEFINED
-#define _TIMEVAL_DEFINED
-struct timeval {
-    long tv_sec;
-    long tv_usec;
-};
-#endif
-
-static int gettimeofday(struct timeval *tv, void *tz) {
-    (void)tz;
-    FILETIME ft;
-    GetSystemTimeAsFileTime(&ft);
-    unsigned long long t = ((unsigned long long)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
-    t -= 116444736000000000ULL;
-    t /= 10;
-    tv->tv_sec = (long)(t / 1000000ULL);
-    tv->tv_usec = (long)(t % 1000000ULL);
-    return 0;
-}
-
-#ifndef _TIMESPEC_DEFINED
-#define _TIMESPEC_DEFINED
-struct timespec {
-    long tv_sec;
-    long tv_nsec;
-};
-#endif
-
-#define CLOCK_REALTIME 0
-static int clock_gettime(int clk_id, struct timespec *ts) {
-    (void)clk_id;
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    ts->tv_sec = tv.tv_sec;
-    ts->tv_nsec = tv.tv_usec * 1000;
-    return 0;
-}
-
-#define bzero(b, len) memset((b), 0, (len))
 typedef unsigned int useconds_t;
 #define usleep(us) Sleep(((us) + 999) / 1000)
 #pragma comment(lib, "winmm.lib")
@@ -179,35 +145,7 @@ static const GUID XYSCOPE_IID_IAudioCaptureClient = {0xC8ADBD64, 0xE71E, 0x48a0,
 #endif /* _WIN32 */
 
 
-/* Preferences file */
-#define DEFAULT_PREF_FILE ".xyscope.pref"
-
-/* Default line width setting */
-#define DEFAULT_LINE_WIDTH 1
-
-/* Maximum line width setting */
-#define MAX_LINE_WIDTH 8
-
-/* Default full screen mode setting */
-#define DEFAULT_FULL_SCREEN true
-
-/* Default auto-scale setting */
-#define DEFAULT_AUTO_SCALE true
-
-/* Default spline steps setting */
-#define DEFAULT_SPLINE_STEPS 128
-
-/* Default color mode setting */
-#define DEFAULT_COLOR_MODE ColorDeltaMode
-
-/* Default color range setting */
-#define DEFAULT_COLOR_RANGE 1.0
-
-/* Default color rate setting */
-#define DEFAULT_COLOR_RATE 0.0
-
-/* Default display mode setting */
-#define DEFAULT_DISPLAY_MODE DisplayFrequencyMode
+/* Constants now in xyscope-shared.h */
 
 /* Audio sample rate and display frame rate — detected at runtime */
 static int sample_rate = 96000;
@@ -245,16 +183,7 @@ static void compute_derived_rates() {
 
 
 
-/* Audio types */
-typedef float sample_t;
-
-/* Custom ring buffer (used on both macOS and Linux) */
-typedef struct {
-    char *buf;
-    size_t size;
-    size_t write_ptr;
-    size_t read_ptr;
-} ringbuffer_t;
+/* sample_t, ringbuffer_t now in shared headers */
 
 typedef struct _thread_data {
     pthread_t thread_id;
@@ -282,14 +211,9 @@ typedef struct _thread_data {
     timeval last_write;
 } thread_data_t;
 
-typedef struct _frame_t {
-    sample_t left_channel;
-    sample_t right_channel;
-} frame_t;
+/* frame_t now in xyscope-shared.h */
 
 thread_data_t Thread_Data;
-
-#define SQRT_TWO 1.41421356237309504880
 
 #define LEFT_PORT  0
 #define RIGHT_PORT 1
@@ -303,121 +227,9 @@ thread_data_t Thread_Data;
 
 
 
-/* useful functions */
+/* timeDiff() now in xyscope-shared.h */
 
-double timeDiff(timeval a, timeval b)
-{
-    return ((double) (b.tv_sec - a.tv_sec) +
-            ((double) (b.tv_usec - a.tv_usec) * .000001));
-}
-
-
-/* Custom ring buffer implementation (used on both macOS and Linux) */
-ringbuffer_t* ringbuffer_create(size_t size) {
-    ringbuffer_t *rb = (ringbuffer_t*)malloc(sizeof(ringbuffer_t));
-    size_t power_of_two = 1;
-    while (power_of_two < size) power_of_two <<= 1;
-    rb->size = power_of_two;
-    rb->buf = (char*)malloc(rb->size);
-    rb->write_ptr = 0;
-    rb->read_ptr = 0;
-    return rb;
-}
-
-void ringbuffer_free(ringbuffer_t *rb) {
-    if (rb) {
-        free(rb->buf);
-        free(rb);
-    }
-}
-
-size_t ringbuffer_write_space(ringbuffer_t *rb) {
-    size_t w = rb->write_ptr;
-    size_t r = rb->read_ptr;
-    if (w > r) {
-        return ((r - w + rb->size) & (rb->size - 1)) - 1;
-    } else if (w < r) {
-        return (r - w) - 1;
-    } else {
-        return rb->size - 1;
-    }
-}
-
-size_t ringbuffer_read_space(ringbuffer_t *rb) {
-    size_t w = rb->write_ptr;
-    size_t r = rb->read_ptr;
-    if (w > r) {
-        return w - r;
-    } else {
-        return (w - r + rb->size) & (rb->size - 1);
-    }
-}
-
-size_t ringbuffer_write(ringbuffer_t *rb, const char *src, size_t cnt) {
-    size_t free_cnt;
-    size_t cnt2;
-    size_t to_write;
-    size_t n1, n2;
-
-    free_cnt = ringbuffer_write_space(rb);
-    if (free_cnt == 0) return 0;
-
-    to_write = cnt > free_cnt ? free_cnt : cnt;
-    cnt2 = rb->write_ptr + to_write;
-
-    if (cnt2 > rb->size) {
-        n1 = rb->size - rb->write_ptr;
-        n2 = cnt2 & (rb->size - 1);
-    } else {
-        n1 = to_write;
-        n2 = 0;
-    }
-
-    memcpy(rb->buf + rb->write_ptr, src, n1);
-    rb->write_ptr = (rb->write_ptr + n1) & (rb->size - 1);
-
-    if (n2) {
-        memcpy(rb->buf + rb->write_ptr, src + n1, n2);
-        rb->write_ptr = (rb->write_ptr + n2) & (rb->size - 1);
-    }
-
-    return to_write;
-}
-
-size_t ringbuffer_read(ringbuffer_t *rb, char *dest, size_t cnt) {
-    size_t free_cnt;
-    size_t cnt2;
-    size_t to_read;
-    size_t n1, n2;
-
-    free_cnt = ringbuffer_read_space(rb);
-    if (free_cnt == 0) return 0;
-
-    to_read = cnt > free_cnt ? free_cnt : cnt;
-    cnt2 = rb->read_ptr + to_read;
-
-    if (cnt2 > rb->size) {
-        n1 = rb->size - rb->read_ptr;
-        n2 = cnt2 & (rb->size - 1);
-    } else {
-        n1 = to_read;
-        n2 = 0;
-    }
-
-    memcpy(dest, rb->buf + rb->read_ptr, n1);
-    rb->read_ptr = (rb->read_ptr + n1) & (rb->size - 1);
-
-    if (n2) {
-        memcpy(dest + n1, rb->buf + rb->read_ptr, n2);
-        rb->read_ptr = (rb->read_ptr + n2) & (rb->size - 1);
-    }
-
-    return to_read;
-}
-
-void ringbuffer_read_advance(ringbuffer_t *rb, size_t cnt) {
-    rb->read_ptr = (rb->read_ptr + cnt) & (rb->size - 1);
-}
+/* Ringbuffer functions now in xyscope-ringbuffer.h */
 
 /* Signal reader thread that data is ready */
 static inline void signal_data_ready(thread_data_t *t_data)
@@ -1158,43 +970,14 @@ public:
 
 /* The scene object */
 
-typedef struct _preferences_t {
-    int dim[2];
-    int normal_dim[2];
-    int old_dim[2];
-    int position[2];
-    double side[4]; /* t, b, r, l */
-    double scale_factor;
-    bool scale_locked;
-    bool is_full_screen;
-    bool auto_scale;
-    unsigned int spline_steps;
-    unsigned int color_mode;
-    double color_range;
-    double color_rate;
-    unsigned int display_mode;
-    unsigned int line_width;
-    unsigned int show_stats;
-    double hue;
-    double delay;
-} preferences_t;
+/* preferences_t now in xyscope-shared.h (with audio_delay/display_delay fields) */
 
 // Global SDL variables (declared here so scene class can access them)
 extern TTF_Font *font;
 extern SDL_Window *window;
 extern SDL_GLContext gl_context;
 
-/* Helper functions for value wrapping and normalization */
-static inline void wrapValue(double *val, double max) {
-    if (*val > max) *val -= max * 2;
-    if (*val <= -max) *val += max * 2;
-}
-
-static inline double normalizeHue(double h) {
-    if (h > 360.0) h = fmod(h, 360.0);
-    if (h < 0.0) h = 360.0 + fmod(h, 360.0);
-    return h;
-}
+/* wrapValue(), normalizeHue() now in xyscope-shared.h */
 
 class scene
 {
@@ -1267,23 +1050,12 @@ public:
     timeval reset_frame_time;
     timeval mouse_dirty_time;
 
+    /* Color/display mode enums now in xyscope-shared.h */
     #define NUM_COLOR_MODES 2
-    enum {
-        ColorStandardMode = 0,
-        ColorDeltaMode    = 1,
-        DefaultColorMode  = DEFAULT_COLOR_MODE
-    } color_mode_handles;
-    const char *color_mode_names[NUM_COLOR_MODES] = {"Standard", "Delta"};
-
     #define NUM_DISPLAY_MODES 5
-    enum {
-        DisplayStandardMode  = 0,
-        DisplayRadiusMode    = 1,
-        DisplayLengthMode    = 2,
-        DisplayFrequencyMode = 3,
-        DisplayTimeMode      = 4,
-        DefaultDisplayMode   = DEFAULT_DISPLAY_MODE
-    } display_mode_handles;
+    static const unsigned int DefaultColorMode   = DEFAULT_COLOR_MODE;
+    static const unsigned int DefaultDisplayMode  = DEFAULT_DISPLAY_MODE;
+    const char *color_mode_names[NUM_COLOR_MODES] = {"Standard", "Delta"};
     const char *display_mode_names[NUM_DISPLAY_MODES] = {
         "Standard", "Radius", "Length", "Frequency", "Time"
     };
@@ -1317,6 +1089,8 @@ public:
         prefs.show_stats     = 0;
         prefs.hue            = 0.0;
         prefs.delay          = 0.0;
+        prefs.audio_delay    = 0.0;
+        prefs.display_delay  = 0.0;
         latency              = 0.0;
         fps                  = 0.0;
         frame_count          = 0;
@@ -1438,17 +1212,6 @@ public:
     {
         thread_data_t *t_data = ai->getThreadData();
         size_t bytes_ready = 0, bytes_read = 0;
-        double h   = -1.0;
-        double s   = 1.0;
-        double v   = 1.0;
-        double r   = 1.0;
-        double g   = 1.0;
-        double b   = 1.0;
-        double lc  = 0.0;
-        double rc  = 0.0;
-        double olc = 0.0;
-        double orc = 0.0;
-        double d   = 0.0;
         double dt  = 0.0;
         signed int distance = 0;
 
@@ -1456,12 +1219,11 @@ public:
         unsigned int window_size  = draw_frames / 100;
         unsigned int overlap_size = draw_frames / 200;
         double max_magnitude = 0.0;
-        double* avg_magnitudes;
+        double* avg_magnitudes = NULL;
         double** stft_results;
 #ifndef __APPLE__
         fftw_plan fft_plan;
 #endif
-        vertex_count = 0;
 
         /* if the scope is paused or audio not initialized, there are no samples available;
          * therefore we should not wait for the reader thread */
@@ -1522,18 +1284,9 @@ public:
         glPushMatrix();
         glLoadIdentity();
         glLineWidth((GLfloat) prefs.line_width);
-        glBegin(GL_LINE_STRIP);
 
-        switch (prefs.display_mode) {
-            case DisplayStandardMode:
-                HSVtoRGB(&r, &g, &b, prefs.hue, s, v);
-                glColor3d(r, g, b);
-                break;
-            case DisplayRadiusMode:
-            case DisplayLengthMode:
-                break;
-            case DisplayFrequencyMode:
-            {
+        /* FFT setup for frequency mode (must happen before glBegin) */
+        if (prefs.display_mode == DisplayFrequencyMode) {
                 // Create the STFT array
                 stft_results = new double*[frames_read / (window_size - overlap_size)];
                 for (unsigned int i = 0; i < frames_read / (window_size - overlap_size); i++) {
@@ -1622,93 +1375,31 @@ public:
                     delete[] stft_results[i];
                 }
                 delete[] stft_results;
-            }
-                break;
-            case DisplayTimeMode:
-                break;
-            default:
-                break;
-        };
+        }
 
+        /* Compute color delta accumulator for ColorDeltaMode */
+        if (prefs.color_mode == ColorDeltaMode) {
+            double olc = 0.0, orc = 0.0;
+            for (unsigned int i = 0; i < frames_read; i++) {
+                double lc = framebuf[i].left_channel;
+                double rc = framebuf[i].right_channel;
+                dt += hypot(lc - olc, rc - orc) / SQRT_TWO;
+                olc = lc;
+                orc = rc;
+            }
+        }
+
+        glBegin(GL_LINE_STRIP);
 
         /* display framebuf contents */
-        for (unsigned int i = 0; i < frames_read; i++) {
-            lc = framebuf[i].left_channel;
-            rc = framebuf[i].right_channel;
-            d  = hypot(lc - olc, rc - orc) / SQRT_TWO;
-            switch (prefs.color_mode) {
-                case ColorStandardMode:
-                    break;
-                case ColorDeltaMode:
-                    dt += d;
-                    break;
-            }
-            switch (prefs.display_mode) {
-                case DisplayStandardMode:
-                    break;
-                case DisplayRadiusMode:
-                    h = ((hypot(lc, rc) / SQRT_TWO)
-                         * 360.0 * prefs.color_range
-                         * prefs.scale_factor) + prefs.hue;
-                    break;
-                case DisplayLengthMode:
-                    h = (d * 360.0 * prefs.color_range) + prefs.hue;
-                    if (h < prefs.hue) {
-                        h = prefs.hue + 360.0 + h;
-                        if (h < prefs.hue)
-                            h = prefs.hue;
-                    }
-                    if (h > prefs.hue + 360.0)
-                        h = prefs.hue + 360.0;
-                    break;
-                case DisplayFrequencyMode:
-                    h = map(avg_magnitudes[i / (window_size - overlap_size)] * prefs.color_range * window_size / 2,
-                            0, max_magnitude, 0, 360) + prefs.hue;
-                    break;
-                case DisplayTimeMode:
-                    h = (((double) i / (double) frames_read)
-                         * 90.0 * prefs.color_range) + prefs.hue;
-                    break;
-                default:
-                    break;
-            };
-            if (h > -1.0 && prefs.display_mode != DisplayStandardMode) {
-                h = normalizeHue(h);
-            }
-            if (h > -1.0) {
-                HSVtoRGB(&r, &g, &b, h, s, v);
-                glColor3d(r, g, b);
-            }
-            if (prefs.spline_steps > 1 && i > 2 && i < frames_read - 2) {
-                // Calculate Catmull-Rom spline segment
-                double prev2_lc = framebuf[i-2].left_channel;
-                double prev2_rc = framebuf[i-2].right_channel;
-                double prev_lc  = framebuf[i-1].left_channel;
-                double prev_rc  = framebuf[i-1].right_channel;
-                double next_lc  = framebuf[i+1].left_channel;
-                double next_rc  = framebuf[i+1].right_channel;
-                double next2_lc = framebuf[i+2].left_channel;
-                double next2_rc = framebuf[i+2].right_channel;
-                for (double t = 0.0; t <= 1.0; t += 1.0 / (double) prefs.spline_steps) {
-                    double t2 = t  * t;
-                    double t3 = t2 * t;
-                    double x = 0.5 * ((2*prev_lc) + (-prev2_lc +   next_lc) * t +
-                                      (2*prev2_lc - 5*prev_lc  + 4*next_lc - next2_lc) * t2 +
-                                      ( -prev2_lc + 3*prev_lc  - 3*next_lc + next2_lc) * t3);
-                    double y = 0.5 * ((2*prev_rc) + (-prev2_rc +   next_rc) * t +
-                                      (2*prev2_rc - 5*prev_rc  + 4*next_rc - next2_rc) * t2 +
-                                      ( -prev2_rc + 3*prev_rc  - 3*next_rc + next2_rc) * t3);
-                    glVertex2d(x, y);
-                    vertex_count++;
-                    framebuf[i].left_channel  = x;
-                    framebuf[i].right_channel = y;
-                }
-            } else {
-                glVertex2d(lc, rc);
-                vertex_count++;
-            }
-            olc = lc, orc = rc;
-        }
+        vertex_count = draw_xy_vertices(
+            framebuf, frames_read,
+            prefs.display_mode, prefs.color_mode,
+            prefs.hue, prefs.color_range, prefs.scale_factor,
+            prefs.spline_steps,
+            (prefs.display_mode == DisplayFrequencyMode) ? avg_magnitudes : NULL,
+            window_size, overlap_size, max_magnitude);
+
         glEnd();
         glPopMatrix();
         if (prefs.display_mode == DisplayFrequencyMode)
@@ -1741,10 +1432,6 @@ public:
         }
         prefs.scale_factor = 2.0 / min(prefs.side[0] - prefs.side[1],
                                        prefs.side[2] - prefs.side[3]);
-    }
-
-    double map(double value, double fromLow, double fromHigh, double toLow, double toHigh) {
-        return (value - fromLow) * (toHigh - toLow) / (fromHigh - fromLow) + toLow;
     }
 
     void beginText()
@@ -2404,68 +2091,9 @@ public:
     }
 
 
-    /* useful functions */
+    /* smooth(), HSVtoRGB() now free functions in xyscope-shared.h */
+    /* map() renamed to map_value() in xyscope-shared.h */
 
-    void smooth(double *a, double b, double s)
-    {
-        *a = *a + (b - *a) * s;
-    }
-
-    void HSVtoRGB(double *r, double *g, double *b,
-                   double h, double s, double v)
-    {
-        int i;
-        double f, p, q, t;
-
-        if (s == 0) {
-            // achromatic (grey)
-            *r = *g = *b = v;
-            return;
-        }
-
-        if (h >= 360.0)
-            h -= 360.0;
-
-        h /= 60;              // sector 0 to 5
-        i = (int) floorf(h);
-        f = h - i;            // factorial part of h
-        p = v * (1 - s);
-        q = v * (1 - s * f);
-        t = v * (1 - s * (1 - f));
-
-        switch (i) {
-            case 0:
-                *r = v;
-                *g = t;
-                *b = p;
-                break;
-            case 1:
-                *r = q;
-                *g = v;
-                *b = p;
-                break;
-            case 2:
-                *r = p;
-                *g = v;
-                *b = t;
-                break;
-            case 3:
-                *r = p;
-                *g = q;
-                *b = v;
-                break;
-            case 4:
-                *r = t;
-                *g = p;
-                *b = v;
-                break;
-            default:          // case 5:
-                *r = v;
-                *g = p;
-                *b = q;
-                break;
-        }
-    }
 };
 static scene scn;
 
