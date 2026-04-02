@@ -85,6 +85,35 @@ clean:
 # Full rebuild
 rebuild: clean all
 
+# Package release archives
+# Usage: make release VERSION=1.4.0
+VERSION ?= dev
+RELEASE_STAGE = /tmp/xyscope-release-$(VERSION)
+
+.PHONY: release
+release: all
+	@if [ "$(VERSION)" = "dev" ]; then echo "Usage: make release VERSION=x.y.z"; exit 1; fi
+	@echo "Building Linux (Docker)..."
+	./build-linux.sh
+	@echo "Building Windows (Docker)..."
+	./build-windows.sh
+	@echo "Packaging release v$(VERSION)..."
+	@rm -rf $(RELEASE_STAGE)
+	@mkdir -p $(RELEASE_STAGE)/macos/xyscope-$(VERSION)
+	@cp -R release/macOS/XYScope.app $(RELEASE_STAGE)/macos/xyscope-$(VERSION)/
+	@cp release/macOS/xyscope-calibrate $(RELEASE_STAGE)/macos/xyscope-$(VERSION)/
+	@cd $(RELEASE_STAGE)/macos && zip -r $(RELEASE_STAGE)/XYScope-macOS-v$(VERSION).zip xyscope-$(VERSION)/ -x "*.DS_Store"
+	@echo "✓ $(RELEASE_STAGE)/XYScope-macOS-v$(VERSION).zip"
+	@mkdir -p $(RELEASE_STAGE)/linux/xyscope-$(VERSION)
+	@cp release/linux/* $(RELEASE_STAGE)/linux/xyscope-$(VERSION)/
+	@cd $(RELEASE_STAGE)/linux && tar czf $(RELEASE_STAGE)/xyscope-linux-x86_64-v$(VERSION).tar.gz xyscope-$(VERSION)/
+	@echo "✓ $(RELEASE_STAGE)/xyscope-linux-x86_64-v$(VERSION).tar.gz"
+	@mkdir -p $(RELEASE_STAGE)/windows/xyscope-$(VERSION)
+	@cp release/windows/* $(RELEASE_STAGE)/windows/xyscope-$(VERSION)/
+	@cd $(RELEASE_STAGE)/windows && zip -r $(RELEASE_STAGE)/XYScope-windows-x86_64-v$(VERSION).zip xyscope-$(VERSION)/
+	@echo "✓ $(RELEASE_STAGE)/XYScope-windows-x86_64-v$(VERSION).zip"
+	@echo "Release archives in $(RELEASE_STAGE)/"
+
 # Help
 .PHONY: help
 help:
@@ -92,10 +121,11 @@ help:
 	@echo "===================="
 	@echo ""
 	@echo "Targets:"
-	@echo "  make          - Build binaries (+ .app bundle on macOS)"
-	@echo "  make app      - Assemble .app bundle (macOS only)"
-	@echo "  make clean    - Remove build artifacts"
-	@echo "  make rebuild  - Clean and rebuild everything"
+	@echo "  make                       - Build binaries (+ .app bundle on macOS)"
+	@echo "  make app                   - Assemble .app bundle (macOS only)"
+	@echo "  make clean                 - Remove build artifacts"
+	@echo "  make rebuild               - Clean and rebuild everything"
+	@echo "  make release VERSION=x.y.z - Package release archives"
 	@echo ""
 
 .PHONY: all clean rebuild help
