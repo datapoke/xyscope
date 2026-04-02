@@ -356,6 +356,11 @@ int main(int argc, char *argv[])
     SDL_PauseAudioDevice(play_dev, 1);
     SDL_PauseAudioDevice(cap_dev, 1);
 
+    /* Hold the last frame on screen so the user can see the impulse */
+    if (state.render_detected) {
+        SDL_Delay(1000);
+    }
+
     /* Compute results */
     int result = 1;
 
