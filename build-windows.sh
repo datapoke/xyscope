@@ -16,11 +16,11 @@ docker run --platform linux/amd64 --rm \
         -lopengl32 -lole32 -luuid -lwinmm \
         -mwindows -static-libgcc -static-libstdc++ \
         -o /out/xyscope.exe
-    x86_64-w64-mingw32-gcc -O3 /src/xyscope-calibrate.c \
+    x86_64-w64-mingw32-g++ -O3 -std=c++11 -x c++ /src/xyscope-calibrate.mm \
         -I/usr/x86_64-w64-mingw32/include/SDL2 \
         -L/usr/x86_64-w64-mingw32/lib \
-        -lSDL2 -lm \
-        -mwindows -static-libgcc \
+        -lSDL2 -lopengl32 -lm \
+        -mwindows -static-libgcc -static-libstdc++ \
         -o /out/xyscope-calibrate.exe
     x86_64-w64-mingw32-objcopy --subsystem=console /out/xyscope-calibrate.exe
     cp /usr/x86_64-w64-mingw32/bin/SDL2.dll /out/
