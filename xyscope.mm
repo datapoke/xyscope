@@ -1957,9 +1957,10 @@ public:
     {
         thread_data_t *t_data = ai->getThreadData();
         if (t_data->pause_scope) {
-            if ((offset - frames_per_buf * nbufs) >= -default_rb_size) {
-                offset -= frames_per_buf * nbufs;
-                bump   -= frames_per_buf * nbufs;
+            int step = (frames_per_buf / DRAW_EACH_FRAME) * nbufs;
+            if ((offset - step) >= -default_rb_size) {
+                offset -= step;
+                bump   -= step;
             }
             showCounter(TIMED);
         }
@@ -1969,9 +1970,10 @@ public:
     {
         thread_data_t *t_data = ai->getThreadData();
         if (t_data->pause_scope) {
-            if (offset < -frames_per_buf * nbufs) {
-                offset += frames_per_buf * nbufs;
-                bump   += frames_per_buf * nbufs;
+            int step = (frames_per_buf / DRAW_EACH_FRAME) * nbufs;
+            if (offset < -step) {
+                offset += step;
+                bump   += step;
             }
             showCounter(TIMED);
         }
@@ -2234,10 +2236,10 @@ void keyboard(unsigned char key, int xPos, int yPos)
             scn.fastForward(1);
             break;
         case '<':
-            scn.rewind(frame_rate / DRAW_EACH_FRAME);
+            scn.rewind(frame_rate);
             break;
         case '>':
-            scn.fastForward(frame_rate / DRAW_EACH_FRAME);
+            scn.fastForward(frame_rate);
             break;
         case '_':
             scn.setColorRate(scn.getColorRate() - 0.01);
