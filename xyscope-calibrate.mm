@@ -260,28 +260,32 @@ int main(int argc, char *argv[])
 
     printf("Calibrating...\n");
 
-    /* Start capture and let the mic settle */
+    /* Start capture and render loop, let everything settle before playing */
     SDL_PauseAudioDevice(cap_dev, 0);
-    SDL_Delay(SETTLE_MS);
     state.capture_active = 1;
 
-    /* Start playback (sine burst) */
-    SDL_PauseAudioDevice(play_dev, 0);
-
-    /* Render loop */
     int bytes_per_buf = (SAMPLE_RATE / TARGET_FPS) * (int)sizeof(frame_t);
     int frames_per_buf = SAMPLE_RATE / TARGET_FPS;
     frame_t *framebuf = (frame_t *)malloc(bytes_per_buf);
     int running = 1;
-    Uint32 start_ticks = SDL_GetTicks();
+    int playing = 0;
+    Uint32 settle_start = SDL_GetTicks();
     Uint32 timeout_ms = SETTLE_MS + RECORD_SECONDS * 1000 + 1000;
 
     while (running && !state.done) {
+        Uint32 elapsed = SDL_GetTicks() - settle_start;
+
         /* Check timeout */
-        if (SDL_GetTicks() - start_ticks > timeout_ms) {
+        if (elapsed > timeout_ms) {
             fprintf(stderr, "Timeout: no impulse detected within %u ms\n", timeout_ms);
             running = 0;
             break;
+        }
+
+        /* Start playback after settle period */
+        if (!playing && elapsed >= SETTLE_MS) {
+            SDL_PauseAudioDevice(play_dev, 0);
+            playing = 1;
         }
 
         /* Poll SDL events */
