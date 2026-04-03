@@ -13,7 +13,7 @@ docker run --platform linux/amd64 --rm \
     x86_64-w64-mingw32-g++ /tmp/winmain.o /tmp/xyscope.o \
         -L/usr/x86_64-w64-mingw32/lib \
         -lSDL2 -lSDL2_ttf -lfftw3 \
-        -lopengl32 -lole32 -luuid -lwinmm \
+        -lopengl32 -lole32 -luuid -lwinmm -ldxgi \
         -mwindows -static-libgcc -static-libstdc++ \
         -o /out/xyscope.exe
     x86_64-w64-mingw32-g++ -O3 -std=c++11 -x c++ /src/xyscope-calibrate.mm \
