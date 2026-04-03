@@ -2113,8 +2113,8 @@ public:
             int di = SDL_GetWindowDisplayIndex(window);
             if (SDL_GetDesktopDisplayMode(di, &mode) == 0) {
                 SDL_SetWindowBordered(window, SDL_FALSE);
-                SDL_SetWindowPosition(window, 0, 0);
-                SDL_SetWindowSize(window, mode.w, mode.h - 1);
+                SDL_SetWindowPosition(window, 0, -1);
+                SDL_SetWindowSize(window, mode.w, mode.h + 1);
             }
         }
 #else
