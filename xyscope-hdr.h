@@ -20,51 +20,125 @@
 #include <dxgi1_6.h>
 #include <wingdi.h>
 
-/* DISPLAYCONFIG_SDR_WHITE_LEVEL is not in mingw headers yet */
-#ifndef DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL
-#define DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL ((int)0x0B)
-typedef struct {
-    DISPLAYCONFIG_DEVICE_INFO_HEADER header;
-    ULONG SDRWhiteLevel;  /* thousandths: 1000 = 80 nits (1.0x) */
-} DISPLAYCONFIG_SDR_WHITE_LEVEL;
+/*
+ * DisplayConfig API - not available in mingw-w64 headers.
+ * Define types and load functions at runtime from user32.dll.
+ */
+#ifndef DISPLAYCONFIG_PATH_ACTIVE
+#define DISPLAYCONFIG_PATH_ACTIVE 0x00000001
 #endif
+#ifndef QDC_ONLY_ACTIVE_PATHS
+#define QDC_ONLY_ACTIVE_PATHS 0x00000002
+#endif
+
+typedef struct {
+    UINT32 type;
+    UINT32 size;
+    LUID   adapterId;
+    UINT32 id;
+} XY_DISPLAYCONFIG_DEVICE_INFO_HEADER;
+
+typedef struct {
+    LUID   adapterId;
+    UINT32 id;
+    UINT32 modeInfoIdx;
+    UINT32 outputTechnology;
+    UINT32 rotation;
+    UINT32 scaling;
+    struct { UINT32 numerator; UINT32 denominator; } refreshRate;
+    UINT32 scanLineOrdering;
+    BOOL   targetAvailable;
+    UINT32 statusFlags;
+} XY_DISPLAYCONFIG_TARGET_INFO;
+
+typedef struct {
+    LUID   adapterId;
+    UINT32 id;
+    UINT32 modeInfoIdx;
+    UINT32 statusFlags;
+} XY_DISPLAYCONFIG_SOURCE_INFO;
+
+typedef struct {
+    XY_DISPLAYCONFIG_SOURCE_INFO sourceInfo;
+    XY_DISPLAYCONFIG_TARGET_INFO targetInfo;
+    UINT32 flags;
+} XY_DISPLAYCONFIG_PATH_INFO;
+
+/* Not used directly, but QueryDisplayConfig requires a modes buffer */
+typedef struct {
+    UINT32 infoType;
+    UINT32 id;
+    LUID   adapterId;
+    BYTE   data[48]; /* union of target/source mode info */
+} XY_DISPLAYCONFIG_MODE_INFO;
+
+#define XY_DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL 0x0B
+
+typedef struct {
+    XY_DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+    ULONG SDRWhiteLevel;  /* thousandths: 1000 = 80 nits (1.0x) */
+} XY_DISPLAYCONFIG_SDR_WHITE_LEVEL;
+
+typedef LONG (WINAPI *PFN_GetDisplayConfigBufferSizes)(UINT32, UINT32 *, UINT32 *);
+typedef LONG (WINAPI *PFN_QueryDisplayConfig)(UINT32, UINT32 *,
+    XY_DISPLAYCONFIG_PATH_INFO *, UINT32 *, XY_DISPLAYCONFIG_MODE_INFO *, void *);
+typedef LONG (WINAPI *PFN_DisplayConfigGetDeviceInfo)(XY_DISPLAYCONFIG_DEVICE_INFO_HEADER *);
 
 static inline double detect_hdr_brightness_displayconfig(void)
 {
+    HMODULE user32 = LoadLibraryA("user32.dll");
+    if (!user32)
+        return 1.0;
+
+    PFN_GetDisplayConfigBufferSizes pGetBufferSizes =
+        (PFN_GetDisplayConfigBufferSizes)GetProcAddress(user32, "GetDisplayConfigBufferSizes");
+    PFN_QueryDisplayConfig pQueryConfig =
+        (PFN_QueryDisplayConfig)GetProcAddress(user32, "QueryDisplayConfig");
+    PFN_DisplayConfigGetDeviceInfo pGetDeviceInfo =
+        (PFN_DisplayConfigGetDeviceInfo)GetProcAddress(user32, "DisplayConfigGetDeviceInfo");
+
+    if (!pGetBufferSizes || !pQueryConfig || !pGetDeviceInfo) {
+        FreeLibrary(user32);
+        return 1.0;
+    }
+
     UINT32 num_paths = 0, num_modes = 0;
     LONG rc;
     double max_multiplier = 1.0;
 
-    rc = GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &num_paths, &num_modes);
-    if (rc != ERROR_SUCCESS || num_paths == 0)
-        return 1.0;
-
-    DISPLAYCONFIG_PATH_INFO *paths = (DISPLAYCONFIG_PATH_INFO *)
-        calloc(num_paths, sizeof(DISPLAYCONFIG_PATH_INFO));
-    DISPLAYCONFIG_MODE_INFO *modes = (DISPLAYCONFIG_MODE_INFO *)
-        calloc(num_modes, sizeof(DISPLAYCONFIG_MODE_INFO));
-    if (!paths || !modes) {
-        free(paths);
-        free(modes);
+    rc = pGetBufferSizes(QDC_ONLY_ACTIVE_PATHS, &num_paths, &num_modes);
+    if (rc != ERROR_SUCCESS || num_paths == 0) {
+        FreeLibrary(user32);
         return 1.0;
     }
 
-    rc = QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &num_paths, paths, &num_modes, modes, NULL);
+    XY_DISPLAYCONFIG_PATH_INFO *paths = (XY_DISPLAYCONFIG_PATH_INFO *)
+        calloc(num_paths, sizeof(XY_DISPLAYCONFIG_PATH_INFO));
+    XY_DISPLAYCONFIG_MODE_INFO *modes = (XY_DISPLAYCONFIG_MODE_INFO *)
+        calloc(num_modes, sizeof(XY_DISPLAYCONFIG_MODE_INFO));
+    if (!paths || !modes) {
+        free(paths);
+        free(modes);
+        FreeLibrary(user32);
+        return 1.0;
+    }
+
+    rc = pQueryConfig(QDC_ONLY_ACTIVE_PATHS, &num_paths, paths, &num_modes, modes, NULL);
     if (rc != ERROR_SUCCESS) {
         free(paths);
         free(modes);
+        FreeLibrary(user32);
         return 1.0;
     }
 
     for (UINT32 i = 0; i < num_paths; i++) {
-        DISPLAYCONFIG_SDR_WHITE_LEVEL sdr = {};
-        sdr.header.type      = (DISPLAYCONFIG_DEVICE_INFO_TYPE)
-                                DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL;
+        XY_DISPLAYCONFIG_SDR_WHITE_LEVEL sdr = {};
+        sdr.header.type      = XY_DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL;
         sdr.header.size      = sizeof(sdr);
         sdr.header.adapterId = paths[i].targetInfo.adapterId;
         sdr.header.id        = paths[i].targetInfo.id;
 
-        rc = DisplayConfigGetDeviceInfo(&sdr.header);
+        rc = pGetDeviceInfo(&sdr.header);
         if (rc == ERROR_SUCCESS && sdr.SDRWhiteLevel > 0) {
             double m = (double)sdr.SDRWhiteLevel / 1000.0;
             if (m > max_multiplier)
@@ -74,39 +148,40 @@ static inline double detect_hdr_brightness_displayconfig(void)
 
     free(paths);
     free(modes);
+    FreeLibrary(user32);
     return max_multiplier;
 }
 
 static inline double detect_hdr_brightness_dxgi(void)
 {
     IDXGIFactory1 *factory = NULL;
-    HRESULT hr = CreateDXGIFactory1(&IID_IDXGIFactory1, (void **)&factory);
+    HRESULT hr = CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void **)&factory);
     if (FAILED(hr) || !factory)
         return 1.0;
 
     double result = 1.0;
     IDXGIAdapter1 *adapter = NULL;
 
-    for (UINT ai = 0; factory->lpVtbl->EnumAdapters1(factory, ai, &adapter) == S_OK; ai++) {
+    for (UINT ai = 0; factory->EnumAdapters1(ai, &adapter) == S_OK; ai++) {
         IDXGIOutput *output = NULL;
-        for (UINT oi = 0; adapter->lpVtbl->EnumOutputs(adapter, oi, &output) == S_OK; oi++) {
+        for (UINT oi = 0; adapter->EnumOutputs(oi, &output) == S_OK; oi++) {
             IDXGIOutput6 *output6 = NULL;
-            hr = output->lpVtbl->QueryInterface(output, &IID_IDXGIOutput6, (void **)&output6);
+            hr = output->QueryInterface(__uuidof(IDXGIOutput6), (void **)&output6);
             if (SUCCEEDED(hr) && output6) {
                 DXGI_OUTPUT_DESC1 desc1;
-                hr = output6->lpVtbl->GetDesc1(output6, &desc1);
+                hr = output6->GetDesc1(&desc1);
                 if (SUCCEEDED(hr) &&
                     desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020) {
                     /* HDR is active but we couldn't get SDR white level */
                     result = 2.5;
                 }
-                output6->lpVtbl->Release(output6);
+                output6->Release();
             }
-            output->lpVtbl->Release(output);
+            output->Release();
         }
-        adapter->lpVtbl->Release(adapter);
+        adapter->Release();
     }
-    factory->lpVtbl->Release(factory);
+    factory->Release();
     return result;
 }
 
