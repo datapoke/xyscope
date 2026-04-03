@@ -1062,7 +1062,7 @@ public:
     bool show_mouse;
 
     #define NUM_TEXT_TIMERS 14
-    #define NUM_AUTO_TEXT_TIMERS 10
+    #define NUM_AUTO_TEXT_TIMERS 11
     typedef struct _text_timer_t {
         bool show;
         timeval time;
@@ -1082,11 +1082,11 @@ public:
         SampleRateTimer  = 7,
         FrameRateTimer   = 8,
         DelayTimer       = 9,
+        BrightnessTimer  = 10,
         /* End of text timers automatically included in stats display */
-        PausedTimer      = 10,
-        ScaleTimer       = 11,
-        CounterTimer     = 12,
-        BrightnessTimer  = 13
+        PausedTimer      = 11,
+        ScaleTimer       = 12,
+        CounterTimer     = 13
     } text_timer_handles;
     text_timer_t text_timer[NUM_TEXT_TIMERS];
     timeval show_intro_time;
@@ -2384,10 +2384,10 @@ void keyboard(unsigned char key, int xPos, int yPos)
             scn.setLineWidth(scn.getLineWidth() - 1);
             break;
         case 'i':
-            scn.setBrightness(scn.getBrightness() + 0.5);
+            scn.setBrightness(scn.getBrightness() + 0.1);
             break;
         case 'I':
-            scn.setBrightness(scn.getBrightness() - 0.5);
+            scn.setBrightness(scn.getBrightness() - 0.1);
             break;
         default:
             break;
