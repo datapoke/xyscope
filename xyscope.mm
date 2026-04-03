@@ -2103,14 +2103,18 @@ public:
          * fullscreen-desktop OpenGL windows to exclusive fullscreen,
          * which causes the volume overlay (and any DWM compositor
          * event) to disrupt rendering and audio. Borderless keeps
-         * DWM compositing active so overlays work normally. */
+         * DWM compositing active so overlays work normally.
+         *
+         * The window must be slightly smaller than the display to
+         * prevent Windows from promoting it to exclusive fullscreen
+         * (see libsdl-org/SDL#12791). */
         {
             SDL_DisplayMode mode;
             int di = SDL_GetWindowDisplayIndex(window);
             if (SDL_GetDesktopDisplayMode(di, &mode) == 0) {
                 SDL_SetWindowBordered(window, SDL_FALSE);
                 SDL_SetWindowPosition(window, 0, 0);
-                SDL_SetWindowSize(window, mode.w, mode.h);
+                SDL_SetWindowSize(window, mode.w, mode.h - 1);
             }
         }
 #else
@@ -2119,6 +2123,7 @@ public:
         prefs.is_full_screen = true;
         show_mouse           = false;
         mouse_is_dirty       = true;
+        window_is_dirty      = true;
     }
 
     void setZoom(double factor)
