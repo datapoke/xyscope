@@ -2076,8 +2076,12 @@ public:
     void setWindowSize(unsigned int x, unsigned int y)
     {
         if (prefs.is_full_screen) {
-            // Exit fullscreen mode first
+#ifdef _WIN32
+            /* Undo borderless fullscreen: restore border and position */
+            SDL_SetWindowBordered(window, SDL_TRUE);
+#else
             SDL_SetWindowFullscreen(window, 0);
+#endif
         } else {
             SDL_GetWindowPosition(window, &prefs.position[0], &prefs.position[1]);
         }
@@ -2093,7 +2097,25 @@ public:
             SDL_GetWindowPosition(window, &prefs.position[0], &prefs.position[1]);
             SDL_GetWindowSize(window, &prefs.normal_dim[0], &prefs.normal_dim[1]);
         }
+#ifdef _WIN32
+        /* Use borderless window at desktop resolution instead of
+         * SDL_WINDOW_FULLSCREEN_DESKTOP.  Windows silently promotes
+         * fullscreen-desktop OpenGL windows to exclusive fullscreen,
+         * which causes the volume overlay (and any DWM compositor
+         * event) to disrupt rendering and audio. Borderless keeps
+         * DWM compositing active so overlays work normally. */
+        {
+            SDL_DisplayMode mode;
+            int di = SDL_GetWindowDisplayIndex(window);
+            if (SDL_GetDesktopDisplayMode(di, &mode) == 0) {
+                SDL_SetWindowBordered(window, SDL_FALSE);
+                SDL_SetWindowPosition(window, 0, 0);
+                SDL_SetWindowSize(window, mode.w, mode.h);
+            }
+        }
+#else
         SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+#endif
         prefs.is_full_screen = true;
         show_mouse           = false;
         mouse_is_dirty       = true;
@@ -2633,7 +2655,7 @@ int main(int argc, char *argv[])
     reshape(drawable_w, drawable_h);
 
     if (scn.prefs.is_full_screen) {
-        SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        scn.setFullScreen();
     }
 
     // Detect rates and initialize audio
