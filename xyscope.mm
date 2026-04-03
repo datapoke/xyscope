@@ -1398,7 +1398,8 @@ public:
             prefs.hue, prefs.color_range, prefs.scale_factor,
             prefs.spline_steps,
             (prefs.display_mode == DisplayFrequencyMode) ? avg_magnitudes : NULL,
-            window_size, overlap_size, max_magnitude);
+            window_size, overlap_size, max_magnitude,
+            prefs.brightness);
 
         glEnd();
         glPopMatrix();

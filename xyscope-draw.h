@@ -50,7 +50,8 @@ static inline unsigned int draw_xy_vertices(
     double *avg_magnitudes,   /* NULL unless DisplayFrequencyMode */
     unsigned int window_size,
     unsigned int overlap_size,
-    double max_magnitude)
+    double max_magnitude,
+    double brightness)
 {
     unsigned int vertex_count = 0;
     double h   = -1.0;
@@ -70,7 +71,7 @@ static inline unsigned int draw_xy_vertices(
     /* Set initial color for standard display mode */
     if (display_mode == DisplayStandardMode) {
         HSVtoRGB(&r, &g, &b, hue, s, v);
-        glColor3d(r, g, b);
+        glColor3d(r * brightness, g * brightness, b * brightness);
     }
 
     for (unsigned int i = 0; i < frames_read; i++) {
@@ -128,7 +129,7 @@ static inline unsigned int draw_xy_vertices(
         }
         if (h > -1.0) {
             HSVtoRGB(&r, &g, &b, h, s, v);
-            glColor3d(r, g, b);
+            glColor3d(r * brightness, g * brightness, b * brightness);
         }
 
         /* Catmull-Rom spline interpolation */

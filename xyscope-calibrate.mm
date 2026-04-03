@@ -329,7 +329,8 @@ int main(int argc, char *argv[])
                 1.0,                /* scale_factor */
                 DEFAULT_SPLINE_STEPS,
                 NULL,               /* no frequency magnitudes */
-                0, 0, 0.0);
+                0, 0, 0.0,
+                1.0);               /* brightness */
             glEnd();
 
             glFinish();
