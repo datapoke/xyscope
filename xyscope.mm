@@ -213,6 +213,9 @@ typedef struct _thread_data {
     volatile bool can_process;
     volatile bool pause_scope;
     volatile int negotiated_sample_rate;
+#ifdef _WIN32
+    volatile bool wasapi_reconnect;
+#endif
     timeval last_write;
 } thread_data_t;
 
@@ -651,6 +654,7 @@ public:
 #ifdef __APPLE__
         ai->setupPorts();
 #elif defined(_WIN32)
+        t_data->wasapi_reconnect = false;
         ai->setupPorts();
         t_data->can_process = true;
 #else
@@ -688,6 +692,14 @@ public:
                     continue;
                 capture = (IAudioCaptureClient *)t_data->capture_client;
                 last_real_packet = GetTickCount();
+            }
+
+            /* Immediate reconnect requested by main thread
+             * (window focus change, fullscreen disruption, etc.) */
+            if (t_data->wasapi_reconnect) {
+                t_data->wasapi_reconnect = false;
+                teardownWasapiLoopback(t_data);
+                continue;
             }
 
             Sleep(1);
@@ -2718,6 +2730,16 @@ int main(int argc, char *argv[])
                 if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
                     reshape(event.window.data1, event.window.data2);
                 }
+#ifdef _WIN32
+                /* Windows volume overlay and other compositor events
+                 * disrupt fullscreen and can kill the WASAPI loopback
+                 * session.  Trigger an immediate reconnect when focus
+                 * returns or the window is restored. */
+                else if (event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED ||
+                         event.window.event == SDL_WINDOWEVENT_RESTORED) {
+                    Thread_Data.wasapi_reconnect = true;
+                }
+#endif
                 else if (event.window.event == SDL_WINDOWEVENT_DISPLAY_CHANGED) {
                     SDL_DisplayMode mode;
                     int di = SDL_GetWindowDisplayIndex(window);
