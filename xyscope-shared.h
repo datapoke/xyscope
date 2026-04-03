@@ -139,6 +139,7 @@ typedef struct _preferences_t {
     double delay;
     double audio_delay;
     double display_delay;
+    double brightness;
 } preferences_t;
 
 
