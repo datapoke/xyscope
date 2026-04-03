@@ -2437,6 +2437,10 @@ void passiveMotion(int x, int y)
 // Global SDL variables (definition)
 SDL_Window *window = NULL;
 SDL_GLContext gl_context = NULL;
+#ifdef _WIN32
+static HDC hdr_hdc = NULL;       /* non-NULL when using WGL float framebuffer */
+static HGLRC hdr_hglrc = NULL;
+#endif
 TTF_Font *font = NULL;
 
 int main(int argc, char *argv[])
@@ -2491,11 +2495,35 @@ int main(int argc, char *argv[])
         }
     }
 
+#ifdef _WIN32
+    /* Try WGL float framebuffer for HDR; fall back to SDL if unavailable */
+    {
+        hdr_window_t hdr = {};
+        if (create_hdr_window(&hdr, "XY Scope",
+                              scn.prefs.position[0], scn.prefs.position[1],
+                              scn.prefs.normal_dim[0], scn.prefs.normal_dim[1])) {
+            hdr_hdc   = hdr.hdc;
+            hdr_hglrc = hdr.hglrc;
+            window = SDL_CreateWindowFrom((void *)hdr.hwnd);
+            if (!window) {
+                fprintf(stderr, "SDL_CreateWindowFrom failed: %s\n", SDL_GetError());
+                wglDeleteContext(hdr.hglrc);
+                DestroyWindow(hdr.hwnd);
+                hdr_hdc = NULL;
+                hdr_hglrc = NULL;
+            }
+        }
+    }
+    if (!window) {
+        /* Standard SDL path (no HDR) */
+        hdr_hdc = NULL;
+        hdr_hglrc = NULL;
+#endif
     // Set OpenGL attributes
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-#if defined(_WIN32) || defined(__APPLE__)
+#ifdef __APPLE__
     SDL_GL_SetAttribute(SDL_GL_FLOATBUFFERS, 1);
 #endif
 
@@ -2513,9 +2541,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // Raise window and give it focus (important when launched from Terminal)
-    SDL_RaiseWindow(window);
-
     // Create OpenGL context
     gl_context = SDL_GL_CreateContext(window);
     if (!gl_context) {
@@ -2527,6 +2552,18 @@ int main(int argc, char *argv[])
 
     // Enable VSync
     SDL_GL_SetSwapInterval(1);
+#ifdef _WIN32
+    } /* end of SDL fallback block */
+
+    /* Enable VSync for WGL HDR path */
+    if (hdr_hdc) {
+        typedef BOOL (WINAPI *PFNWGLSWAPINTERVALEXTPROC)(int);
+        PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT =
+            (PFNWGLSWAPINTERVALEXTPROC)wglGetProcAddress("wglSwapIntervalEXT");
+        if (wglSwapIntervalEXT)
+            wglSwapIntervalEXT(1);
+    }
+#endif
 
     glGenTextures(1, &scn.textures);
 
@@ -2683,10 +2720,21 @@ int main(int argc, char *argv[])
         display();
 
         // Swap buffers
+#ifdef _WIN32
+        if (hdr_hdc)
+            SwapBuffers(hdr_hdc);
+        else
+#endif
         SDL_GL_SwapWindow(window);
     }
 
     // Cleanup
+#ifdef _WIN32
+    if (hdr_hglrc) {
+        wglMakeCurrent(NULL, NULL);
+        wglDeleteContext(hdr_hglrc);
+    } else
+#endif
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
     SDL_Quit();

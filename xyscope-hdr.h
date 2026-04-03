@@ -196,6 +196,120 @@ static inline double detect_hdr_brightness(void)
     return detect_hdr_brightness_dxgi();
 }
 
+/* WGL extension constants */
+#define WGL_DRAW_TO_WINDOW_ARB    0x2001
+#define WGL_SUPPORT_OPENGL_ARB    0x2010
+#define WGL_DOUBLE_BUFFER_ARB     0x2011
+#define WGL_PIXEL_TYPE_ARB        0x2013
+#define WGL_COLOR_BITS_ARB        0x2014
+#define WGL_ALPHA_BITS_ARB        0x201B
+#define WGL_TYPE_RGBA_FLOAT_ARB   0x21A0
+
+typedef BOOL (WINAPI *PFNWGLCHOOSEPIXELFORMATARBPROC)(HDC, const int *, const FLOAT *, UINT, int *, UINT *);
+typedef HGLRC (WINAPI *PFNWGLCREATECONTEXTATTRIBSARBPROC)(HDC, HGLRC, const int *);
+
+/* State returned from create_hdr_window */
+typedef struct {
+    HWND hwnd;
+    HDC  hdc;
+    HGLRC hglrc;
+} hdr_window_t;
+
+/*
+ * Create a Win32 window with a floating-point pixel format for HDR/scRGB.
+ * Uses the WGL bootstrap pattern: create a dummy context to load
+ * wglChoosePixelFormatARB, then create the real window with the
+ * float pixel format.  Returns true on success.
+ */
+static inline bool create_hdr_window(hdr_window_t *out,
+                                     const char *title,
+                                     int x, int y, int w, int h)
+{
+    /* Register window class */
+    WNDCLASSA wc = {};
+    wc.lpfnWndProc   = DefWindowProcA;
+    wc.hInstance      = GetModuleHandle(NULL);
+    wc.lpszClassName  = "XYScopeHDR";
+    wc.style          = CS_OWNDC;
+    RegisterClassA(&wc);
+
+    /* Dummy window to bootstrap WGL extensions */
+    HWND dummy_hwnd = CreateWindowExA(0, wc.lpszClassName, "dummy",
+        WS_OVERLAPPEDWINDOW, 0, 0, 1, 1, NULL, NULL, wc.hInstance, NULL);
+    if (!dummy_hwnd) return false;
+
+    HDC dummy_dc = GetDC(dummy_hwnd);
+    PIXELFORMATDESCRIPTOR dummy_pfd = {};
+    dummy_pfd.nSize      = sizeof(dummy_pfd);
+    dummy_pfd.nVersion   = 1;
+    dummy_pfd.dwFlags    = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    dummy_pfd.iPixelType = PFD_TYPE_RGBA;
+    dummy_pfd.cColorBits = 32;
+    int dummy_pf = ChoosePixelFormat(dummy_dc, &dummy_pfd);
+    SetPixelFormat(dummy_dc, dummy_pf, &dummy_pfd);
+    HGLRC dummy_rc = wglCreateContext(dummy_dc);
+    wglMakeCurrent(dummy_dc, dummy_rc);
+
+    /* Load WGL extension */
+    PFNWGLCHOOSEPIXELFORMATARBPROC wglChoosePixelFormatARB =
+        (PFNWGLCHOOSEPIXELFORMATARBPROC)wglGetProcAddress("wglChoosePixelFormatARB");
+
+    wglMakeCurrent(NULL, NULL);
+    wglDeleteContext(dummy_rc);
+    ReleaseDC(dummy_hwnd, dummy_dc);
+    DestroyWindow(dummy_hwnd);
+
+    if (!wglChoosePixelFormatARB) return false;
+
+    /* Create the real window */
+    DWORD style = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+    RECT rect = { 0, 0, w, h };
+    AdjustWindowRect(&rect, style, FALSE);
+
+    HWND hwnd = CreateWindowExA(0, wc.lpszClassName, title, style,
+        x, y, rect.right - rect.left, rect.bottom - rect.top,
+        NULL, NULL, wc.hInstance, NULL);
+    if (!hwnd) return false;
+
+    HDC hdc = GetDC(hwnd);
+
+    /* Request float pixel format */
+    int attribs[] = {
+        WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
+        WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
+        WGL_DOUBLE_BUFFER_ARB,  GL_TRUE,
+        WGL_PIXEL_TYPE_ARB,     WGL_TYPE_RGBA_FLOAT_ARB,
+        WGL_COLOR_BITS_ARB,     64,
+        WGL_ALPHA_BITS_ARB,     16,
+        0
+    };
+    int pixel_format = 0;
+    UINT num_formats = 0;
+    if (!wglChoosePixelFormatARB(hdc, attribs, NULL, 1, &pixel_format, &num_formats)
+        || num_formats == 0) {
+        /* Float format not available, fall back to standard */
+        DestroyWindow(hwnd);
+        return false;
+    }
+
+    PIXELFORMATDESCRIPTOR pfd = {};
+    DescribePixelFormat(hdc, pixel_format, sizeof(pfd), &pfd);
+    SetPixelFormat(hdc, pixel_format, &pfd);
+
+    HGLRC hglrc = wglCreateContext(hdc);
+    if (!hglrc) {
+        DestroyWindow(hwnd);
+        return false;
+    }
+    wglMakeCurrent(hdc, hglrc);
+
+    out->hwnd  = hwnd;
+    out->hdc   = hdc;
+    out->hglrc = hglrc;
+    printf("HDR: created floating-point framebuffer (scRGB)\n");
+    return true;
+}
+
 #elif defined(__APPLE__)
 
 #ifdef __OBJC__
