@@ -24,7 +24,7 @@ ifeq ($(UNAME_S),Darwin)
     # macOS
     CXX = clang++
     CXX_FLAGS = -Wall -O3 -std=c++11 -fobjc-arc -I/opt/homebrew/include
-    LD_LIBS = -lpthread -L/opt/homebrew/lib -lSDL2 -lSDL2_ttf -framework OpenGL -framework Accelerate -framework Foundation -framework CoreAudio -framework AudioToolbox
+    LD_LIBS = -lpthread -L/opt/homebrew/lib -lSDL2 -lSDL2_ttf -framework OpenGL -framework Accelerate -framework Foundation -framework CoreAudio -framework AudioToolbox -framework AppKit
 else
     # Linux
     CXX = g++

@@ -75,6 +75,7 @@
 #include "xyscope-shared.h"
 #include "xyscope-ringbuffer.h"
 #include "xyscope-draw.h"
+#include "xyscope-hdr.h"
 
 #ifdef _WIN32
 /* ---- Windows compatibility layer ---- */
@@ -1018,7 +1019,7 @@ public:
     bool show_help;
     bool show_mouse;
 
-    #define NUM_TEXT_TIMERS 13
+    #define NUM_TEXT_TIMERS 14
     #define NUM_AUTO_TEXT_TIMERS 10
     typedef struct _text_timer_t {
         bool show;
@@ -1042,7 +1043,8 @@ public:
         /* End of text timers automatically included in stats display */
         PausedTimer      = 10,
         ScaleTimer       = 11,
-        CounterTimer     = 12
+        CounterTimer     = 12,
+        BrightnessTimer  = 13
     } text_timer_handles;
     text_timer_t text_timer[NUM_TEXT_TIMERS];
     timeval show_intro_time;
@@ -1717,6 +1719,7 @@ public:
     void showSampleRate(bool t) { showTimedText(SampleRateTimer, true, t, "Sample rate: %d Hz", sample_rate); }
     void showFrameRate(bool t) { showTimedText(FrameRateTimer, true, t, "Frame rate: %d fps", frame_rate); }
     void showDelay(bool t) { showTimedText(DelayTimer, true, t, "Delay: %.2f ms", prefs.delay); }
+    void showBrightness(bool t) { showTimedText(BrightnessTimer, true, t, "Brightness: %.1f", prefs.brightness); }
     void showPaused(bool t) { showTimedText(PausedTimer, true, t, "Paused"); }
 
     void showScale(bool timed)
@@ -2066,6 +2069,18 @@ public:
         showColorRate(TIMED);
     }
 
+    double getBrightness(void)
+    {
+        return prefs.brightness;
+    }
+
+    void setBrightness(double b)
+    {
+        prefs.brightness = b;
+        if (prefs.brightness < 0.1) prefs.brightness = 0.1;
+        showBrightness(TIMED);
+    }
+
     double getDelay(void)
     {
         return prefs.delay;
@@ -2326,6 +2341,12 @@ void keyboard(unsigned char key, int xPos, int yPos)
         case 'W':
             scn.setLineWidth(scn.getLineWidth() - 1);
             break;
+        case 'i':
+            scn.setBrightness(scn.getBrightness() + 0.5);
+            break;
+        case 'I':
+            scn.setBrightness(scn.getBrightness() - 0.5);
+            break;
         default:
             break;
     }
@@ -2432,6 +2453,7 @@ int main(int argc, char *argv[])
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_FLOATBUFFERS, 1);
 
     // Create window
     window = SDL_CreateWindow("XY Scope",
@@ -2490,6 +2512,9 @@ int main(int argc, char *argv[])
            frames_per_buf, draw_frames, default_rb_size);
     scn.init();
 
+    if (scn.prefs.brightness == 0.0)
+        scn.prefs.brightness = detect_hdr_brightness();
+
     scn.showAutoScale(NOT_TIMED);
     scn.showSplines(NOT_TIMED);
     scn.showLineWidth(NOT_TIMED);
@@ -2500,6 +2525,7 @@ int main(int argc, char *argv[])
     scn.showSampleRate(NOT_TIMED);
     scn.showFrameRate(NOT_TIMED);
     scn.showDelay(NOT_TIMED);
+    scn.showBrightness(NOT_TIMED);
     scn.showScale(NOT_TIMED);
 
     // Main event loop
