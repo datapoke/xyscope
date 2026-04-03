@@ -2675,8 +2675,10 @@ int main(int argc, char *argv[])
            frames_per_buf, draw_frames, default_rb_size);
     scn.init();
 
-    if (scn.prefs.brightness <= 0.0)
-        scn.prefs.brightness = detect_hdr_brightness();
+    if (scn.prefs.brightness <= 0.0) {
+        double detected = detect_hdr_brightness();
+        scn.prefs.brightness = (detected > 10.0) ? 10.0 : detected;
+    }
 
     scn.showAutoScale(NOT_TIMED);
     scn.showSplines(NOT_TIMED);
