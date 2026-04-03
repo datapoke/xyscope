@@ -2587,6 +2587,20 @@ int main(int argc, char *argv[])
             (PFNWGLSWAPINTERVALEXTPROC)wglGetProcAddress("wglSwapIntervalEXT");
         if (wglSwapIntervalEXT)
             wglSwapIntervalEXT(1);
+
+        /* Disable color clamping so values > 1.0 reach the float
+         * framebuffer.  Without this, the fixed-function pipeline
+         * clamps glColor values to [0,1] even with a float FB. */
+        #define GL_CLAMP_VERTEX_COLOR_ARB   0x891A
+        #define GL_CLAMP_FRAGMENT_COLOR_ARB 0x891B
+        #define GL_FALSE_ARB                0
+        typedef void (APIENTRY *PFNGLCLAMPCOLORARBPROC)(GLenum, GLenum);
+        PFNGLCLAMPCOLORARBPROC glClampColorARB =
+            (PFNGLCLAMPCOLORARBPROC)wglGetProcAddress("glClampColorARB");
+        if (glClampColorARB) {
+            glClampColorARB(GL_CLAMP_VERTEX_COLOR_ARB, GL_FALSE_ARB);
+            glClampColorARB(GL_CLAMP_FRAGMENT_COLOR_ARB, GL_FALSE_ARB);
+        }
     }
 #endif
 
