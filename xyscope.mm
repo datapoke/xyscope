@@ -1857,7 +1857,7 @@ public:
             smooth(&max_sample_value,
                     (max_sample_value * (2.0 / 3.0) + mv),
                     0.2);
-        setSides(max_sample_value, 1);
+        setSides(max_sample_value / 0.95, 1);
     }
 
     void zoomIn(void)
