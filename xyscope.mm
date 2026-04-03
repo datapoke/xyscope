@@ -2556,8 +2556,9 @@ int main(int argc, char *argv[])
            frames_per_buf, draw_frames, default_rb_size);
     scn.init();
 
-    if (scn.prefs.brightness == 0.0)
+    if (scn.prefs.brightness <= 0.0)
         scn.prefs.brightness = detect_hdr_brightness();
+    printf("HDR brightness: %.2f\n", scn.prefs.brightness);
 
     scn.showAutoScale(NOT_TIMED);
     scn.showSplines(NOT_TIMED);
