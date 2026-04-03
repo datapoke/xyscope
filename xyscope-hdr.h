@@ -172,8 +172,12 @@ static inline double detect_hdr_brightness_dxgi(void)
                 hr = output6->GetDesc1(&desc1);
                 if (SUCCEEDED(hr) &&
                     desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020) {
-                    /* HDR is active but we couldn't get SDR white level */
-                    result = 2.5;
+                    /* Use peak luminance in scRGB units (80 nits = 1.0).
+                     * MaxLuminance is peak for small highlights; scope
+                     * traces are thin lines so this is appropriate. */
+                    double m = (double)desc1.MaxLuminance / 80.0;
+                    if (m > result)
+                        result = m;
                 }
                 output6->Release();
             }
@@ -187,13 +191,13 @@ static inline double detect_hdr_brightness_dxgi(void)
 
 static inline double detect_hdr_brightness(void)
 {
-    /* Try DisplayConfig first (gives exact SDR white level) */
-    double m = detect_hdr_brightness_displayconfig();
+    /* Try DXGI first — gives peak display luminance for HDR */
+    double m = detect_hdr_brightness_dxgi();
     if (m > 1.0)
         return m;
 
-    /* Fall back to DXGI (can detect HDR but not exact white level) */
-    return detect_hdr_brightness_dxgi();
+    /* Fall back to DisplayConfig SDR white level */
+    return detect_hdr_brightness_displayconfig();
 }
 
 /* WGL extension constants */
