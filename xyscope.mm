@@ -241,6 +241,115 @@ static inline void signal_data_ready(thread_data_t *t_data)
     }
 }
 
+#ifdef _WIN32
+/* Release WASAPI COM interfaces and clear pointers */
+static void teardownWasapiLoopback(thread_data_t *t_data)
+{
+    if (t_data->audio_client) {
+        ((IAudioClient *)t_data->audio_client)->Stop();
+        ((IAudioClient *)t_data->audio_client)->Release();
+        t_data->audio_client = NULL;
+    }
+    if (t_data->capture_client) {
+        ((IAudioCaptureClient *)t_data->capture_client)->Release();
+        t_data->capture_client = NULL;
+    }
+}
+
+/* Initialize (or reinitialize) WASAPI loopback capture.
+ * Returns true on success.  On failure, audio_client and
+ * capture_client are left NULL. */
+static bool initWasapiLoopback(thread_data_t *t_data, bool verbose)
+{
+    teardownWasapiLoopback(t_data);
+
+    if (verbose)
+        printf("Setting up WASAPI loopback capture...\n");
+
+    IMMDeviceEnumerator *enumerator = NULL;
+    HRESULT hr = CoCreateInstance(XYSCOPE_CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL,
+                                  XYSCOPE_IID_IMMDeviceEnumerator, (void **)&enumerator);
+    if (FAILED(hr))
+        return false;
+
+    IMMDevice *device = NULL;
+    hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+    enumerator->Release();
+    if (FAILED(hr))
+        return false;
+
+    /* Print the device name */
+    if (verbose) {
+        IPropertyStore *props = NULL;
+        device->OpenPropertyStore(STGM_READ, &props);
+        if (props) {
+            PROPVARIANT name;
+            PropVariantInit(&name);
+            props->GetValue(PKEY_Device_FriendlyName, &name);
+            if (name.vt == VT_LPWSTR) {
+                char narrow[256];
+                WideCharToMultiByte(CP_UTF8, 0, name.pwszVal, -1,
+                                    narrow, sizeof(narrow), NULL, NULL);
+                printf("Using audio device: %s\n", narrow);
+            }
+            PropVariantClear(&name);
+            props->Release();
+        }
+    }
+
+    IAudioClient *audio_client = NULL;
+    hr = device->Activate(XYSCOPE_IID_IAudioClient, CLSCTX_ALL,
+                          NULL, (void **)&audio_client);
+    device->Release();
+    if (FAILED(hr))
+        return false;
+
+    WAVEFORMATEX *mix_format = NULL;
+    hr = audio_client->GetMixFormat(&mix_format);
+    if (FAILED(hr)) {
+        audio_client->Release();
+        return false;
+    }
+
+    if (verbose)
+        printf("WASAPI format: %d Hz, %d channels, %d bits\n",
+               (int)mix_format->nSamplesPerSec, (int)mix_format->nChannels,
+               (int)mix_format->wBitsPerSample);
+
+    t_data->wasapi_channels = mix_format->nChannels;
+
+    hr = audio_client->Initialize(AUDCLNT_SHAREMODE_SHARED,
+                                   AUDCLNT_STREAMFLAGS_LOOPBACK,
+                                   0, 0, mix_format, NULL);
+    CoTaskMemFree(mix_format);
+    if (FAILED(hr)) {
+        audio_client->Release();
+        return false;
+    }
+
+    IAudioCaptureClient *capture_client = NULL;
+    hr = audio_client->GetService(XYSCOPE_IID_IAudioCaptureClient,
+                                   (void **)&capture_client);
+    if (FAILED(hr)) {
+        audio_client->Release();
+        return false;
+    }
+
+    t_data->audio_client = audio_client;
+    t_data->capture_client = capture_client;
+
+    hr = audio_client->Start();
+    if (FAILED(hr)) {
+        teardownWasapiLoopback(t_data);
+        return false;
+    }
+
+    if (verbose)
+        printf("WASAPI loopback initialized successfully\n");
+    return true;
+}
+#endif /* _WIN32 */
+
 #ifdef __APPLE__
 /* CoreAudio input callback */
 static OSStatus audioInputCallback(void *inRefCon,
@@ -501,12 +610,7 @@ public:
             AudioComponentInstanceDispose(t_data->audio_unit);
         }
 #elif defined(_WIN32)
-        if (t_data->audio_client) {
-            ((IAudioClient *)t_data->audio_client)->Stop();
-            ((IAudioClient *)t_data->audio_client)->Release();
-        }
-        if (t_data->capture_client)
-            ((IAudioCaptureClient *)t_data->capture_client)->Release();
+        teardownWasapiLoopback(t_data);
         DeleteCriticalSection(&t_data->ringbuffer_lock);
         CoUninitialize();
 #else
@@ -567,55 +671,73 @@ public:
 
 #ifdef _WIN32
         /* WASAPI capture loop - poll for audio data */
-        {
+        while (!ai->quit) {
             IAudioCaptureClient *capture = (IAudioCaptureClient *)t_data->capture_client;
-            while (!ai->quit) {
-                Sleep(1);
-                UINT32 packet_length = 0;
-                HRESULT hr = capture->GetNextPacketSize(&packet_length);
-                if (FAILED(hr)) continue;
+            if (!capture) {
+                Sleep(500);
+                if (!initWasapiLoopback(t_data, false))
+                    continue;
+                printf("WASAPI loopback reconnected\n");
+                capture = (IAudioCaptureClient *)t_data->capture_client;
+            }
 
-                /* WASAPI loopback produces no buffers during silence;
-                 * feed zeros so the ringbuffer stays fresh and latency
-                 * doesn't climb */
-                if (packet_length == 0 && !t_data->pause_scope && t_data->can_process) {
+            Sleep(1);
+            UINT32 packet_length = 0;
+            HRESULT hr = capture->GetNextPacketSize(&packet_length);
+            if (FAILED(hr)) {
+                fprintf(stderr, "WASAPI session lost (0x%lx), reconnecting...\n", hr);
+                teardownWasapiLoopback(t_data);
+                continue;
+            }
+
+            /* WASAPI loopback produces no buffers during silence;
+             * feed zeros so the ringbuffer stays fresh and latency
+             * doesn't climb */
+            if (packet_length == 0 && !t_data->pause_scope && t_data->can_process) {
+                gettimeofday(&t_data->last_write, NULL);
+                signal_data_ready(t_data);
+            }
+
+            while (packet_length > 0) {
+                BYTE *data = NULL;
+                UINT32 num_frames = 0;
+                DWORD flags = 0;
+
+                hr = capture->GetBuffer(&data, &num_frames, &flags, NULL, NULL);
+                if (FAILED(hr)) {
+                    fprintf(stderr, "WASAPI session lost (0x%lx), reconnecting...\n", hr);
+                    teardownWasapiLoopback(t_data);
+                    break;
+                }
+
+                if (!t_data->pause_scope && t_data->can_process) {
+                    if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
+                        for (UINT32 i = 0; i < num_frames; i++) {
+                            frame_t frame = {0.0f, 0.0f};
+                            ringbuffer_write(t_data->ringbuffer,
+                                            (const char *)&frame, t_data->frame_size);
+                        }
+                    } else {
+                        float *samples = (float *)data;
+                        unsigned int ch = t_data->wasapi_channels;
+                        for (UINT32 i = 0; i < num_frames; i++) {
+                            frame_t frame;
+                            frame.left_channel = samples[i * ch];
+                            frame.right_channel = (ch > 1) ? samples[i * ch + 1] : samples[i * ch];
+                            ringbuffer_write(t_data->ringbuffer,
+                                            (const char *)&frame, t_data->frame_size);
+                        }
+                    }
                     gettimeofday(&t_data->last_write, NULL);
                     signal_data_ready(t_data);
                 }
 
-                while (packet_length > 0) {
-                    BYTE *data = NULL;
-                    UINT32 num_frames = 0;
-                    DWORD flags = 0;
-
-                    hr = capture->GetBuffer(&data, &num_frames, &flags, NULL, NULL);
-                    if (FAILED(hr)) break;
-
-                    if (!t_data->pause_scope && t_data->can_process) {
-                        if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
-                            for (UINT32 i = 0; i < num_frames; i++) {
-                                frame_t frame = {0.0f, 0.0f};
-                                ringbuffer_write(t_data->ringbuffer,
-                                                (const char *)&frame, t_data->frame_size);
-                            }
-                        } else {
-                            float *samples = (float *)data;
-                            unsigned int ch = t_data->wasapi_channels;
-                            for (UINT32 i = 0; i < num_frames; i++) {
-                                frame_t frame;
-                                frame.left_channel = samples[i * ch];
-                                frame.right_channel = (ch > 1) ? samples[i * ch + 1] : samples[i * ch];
-                                ringbuffer_write(t_data->ringbuffer,
-                                                (const char *)&frame, t_data->frame_size);
-                            }
-                        }
-                        gettimeofday(&t_data->last_write, NULL);
-                        signal_data_ready(t_data);
-                    }
-
-                    capture->ReleaseBuffer(num_frames);
-                    hr = capture->GetNextPacketSize(&packet_length);
-                    if (FAILED(hr)) break;
+                capture->ReleaseBuffer(num_frames);
+                hr = capture->GetNextPacketSize(&packet_length);
+                if (FAILED(hr)) {
+                    fprintf(stderr, "WASAPI session lost (0x%lx), reconnecting...\n", hr);
+                    teardownWasapiLoopback(t_data);
+                    break;
                 }
             }
         }
@@ -814,92 +936,12 @@ public:
 #elif defined(_WIN32)
         bzero(t_data->input_buffer, input_buffer_size);
 
-        printf("Setting up WASAPI loopback capture...\n");
-
         CoInitializeEx(NULL, COINIT_MULTITHREADED);
 
-        IMMDeviceEnumerator *enumerator = NULL;
-        HRESULT hr = CoCreateInstance(XYSCOPE_CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL,
-                                      XYSCOPE_IID_IMMDeviceEnumerator, (void **)&enumerator);
-        if (FAILED(hr)) {
-            fprintf(stderr, "Error: Cannot create device enumerator: 0x%lx\n", hr);
+        if (!initWasapiLoopback(t_data, true)) {
+            fprintf(stderr, "Error: WASAPI loopback initialization failed\n");
             exit(1);
         }
-
-        IMMDevice *device = NULL;
-        hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
-        enumerator->Release();
-        if (FAILED(hr)) {
-            fprintf(stderr, "Error: Cannot get default audio endpoint: 0x%lx\n", hr);
-            exit(1);
-        }
-
-        /* Print the device name */
-        IPropertyStore *props = NULL;
-        device->OpenPropertyStore(STGM_READ, &props);
-        if (props) {
-            PROPVARIANT name;
-            PropVariantInit(&name);
-            props->GetValue(PKEY_Device_FriendlyName, &name);
-            if (name.vt == VT_LPWSTR) {
-                char narrow[256];
-                WideCharToMultiByte(CP_UTF8, 0, name.pwszVal, -1,
-                                    narrow, sizeof(narrow), NULL, NULL);
-                printf("Using audio device: %s\n", narrow);
-            }
-            PropVariantClear(&name);
-            props->Release();
-        }
-
-        IAudioClient *audio_client = NULL;
-        hr = device->Activate(XYSCOPE_IID_IAudioClient, CLSCTX_ALL,
-                              NULL, (void **)&audio_client);
-        device->Release();
-        if (FAILED(hr)) {
-            fprintf(stderr, "Error: Cannot activate audio client: 0x%lx\n", hr);
-            exit(1);
-        }
-
-        WAVEFORMATEX *mix_format = NULL;
-        hr = audio_client->GetMixFormat(&mix_format);
-        if (FAILED(hr)) {
-            fprintf(stderr, "Error: Cannot get mix format: 0x%lx\n", hr);
-            exit(1);
-        }
-
-        printf("WASAPI format: %d Hz, %d channels, %d bits\n",
-               (int)mix_format->nSamplesPerSec, (int)mix_format->nChannels,
-               (int)mix_format->wBitsPerSample);
-
-        t_data->wasapi_channels = mix_format->nChannels;
-
-        hr = audio_client->Initialize(AUDCLNT_SHAREMODE_SHARED,
-                                       AUDCLNT_STREAMFLAGS_LOOPBACK,
-                                       0, 0, mix_format, NULL);
-        CoTaskMemFree(mix_format);
-        if (FAILED(hr)) {
-            fprintf(stderr, "Error: Cannot initialize audio client: 0x%lx\n", hr);
-            exit(1);
-        }
-
-        IAudioCaptureClient *capture_client = NULL;
-        hr = audio_client->GetService(XYSCOPE_IID_IAudioCaptureClient,
-                                       (void **)&capture_client);
-        if (FAILED(hr)) {
-            fprintf(stderr, "Error: Cannot get capture client: 0x%lx\n", hr);
-            exit(1);
-        }
-
-        t_data->audio_client = audio_client;
-        t_data->capture_client = capture_client;
-
-        hr = audio_client->Start();
-        if (FAILED(hr)) {
-            fprintf(stderr, "Error: Cannot start audio client: 0x%lx\n", hr);
-            exit(1);
-        }
-
-        printf("WASAPI loopback initialized successfully\n");
 #else
         bzero(t_data->input_buffer, input_buffer_size);
 
