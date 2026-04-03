@@ -145,6 +145,10 @@ static const GUID XYSCOPE_IID_IAudioCaptureClient = {0xC8ADBD64, 0xE71E, 0x48a0,
 
 #endif /* _WIN32 */
 
+#ifdef _WIN32
+/* Forward declaration — defined after scene class, used by showBrightness */
+extern HDC hdr_hdc;
+#endif
 
 /* Constants now in xyscope-shared.h */
 
@@ -670,22 +674,36 @@ public:
 #endif
 
 #ifdef _WIN32
-        /* WASAPI capture loop - poll for audio data */
+        /* WASAPI capture loop - poll for audio data.
+         * Reconnects on HRESULT errors or if no real audio
+         * packets arrive for WASAPI_STALE_MS. */
+        #define WASAPI_STALE_MS 2000
+        {
+        DWORD last_real_packet = GetTickCount();
         while (!ai->quit) {
             IAudioCaptureClient *capture = (IAudioCaptureClient *)t_data->capture_client;
             if (!capture) {
                 Sleep(500);
                 if (!initWasapiLoopback(t_data, false))
                     continue;
-                printf("WASAPI loopback reconnected\n");
                 capture = (IAudioCaptureClient *)t_data->capture_client;
+                last_real_packet = GetTickCount();
             }
 
             Sleep(1);
             UINT32 packet_length = 0;
             HRESULT hr = capture->GetNextPacketSize(&packet_length);
+
+            /* Stale timeout: force reconnect if we haven't gotten
+             * real audio data in WASAPI_STALE_MS */
+            if (SUCCEEDED(hr) && packet_length == 0 &&
+                !t_data->pause_scope &&
+                (GetTickCount() - last_real_packet) > WASAPI_STALE_MS) {
+                teardownWasapiLoopback(t_data);
+                continue;
+            }
+
             if (FAILED(hr)) {
-                fprintf(stderr, "WASAPI session lost (0x%lx), reconnecting...\n", hr);
                 teardownWasapiLoopback(t_data);
                 continue;
             }
@@ -705,7 +723,6 @@ public:
 
                 hr = capture->GetBuffer(&data, &num_frames, &flags, NULL, NULL);
                 if (FAILED(hr)) {
-                    fprintf(stderr, "WASAPI session lost (0x%lx), reconnecting...\n", hr);
                     teardownWasapiLoopback(t_data);
                     break;
                 }
@@ -730,16 +747,17 @@ public:
                     }
                     gettimeofday(&t_data->last_write, NULL);
                     signal_data_ready(t_data);
+                    last_real_packet = GetTickCount();
                 }
 
                 capture->ReleaseBuffer(num_frames);
                 hr = capture->GetNextPacketSize(&packet_length);
                 if (FAILED(hr)) {
-                    fprintf(stderr, "WASAPI session lost (0x%lx), reconnecting...\n", hr);
                     teardownWasapiLoopback(t_data);
                     break;
                 }
             }
+        }
         }
 #else
         while (!ai->quit) {
@@ -1761,7 +1779,14 @@ public:
     void showSampleRate(bool t) { showTimedText(SampleRateTimer, true, t, "Sample rate: %d Hz", sample_rate); }
     void showFrameRate(bool t) { showTimedText(FrameRateTimer, true, t, "Frame rate: %d fps", frame_rate); }
     void showDelay(bool t) { showTimedText(DelayTimer, true, t, "Delay: %.2f ms", prefs.delay); }
-    void showBrightness(bool t) { showTimedText(BrightnessTimer, true, t, "Brightness: %.1f", prefs.brightness); }
+    void showBrightness(bool t) {
+#ifdef _WIN32
+        showTimedText(BrightnessTimer, true, t, "Brightness: %.1f %s",
+                      prefs.brightness, hdr_hdc ? "(HDR)" : "(SDR)");
+#else
+        showTimedText(BrightnessTimer, true, t, "Brightness: %.1f", prefs.brightness);
+#endif
+    }
     void showPaused(bool t) { showTimedText(PausedTimer, true, t, "Paused"); }
 
     void showScale(bool timed)
@@ -2438,8 +2463,8 @@ void passiveMotion(int x, int y)
 SDL_Window *window = NULL;
 SDL_GLContext gl_context = NULL;
 #ifdef _WIN32
-static HDC hdr_hdc = NULL;       /* non-NULL when using WGL float framebuffer */
-static HGLRC hdr_hglrc = NULL;
+HDC hdr_hdc = NULL;              /* non-NULL when using WGL float framebuffer */
+HGLRC hdr_hglrc = NULL;
 #endif
 TTF_Font *font = NULL;
 
