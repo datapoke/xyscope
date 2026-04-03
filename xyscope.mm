@@ -146,8 +146,9 @@ static const GUID XYSCOPE_IID_IAudioCaptureClient = {0xC8ADBD64, 0xE71E, 0x48a0,
 #endif /* _WIN32 */
 
 #ifdef _WIN32
-/* Forward declaration — defined after scene class, used by showBrightness */
+/* Forward declarations — defined after scene class */
 extern HDC hdr_hdc;
+extern HWND fs_cover_hwnd;
 #endif
 
 /* Constants now in xyscope-shared.h */
@@ -2077,8 +2078,10 @@ public:
     {
         if (prefs.is_full_screen) {
 #ifdef _WIN32
-            /* Undo borderless fullscreen: restore border and position */
+            /* Undo borderless fullscreen: restore border, hide cover */
             SDL_SetWindowBordered(window, SDL_TRUE);
+            if (fs_cover_hwnd)
+                ShowWindow(fs_cover_hwnd, SW_HIDE);
 #else
             SDL_SetWindowFullscreen(window, 0);
 #endif
@@ -2113,8 +2116,30 @@ public:
             int di = SDL_GetWindowDisplayIndex(window);
             if (SDL_GetDesktopDisplayMode(di, &mode) == 0) {
                 SDL_SetWindowBordered(window, SDL_FALSE);
-                SDL_SetWindowPosition(window, 0, -1);
-                SDL_SetWindowSize(window, mode.w, mode.h + 1);
+                SDL_SetWindowPosition(window, 0, 0);
+                SDL_SetWindowSize(window, mode.w - 1, mode.h);
+
+                /* 1-pixel cover window on the right edge so the
+                 * full screen is covered without either window
+                 * matching the desktop resolution (which triggers
+                 * Windows exclusive fullscreen promotion). */
+                if (!fs_cover_hwnd) {
+                    WNDCLASSA wc = {};
+                    wc.lpfnWndProc  = DefWindowProcA;
+                    wc.hInstance    = GetModuleHandle(NULL);
+                    wc.lpszClassName = "XYScopeCover";
+                    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+                    RegisterClassA(&wc);
+                    fs_cover_hwnd = CreateWindowExA(
+                        WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+                        wc.lpszClassName, "", WS_POPUP | WS_VISIBLE,
+                        mode.w - 1, 0, 1, mode.h,
+                        NULL, NULL, wc.hInstance, NULL);
+                } else {
+                    SetWindowPos(fs_cover_hwnd, HWND_TOPMOST,
+                                 mode.w - 1, 0, 1, mode.h,
+                                 SWP_SHOWWINDOW);
+                }
             }
         }
 #else
@@ -2513,6 +2538,7 @@ SDL_GLContext gl_context = NULL;
 #ifdef _WIN32
 HDC hdr_hdc = NULL;              /* non-NULL when using WGL float framebuffer */
 HGLRC hdr_hglrc = NULL;
+HWND fs_cover_hwnd = NULL;      /* 1-pixel cover window for borderless fullscreen */
 #endif
 TTF_Font *font = NULL;
 
