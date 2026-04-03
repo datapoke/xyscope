@@ -685,21 +685,24 @@ public:
         {
         DWORD last_real_packet = GetTickCount();
         while (!ai->quit) {
-            IAudioCaptureClient *capture = (IAudioCaptureClient *)t_data->capture_client;
-            if (!capture) {
-                Sleep(500);
-                if (!initWasapiLoopback(t_data, false))
-                    continue;
-                capture = (IAudioCaptureClient *)t_data->capture_client;
-                last_real_packet = GetTickCount();
-            }
-
-            /* Immediate reconnect requested by main thread
-             * (window focus change, fullscreen disruption, etc.) */
+            /* Immediate disconnect requested by main thread
+             * (window focus change, fullscreen disruption, etc.)
+             * Tear down immediately but wait for things to settle
+             * before reconnecting. */
             if (t_data->wasapi_reconnect) {
                 t_data->wasapi_reconnect = false;
                 teardownWasapiLoopback(t_data);
-                continue;
+                Sleep(1000);
+            }
+
+            IAudioCaptureClient *capture = (IAudioCaptureClient *)t_data->capture_client;
+            if (!capture) {
+                if (!initWasapiLoopback(t_data, false)) {
+                    Sleep(1000);
+                    continue;
+                }
+                capture = (IAudioCaptureClient *)t_data->capture_client;
+                last_real_packet = GetTickCount();
             }
 
             Sleep(1);
