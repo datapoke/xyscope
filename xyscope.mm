@@ -213,9 +213,6 @@ typedef struct _thread_data {
     volatile bool can_process;
     volatile bool pause_scope;
     volatile int negotiated_sample_rate;
-#ifdef _WIN32
-    volatile bool wasapi_reconnect;
-#endif
     timeval last_write;
 } thread_data_t;
 
@@ -654,7 +651,6 @@ public:
 #ifdef __APPLE__
         ai->setupPorts();
 #elif defined(_WIN32)
-        t_data->wasapi_reconnect = false;
         ai->setupPorts();
         t_data->can_process = true;
 #else
@@ -679,56 +675,65 @@ public:
 
 #ifdef _WIN32
         /* WASAPI capture loop - poll for audio data.
-         * Reconnects on HRESULT errors or if no real audio
-         * packets arrive for WASAPI_STALE_MS. */
-        #define WASAPI_STALE_MS 2000
+         *
+         * Reconnect on fatal HRESULT errors from the capture client,
+         * and periodically health-check the audio client itself
+         * (GetBufferSize returns AUDCLNT_E_DEVICE_INVALIDATED on a
+         * dead session even when GetNextPacketSize still returns S_OK).
+         */
+        #define WASAPI_FATAL(hr) \
+            ((hr) == (HRESULT)0x88890004 /* AUDCLNT_E_DEVICE_INVALIDATED */ || \
+             (hr) == (HRESULT)0x88890010 /* AUDCLNT_E_SERVICE_NOT_RUNNING */ || \
+             (hr) == (HRESULT)0x8889000F /* AUDCLNT_E_ENDPOINT_CREATE_FAILED */ )
         {
-        DWORD last_real_packet = GetTickCount();
+        DWORD backoff_ms = 500;
+        DWORD last_health_check = GetTickCount();
         while (!ai->quit) {
-            /* Immediate disconnect requested by main thread
-             * (window focus change, fullscreen disruption, etc.)
-             * Tear down immediately but wait for things to settle
-             * before reconnecting. */
-            if (t_data->wasapi_reconnect) {
-                t_data->wasapi_reconnect = false;
-                teardownWasapiLoopback(t_data);
-                Sleep(1000);
-            }
-
             IAudioCaptureClient *capture = (IAudioCaptureClient *)t_data->capture_client;
             if (!capture) {
+                Sleep(backoff_ms);
                 if (!initWasapiLoopback(t_data, false)) {
-                    Sleep(1000);
+                    if (backoff_ms < 5000) backoff_ms *= 2;
                     continue;
                 }
+                backoff_ms = 500;
                 capture = (IAudioCaptureClient *)t_data->capture_client;
-                last_real_packet = GetTickCount();
+                last_health_check = GetTickCount();
             }
 
             Sleep(1);
             UINT32 packet_length = 0;
             HRESULT hr = capture->GetNextPacketSize(&packet_length);
 
-            /* Stale timeout: force reconnect if we haven't gotten
-             * real audio data in WASAPI_STALE_MS */
-            if (SUCCEEDED(hr) && packet_length == 0 &&
-                !t_data->pause_scope &&
-                (GetTickCount() - last_real_packet) > WASAPI_STALE_MS) {
+            if (WASAPI_FATAL(hr)) {
                 teardownWasapiLoopback(t_data);
                 continue;
             }
 
-            if (FAILED(hr)) {
-                teardownWasapiLoopback(t_data);
-                continue;
+            /* Health-check the IAudioClient every ~1s.
+             * GetNextPacketSize on the capture client can return S_OK
+             * even when the session is dead; GetBufferSize on the
+             * audio client catches it. */
+            if ((GetTickCount() - last_health_check) > 1000) {
+                last_health_check = GetTickCount();
+                IAudioClient *ac = (IAudioClient *)t_data->audio_client;
+                if (ac) {
+                    UINT32 buf_sz = 0;
+                    HRESULT hc = ac->GetBufferSize(&buf_sz);
+                    if (WASAPI_FATAL(hc)) {
+                        teardownWasapiLoopback(t_data);
+                        continue;
+                    }
+                }
             }
 
-            /* WASAPI loopback produces no buffers during silence;
-             * feed zeros so the ringbuffer stays fresh and latency
-             * doesn't climb */
-            if (packet_length == 0 && !t_data->pause_scope && t_data->can_process) {
-                gettimeofday(&t_data->last_write, NULL);
-                signal_data_ready(t_data);
+            /* No data available -- keep polling */
+            if (FAILED(hr) || packet_length == 0) {
+                if (packet_length == 0 && !t_data->pause_scope && t_data->can_process) {
+                    gettimeofday(&t_data->last_write, NULL);
+                    signal_data_ready(t_data);
+                }
+                continue;
             }
 
             while (packet_length > 0) {
@@ -737,10 +742,11 @@ public:
                 DWORD flags = 0;
 
                 hr = capture->GetBuffer(&data, &num_frames, &flags, NULL, NULL);
-                if (FAILED(hr)) {
+                if (WASAPI_FATAL(hr)) {
                     teardownWasapiLoopback(t_data);
                     break;
                 }
+                if (FAILED(hr)) break;
 
                 if (!t_data->pause_scope && t_data->can_process) {
                     if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
@@ -762,15 +768,15 @@ public:
                     }
                     gettimeofday(&t_data->last_write, NULL);
                     signal_data_ready(t_data);
-                    last_real_packet = GetTickCount();
                 }
 
                 capture->ReleaseBuffer(num_frames);
                 hr = capture->GetNextPacketSize(&packet_length);
-                if (FAILED(hr)) {
+                if (WASAPI_FATAL(hr)) {
                     teardownWasapiLoopback(t_data);
                     break;
                 }
+                if (FAILED(hr)) break;
             }
         }
         }
@@ -2733,16 +2739,6 @@ int main(int argc, char *argv[])
                 if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
                     reshape(event.window.data1, event.window.data2);
                 }
-#ifdef _WIN32
-                /* Windows volume overlay and other compositor events
-                 * disrupt fullscreen and can kill the WASAPI loopback
-                 * session.  Trigger an immediate reconnect when focus
-                 * returns or the window is restored. */
-                else if (event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED ||
-                         event.window.event == SDL_WINDOWEVENT_RESTORED) {
-                    Thread_Data.wasapi_reconnect = true;
-                }
-#endif
                 else if (event.window.event == SDL_WINDOWEVENT_DISPLAY_CHANGED) {
                     SDL_DisplayMode mode;
                     int di = SDL_GetWindowDisplayIndex(window);
