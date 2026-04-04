@@ -1668,6 +1668,8 @@ public:
         };
 
         for (unsigned int i = 0; i < n_items; i++) {
+            if (-top_offset > prefs.dim[1] - 120)
+                break;
             drawString(left_offset,  top_offset, help[i][0]);
             drawString(right_offset, top_offset, help[i][1]);
             top_offset += vertical_increment;
@@ -1690,6 +1692,8 @@ public:
                     text_timer[i].show = false;
 
                 if (text_timer[i].auto_position) {
+                    if (-top_offset > prefs.dim[1] - 120)
+                        continue;
                     drawString(x, top_offset, text_timer[i].string);
                     top_offset += vertical_increment;
                 }
