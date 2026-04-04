@@ -1553,11 +1553,10 @@ public:
     {
         if (!font || !string || strlen(string) == 0) return 0.0;
 
-        int text_width = 0;
-        TTF_SizeText(font, string, &text_width, NULL);
+        int char_width = 0;
+        TTF_SizeText(font, "M", &char_width, NULL);
 
-        // Return pixel width
-        return (double)text_width;
+        return (double)(strlen(string) * char_width);
     }
 
     void drawString(double x, double y, char *string)
