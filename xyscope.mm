@@ -2760,6 +2760,19 @@ int main(int argc, char *argv[])
     }
 #endif
 
+    glGenTextures(1, &scn.textures);
+
+    // Set initial viewport
+    int drawable_w, drawable_h;
+    SDL_GL_GetDrawableSize(window, &drawable_w, &drawable_h);
+    reshape(drawable_w, drawable_h);
+
+    if (scn.prefs.is_full_screen) {
+        scn.setFullScreen();
+    }
+
+    // Raise window and grab focus (after fullscreen setup so the
+    // cover window and taskbar hiding don't steal it back)
     SDL_RaiseWindow(window);
 #ifdef _WIN32
     {
@@ -2771,17 +2784,6 @@ int main(int argc, char *argv[])
         }
     }
 #endif
-
-    glGenTextures(1, &scn.textures);
-
-    // Set initial viewport
-    int drawable_w, drawable_h;
-    SDL_GL_GetDrawableSize(window, &drawable_w, &drawable_h);
-    reshape(drawable_w, drawable_h);
-
-    if (scn.prefs.is_full_screen) {
-        scn.setFullScreen();
-    }
 
     // Detect rates and initialize audio
     {
