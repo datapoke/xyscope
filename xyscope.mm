@@ -2081,10 +2081,20 @@ public:
     {
         if (prefs.is_full_screen) {
 #ifdef _WIN32
-            SDL_SetWindowBordered(window, SDL_TRUE);
             if (fs_cover_hwnd) ShowWindow(fs_cover_hwnd, SW_HIDE);
             HWND taskbar = FindWindow("Shell_TrayWnd", NULL);
             if (taskbar) ShowWindow(taskbar, SW_SHOW);
+
+            SDL_SysWMinfo wminfo;
+            SDL_VERSION(&wminfo.version);
+            if (SDL_GetWindowWMInfo(window, &wminfo)) {
+                HWND hwnd = wminfo.info.win.window;
+                LONG style = GetWindowLong(hwnd, GWL_STYLE);
+                SetWindowLong(hwnd, GWL_STYLE,
+                    style | WS_CAPTION | WS_THICKFRAME);
+                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+                    SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE);
+            }
 #else
             SDL_SetWindowFullscreen(window, 0);
 #endif
@@ -2122,11 +2132,22 @@ public:
                  * to prevent Windows/GPU driver from promoting to
                  * exclusive fullscreen (which breaks overlays and
                  * audio).  Hide the taskbar so the gap isn't visible. */
-                SDL_SetWindowBordered(window, SDL_FALSE);
-                SDL_SetWindowPosition(window, 0, 0);
-                SDL_SetWindowSize(window, mode.w, mode.h - 1);
                 HWND taskbar = FindWindow("Shell_TrayWnd", NULL);
                 if (taskbar) ShowWindow(taskbar, SW_HIDE);
+
+                SDL_SysWMinfo wminfo;
+                SDL_VERSION(&wminfo.version);
+                if (SDL_GetWindowWMInfo(window, &wminfo)) {
+                    HWND hwnd = wminfo.info.win.window;
+                    /* Remove border in one shot */
+                    LONG style = GetWindowLong(hwnd, GWL_STYLE);
+                    SetWindowLong(hwnd, GWL_STYLE,
+                        style & ~(WS_CAPTION | WS_THICKFRAME));
+                    /* Resize + reposition atomically */
+                    SetWindowPos(hwnd, HWND_TOP, 0, 0,
+                                 mode.w, mode.h - 1,
+                                 SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+                }
 
                 /* Black cover window for the 1-pixel gap at the bottom */
                 if (!fs_cover_hwnd) {
