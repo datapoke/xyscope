@@ -2752,7 +2752,12 @@ int main(int argc, char *argv[])
 
     if (scn.prefs.brightness <= 0.0) {
         double detected = detect_hdr_brightness();
+#ifdef _WIN32
+        /* Windows scRGB: 1.0 = 80 nits, peak can be extreme */
         scn.prefs.brightness = (detected > 10.0) ? 10.0 : detected;
+#else
+        scn.prefs.brightness = detected;
+#endif
     }
 
     scn.showAutoScale(NOT_TIMED);
