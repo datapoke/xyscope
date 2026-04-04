@@ -2677,7 +2677,8 @@ int main(int argc, char *argv[])
     }
 
     // Enable VSync
-    SDL_GL_SetSwapInterval(1);
+    if (SDL_GL_SetSwapInterval(-1) == -1)  /* try adaptive vsync first */
+        SDL_GL_SetSwapInterval(1);
 
 #ifdef __APPLE__
     /* Disable color clamping for EDR/HDR on macOS.
