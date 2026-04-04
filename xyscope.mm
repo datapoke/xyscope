@@ -2970,6 +2970,11 @@ int main(int argc, char *argv[])
 
     // Cleanup
 #ifdef _WIN32
+    {
+        HWND taskbar = FindWindow("Shell_TrayWnd", NULL);
+        if (taskbar) ShowWindow(taskbar, SW_SHOW);
+        if (fs_cover_hwnd) ShowWindow(fs_cover_hwnd, SW_HIDE);
+    }
     if (hdr_hglrc) {
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hdr_hglrc);
