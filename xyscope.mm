@@ -149,8 +149,9 @@ static const GUID XYSCOPE_IID_IAudioCaptureClient = {0xC8ADBD64, 0xE71E, 0x48a0,
 #endif /* _WIN32 */
 
 #ifdef _WIN32
-/* Forward declaration — defined after scene class */
+/* Forward declarations — defined after scene class */
 extern HDC hdr_hdc;
+extern HWND fs_cover_hwnd;
 #endif
 
 /* Constants now in xyscope-shared.h */
@@ -2081,6 +2082,7 @@ public:
         if (prefs.is_full_screen) {
 #ifdef _WIN32
             SDL_SetWindowBordered(window, SDL_TRUE);
+            if (fs_cover_hwnd) ShowWindow(fs_cover_hwnd, SW_HIDE);
             HWND taskbar = FindWindow("Shell_TrayWnd", NULL);
             if (taskbar) ShowWindow(taskbar, SW_SHOW);
 #else
@@ -2125,6 +2127,25 @@ public:
                 SDL_SetWindowSize(window, mode.w, mode.h - 1);
                 HWND taskbar = FindWindow("Shell_TrayWnd", NULL);
                 if (taskbar) ShowWindow(taskbar, SW_HIDE);
+
+                /* Black cover window for the 1-pixel gap at the bottom */
+                if (!fs_cover_hwnd) {
+                    WNDCLASSA wc = {};
+                    wc.lpfnWndProc   = DefWindowProcA;
+                    wc.hInstance     = GetModuleHandle(NULL);
+                    wc.lpszClassName = "XYScopeCover";
+                    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+                    RegisterClassA(&wc);
+                    fs_cover_hwnd = CreateWindowExA(
+                        WS_EX_TOOLWINDOW, wc.lpszClassName, "",
+                        WS_POPUP | WS_VISIBLE,
+                        0, mode.h - 1, mode.w, 1,
+                        NULL, NULL, wc.hInstance, NULL);
+                } else {
+                    SetWindowPos(fs_cover_hwnd, HWND_TOP,
+                                 0, mode.h - 1, mode.w, 1,
+                                 SWP_SHOWWINDOW);
+                }
             }
         }
 #else
@@ -2523,6 +2544,7 @@ SDL_GLContext gl_context = NULL;
 #ifdef _WIN32
 HDC hdr_hdc = NULL;              /* non-NULL when using WGL float framebuffer */
 HGLRC hdr_hglrc = NULL;
+HWND fs_cover_hwnd = NULL;
 #endif
 TTF_Font *font = NULL;
 
