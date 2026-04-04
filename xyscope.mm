@@ -1631,8 +1631,8 @@ public:
 
     void drawHelp()
     {
-        double left_offset   =  60.0;
-        double right_offset  = 720.0;
+        double left_offset   =  80.0;
+        double right_offset  = 740.0;
         unsigned int n_items =  20;
 
         char help[][2][64] = {
@@ -1671,7 +1671,7 @@ public:
     {
         timeval this_frame_time;
         double elapsed_time;
-        double x = 60.0;
+        double x = 80.0;
         gettimeofday(&this_frame_time, NULL);
         for (unsigned int i = 0; i < NUM_TEXT_TIMERS; i++) {
             if (text_timer[i].show) {
@@ -1822,7 +1822,7 @@ public:
     {
         text_timer_t *timer  = &text_timer[ScaleTimer];
         timer->auto_position = false;
-        timer->x_position    =  60.0;
+        timer->x_position    =  80.0;
         timer->y_position    = -100.0;
         if (timed)
             gettimeofday(&timer->time, NULL);
@@ -2393,16 +2393,16 @@ void special(int key, int xPos, int yPos)
             scn.zoomOut();
             break;
         case 1:                    /* F1 */
-            scn.setWindowSize(300, 300);
-            break;
-        case 2:                    /* F2 */
-            scn.setWindowSize(600, 600);
-            break;
-        case 3:                    /* F3 */
             scn.setWindowSize(800, 800);
             break;
-        case 4:                    /* F4 */
+        case 2:                    /* F2 */
             scn.setWindowSize(1000, 1000);
+            break;
+        case 3:                    /* F3 */
+            scn.setWindowSize(1400, 1400);
+            break;
+        case 4:                    /* F4 */
+            scn.setWindowSize(2000, 2000);
             break;
         case 5:                    /* F5 */
             scn.toggleFullScreen();
@@ -2615,8 +2615,8 @@ int main(int argc, char *argv[])
     }
 
     // Validate loaded preferences
-    if (scn.prefs.normal_dim[0] < 1) scn.prefs.normal_dim[0] = 600;
-    if (scn.prefs.normal_dim[1] < 1) scn.prefs.normal_dim[1] = 600;
+    if (scn.prefs.normal_dim[0] < 1) scn.prefs.normal_dim[0] = 1000;
+    if (scn.prefs.normal_dim[1] < 1) scn.prefs.normal_dim[1] = 1000;
     if (scn.prefs.display_mode >= NUM_DISPLAY_MODES)
         scn.prefs.display_mode = scene::DefaultDisplayMode;
     if (scn.prefs.color_mode >= NUM_COLOR_MODES)
