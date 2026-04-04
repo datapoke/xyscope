@@ -1525,9 +1525,9 @@ public:
 
     void beginText()
     {
-        top_offset = -120.0;
+        top_offset = -160.0;
         if (text_timer[ScaleTimer].show)
-            top_offset = -180.0;
+            top_offset = -220.0;
 
         glDisable(GL_LIGHTING);
         glMatrixMode(GL_MODELVIEW);
@@ -1631,8 +1631,8 @@ public:
 
     void drawHelp()
     {
-        double left_offset   =  40.0;
-        double right_offset  = 700.0;
+        double left_offset   =  60.0;
+        double right_offset  = 720.0;
         unsigned int n_items =  20;
 
         char help[][2][64] = {
@@ -1671,7 +1671,7 @@ public:
     {
         timeval this_frame_time;
         double elapsed_time;
-        double x = 40.0;
+        double x = 60.0;
         gettimeofday(&this_frame_time, NULL);
         for (unsigned int i = 0; i < NUM_TEXT_TIMERS; i++) {
             if (text_timer[i].show) {
@@ -1716,10 +1716,10 @@ public:
             }
             last_frame_time = this_frame_time;
             snprintf(fps_string, sizeof(fps_string), "%.1f fps", fps);
-            drawString(20.0, 20.0, fps_string);
+            drawString(60.0, 60.0, fps_string);
             snprintf(vps_string, sizeof(vps_string), "%d vps", vertex_count * frame_rate);
             double vps_width = getTextWidth(vps_string);
-            drawString(-(vps_width + 240), -60.0, vps_string);
+            drawString(-(vps_width + 280), -100.0, vps_string);
         }
 
         /* calculate latency */
@@ -1734,7 +1734,7 @@ public:
         if (! t_data->pause_scope) {
             snprintf(time_string, sizeof(time_string), "%.0f usec", latency * 100000.0);
             double time_width = getTextWidth(time_string);
-            drawString(-(time_width + 240), 20.0, time_string);
+            drawString(-(time_width + 280), 60.0, time_string);
         }
     }
 
@@ -1822,8 +1822,8 @@ public:
     {
         text_timer_t *timer  = &text_timer[ScaleTimer];
         timer->auto_position = false;
-        timer->x_position    =  40.0;
-        timer->y_position    = -60.0;
+        timer->x_position    =  60.0;
+        timer->y_position    = -100.0;
         if (timed)
             gettimeofday(&timer->time, NULL);
         timer->show = true;
@@ -1833,8 +1833,8 @@ public:
     {
         text_timer_t *timer  = &text_timer[CounterTimer];
         timer->auto_position = false;
-        timer->x_position    = -400.0;
-        timer->y_position    =   20.0;
+        timer->x_position    = -440.0;
+        timer->y_position    =   60.0;
         if (timed)
             gettimeofday(&timer->time, NULL);
         timer->show = true;
