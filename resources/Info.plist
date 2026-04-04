@@ -22,5 +22,7 @@
     <string>10.15</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>CADisableMinimumFrameDuration</key>
+    <true/>
 </dict>
 </plist>
