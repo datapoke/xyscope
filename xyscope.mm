@@ -2831,8 +2831,8 @@ int main(int argc, char *argv[])
 
     if (scn.prefs.velocity_dim <= 0.0) {
         scn.prefs.velocity_dim = scn.prefs.brightness / 2.0;
-        if (scn.prefs.velocity_dim < 1.0)
-            scn.prefs.velocity_dim = 1.0;
+        if (scn.prefs.velocity_dim < 4.0)
+            scn.prefs.velocity_dim = 4.0;
     }
 
     scn.showAutoScale(NOT_TIMED);
