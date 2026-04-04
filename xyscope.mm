@@ -1122,11 +1122,11 @@ public:
         DisplayModeTimer = 4,
         ColorRangeTimer  = 5,
         ColorRateTimer   = 6,
-        SampleRateTimer  = 7,
-        FrameRateTimer   = 8,
-        DelayTimer       = 9,
-        BrightnessTimer  = 10,
-        VelocityDimTimer = 11,
+        DelayTimer       = 7,
+        BrightnessTimer  = 8,
+        VelocityDimTimer = 9,
+        SampleRateTimer  = 10,
+        FrameRateTimer   = 11,
         /* End of text timers automatically included in stats display */
         PausedTimer      = 12,
         ScaleTimer       = 13,
@@ -1797,6 +1797,7 @@ public:
         timer->show = true;
     }
 
+    /* Stats timers */
     void showAutoScale(bool t) { showTimedText(AutoScaleTimer, true, t, "Auto-scale: %s", prefs.auto_scale ? "on" : "off"); }
     void showSplines(bool t) { showTimedText(SplineTimer, true, t, "Splines: %d", prefs.spline_steps); }
     void showLineWidth(bool t) { showTimedText(LineWidthTimer, true, t, "Line width: %d", prefs.line_width); }
@@ -1804,8 +1805,6 @@ public:
     void showDisplayMode(bool t) { showTimedText(DisplayModeTimer, true, t, "Display mode: %s", display_mode_names[prefs.display_mode]); }
     void showColorRange(bool t) { showTimedText(ColorRangeTimer, true, t, "Color range: %.2f", prefs.color_range); }
     void showColorRate(bool t) { showTimedText(ColorRateTimer, true, t, "Color rate: %.2f", prefs.color_rate); }
-    void showSampleRate(bool t) { showTimedText(SampleRateTimer, true, t, "Sample rate: %d Hz", sample_rate); }
-    void showFrameRate(bool t) { showTimedText(FrameRateTimer, true, t, "Frame rate: %d fps", frame_rate); }
     void showDelay(bool t) { showTimedText(DelayTimer, true, t, "Delay: %.2f ms", prefs.delay); }
     void showBrightness(bool t) {
 #ifdef _WIN32
@@ -1816,6 +1815,10 @@ public:
 #endif
     }
     void showVelocityDim(bool t) { showTimedText(VelocityDimTimer, true, t, "Velocity dim: %.1f", prefs.velocity_dim); }
+    void showSampleRate(bool t) { showTimedText(SampleRateTimer, true, t, "Sample rate: %d Hz", sample_rate); }
+    void showFrameRate(bool t) { showTimedText(FrameRateTimer, true, t, "Frame rate: %d fps", frame_rate); }
+
+    /* Other timers */
     void showPaused(bool t) { showTimedText(PausedTimer, true, t, "Paused"); }
 
     void showScale(bool timed)
@@ -2799,10 +2802,10 @@ int main(int argc, char *argv[])
     scn.showDisplayMode(NOT_TIMED);
     scn.showColorRange(NOT_TIMED);
     scn.showColorRate(NOT_TIMED);
-    scn.showSampleRate(NOT_TIMED);
-    scn.showFrameRate(NOT_TIMED);
     scn.showDelay(NOT_TIMED);
     scn.showBrightness(NOT_TIMED);
+    scn.showSampleRate(NOT_TIMED);
+    scn.showFrameRate(NOT_TIMED);
     scn.showVelocityDim(NOT_TIMED);
     scn.showScale(NOT_TIMED);
 
