@@ -2147,6 +2147,8 @@ public:
                     SetWindowPos(hwnd, HWND_TOP, 0, 0,
                                  mode.w, mode.h - 1,
                                  SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+                    SetForegroundWindow(hwnd);
+                    SetFocus(hwnd);
                 }
 
                 /* Black cover window for the 1-pixel gap at the bottom */
@@ -2158,14 +2160,15 @@ public:
                     wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
                     RegisterClassA(&wc);
                     fs_cover_hwnd = CreateWindowExA(
-                        WS_EX_TOOLWINDOW, wc.lpszClassName, "",
+                        WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                        wc.lpszClassName, "",
                         WS_POPUP | WS_VISIBLE,
                         0, mode.h - 1, mode.w, 1,
                         NULL, NULL, wc.hInstance, NULL);
                 } else {
                     SetWindowPos(fs_cover_hwnd, HWND_TOP,
                                  0, mode.h - 1, mode.w, 1,
-                                 SWP_SHOWWINDOW);
+                                 SWP_SHOWWINDOW | SWP_NOACTIVATE);
                 }
             }
         }
