@@ -58,6 +58,7 @@ static inline unsigned int draw_xy_vertices(
     double h   = -1.0;
     double s   = 1.0;
     double v   = 1.0;
+    double a   = 1.0;
     double r   = 1.0;
     double g   = 1.0;
     double b   = 1.0;
@@ -69,10 +70,16 @@ static inline unsigned int draw_xy_vertices(
     double dt  = 0.0;
     (void)dt;  /* accumulated for caller; suppress unused warning */
 
+    /* Enable blending if velocity dim is active */
+    if (velocity_dim > 0.0) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    }
+
     /* Set initial color for standard display mode */
     if (display_mode == DisplayStandardMode) {
         HSVtoRGB(&r, &g, &b, hue, s, v);
-        glColor3d(r * brightness, g * brightness, b * brightness);
+        glColor4d(r * brightness, g * brightness, b * brightness, a);
     }
 
     for (unsigned int i = 0; i < frames_read; i++) {
@@ -80,12 +87,13 @@ static inline unsigned int draw_xy_vertices(
         rc = framebuf[i].right_channel;
         d  = hypot(lc - olc, rc - orc) / SQRT_TWO;
 
-        /* Velocity brightness: dim fast-moving segments like
-         * analog phosphor.  v = 1 / (1 + d * velocity_dim) */
+        /* Velocity dim: fade fast-moving segments like analog
+         * phosphor.  Alpha blending with additive mode lets
+         * slow parts glow bright while fast parts go transparent. */
         if (velocity_dim > 0.0)
-            v = 1.0 / (1.0 + d * velocity_dim);
+            a = 1.0 / (1.0 + d * velocity_dim);
         else
-            v = 1.0;
+            a = 1.0;
 
         /* Color mode accumulation */
         switch (color_mode) {
@@ -137,12 +145,12 @@ static inline unsigned int draw_xy_vertices(
         }
         if (h > -1.0) {
             HSVtoRGB(&r, &g, &b, h, s, v);
-            glColor3d(r * brightness, g * brightness, b * brightness);
+            glColor4d(r * brightness, g * brightness, b * brightness, a);
         } else if (velocity_dim > 0.0) {
-            /* Standard mode with velocity brightness: recompute
-             * color each vertex since v changes per sample */
+            /* Standard mode with velocity dim: recompute color
+             * each vertex since alpha changes per sample */
             HSVtoRGB(&r, &g, &b, hue, s, v);
-            glColor3d(r * brightness, g * brightness, b * brightness);
+            glColor4d(r * brightness, g * brightness, b * brightness, a);
         }
 
         /* Catmull-Rom spline interpolation */
@@ -178,6 +186,9 @@ static inline unsigned int draw_xy_vertices(
         olc = lc;
         orc = rc;
     }
+
+    if (velocity_dim > 0.0)
+        glDisable(GL_BLEND);
 
     return vertex_count;
 }
