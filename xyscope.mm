@@ -2080,19 +2080,9 @@ public:
     {
         if (prefs.is_full_screen) {
 #ifdef _WIN32
-            /* Restore normal window styles */
-            {
-                SDL_SysWMinfo wminfo;
-                SDL_VERSION(&wminfo.version);
-                if (SDL_GetWindowWMInfo(window, &wminfo)) {
-                    HWND hwnd = wminfo.info.win.window;
-                    SetWindowLongPtr(hwnd, GWL_STYLE,
-                        WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VISIBLE);
-                    SetWindowLongPtr(hwnd, GWL_EXSTYLE, WS_EX_APPWINDOW);
-                    SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
-                        SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER);
-                }
-            }
+            SDL_SetWindowBordered(window, SDL_TRUE);
+            HWND taskbar = FindWindow("Shell_TrayWnd", NULL);
+            if (taskbar) ShowWindow(taskbar, SW_SHOW);
 #else
             SDL_SetWindowFullscreen(window, 0);
 #endif
@@ -2126,21 +2116,15 @@ public:
             SDL_DisplayMode mode;
             int di = SDL_GetWindowDisplayIndex(window);
             if (SDL_GetDesktopDisplayMode(di, &mode) == 0) {
-                /* Set window styles that prevent the GPU driver from
-                 * detecting this as a fullscreen-eligible window.
-                 * Without this, the driver silently promotes to
-                 * exclusive fullscreen on SwapBuffers, breaking
-                 * overlays and audio.  (SDL#12791, SFML workaround) */
-                SDL_SysWMinfo wminfo;
-                SDL_VERSION(&wminfo.version);
-                if (SDL_GetWindowWMInfo(window, &wminfo)) {
-                    HWND hwnd = wminfo.info.win.window;
-                    SetWindowLongPtr(hwnd, GWL_STYLE,
-                        WS_OVERLAPPED | WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
-                    SetWindowLongPtr(hwnd, GWL_EXSTYLE, WS_EX_APPWINDOW);
-                    SetWindowPos(hwnd, HWND_TOP, 0, 0, mode.w, mode.h,
-                        SWP_FRAMECHANGED | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
-                }
+                /* Borderless window 1 pixel shorter than the desktop
+                 * to prevent Windows/GPU driver from promoting to
+                 * exclusive fullscreen (which breaks overlays and
+                 * audio).  Hide the taskbar so the gap isn't visible. */
+                SDL_SetWindowBordered(window, SDL_FALSE);
+                SDL_SetWindowPosition(window, 0, 0);
+                SDL_SetWindowSize(window, mode.w, mode.h - 1);
+                HWND taskbar = FindWindow("Shell_TrayWnd", NULL);
+                if (taskbar) ShowWindow(taskbar, SW_HIDE);
             }
         }
 #else
