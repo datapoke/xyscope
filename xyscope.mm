@@ -2755,6 +2755,11 @@ int main(int argc, char *argv[])
 #ifdef _WIN32
         /* Windows scRGB: 1.0 = 80 nits, peak can be extreme */
         scn.prefs.brightness = (detected > 10.0) ? 10.0 : detected;
+#elif defined(__APPLE__)
+        /* macOS EDR: 1.0 = SDR white (~500 nits on XDR), so 2.0
+         * is already very bright.  The API reports up to 16.0 but
+         * that washes out colors completely. */
+        scn.prefs.brightness = (detected > 2.0) ? 2.0 : detected;
 #else
         scn.prefs.brightness = detected;
 #endif
