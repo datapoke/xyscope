@@ -2159,6 +2159,8 @@ public:
                 SDL_VERSION(&wminfo.version);
                 if (SDL_GetWindowWMInfo(window, &wminfo)) {
                     HWND hwnd = wminfo.info.win.window;
+                    /* Suppress repainting during transition */
+                    SendMessage(hwnd, WM_SETREDRAW, FALSE, 0);
                     /* Remove border in one shot */
                     LONG style = GetWindowLong(hwnd, GWL_STYLE);
                     SetWindowLong(hwnd, GWL_STYLE,
@@ -2166,7 +2168,8 @@ public:
                     /* Resize + reposition atomically */
                     SetWindowPos(hwnd, HWND_TOP, 0, 0,
                                  mode.w, mode.h - 1,
-                                 SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+                                 SWP_FRAMECHANGED);
+                    SendMessage(hwnd, WM_SETREDRAW, TRUE, 0);
                 }
 
                 /* Black cover window for the 1-pixel gap at the bottom */
