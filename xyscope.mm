@@ -1477,6 +1477,11 @@ public:
             }
         }
 
+        if (prefs.velocity_dim > 0.0) {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+        }
+
         glBegin(GL_LINE_STRIP);
 
         /* display framebuf contents */
@@ -1490,6 +1495,9 @@ public:
             prefs.brightness, prefs.velocity_dim);
 
         glEnd();
+
+        if (prefs.velocity_dim > 0.0)
+            glDisable(GL_BLEND);
         glPopMatrix();
         if (prefs.display_mode == DisplayFrequencyMode)
             delete[] avg_magnitudes;

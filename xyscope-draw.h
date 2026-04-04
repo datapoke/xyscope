@@ -70,12 +70,6 @@ static inline unsigned int draw_xy_vertices(
     double dt  = 0.0;
     (void)dt;  /* accumulated for caller; suppress unused warning */
 
-    /* Enable blending if velocity dim is active */
-    if (velocity_dim > 0.0) {
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    }
-
     /* Set initial color for standard display mode */
     if (display_mode == DisplayStandardMode) {
         HSVtoRGB(&r, &g, &b, hue, s, v);
@@ -172,9 +166,6 @@ static inline unsigned int draw_xy_vertices(
         olc = lc;
         orc = rc;
     }
-
-    if (velocity_dim > 0.0)
-        glDisable(GL_BLEND);
 
     return vertex_count;
 }
