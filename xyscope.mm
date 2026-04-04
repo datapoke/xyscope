@@ -2761,6 +2761,16 @@ int main(int argc, char *argv[])
 #endif
 
     SDL_RaiseWindow(window);
+#ifdef _WIN32
+    {
+        SDL_SysWMinfo wminfo;
+        SDL_VERSION(&wminfo.version);
+        if (SDL_GetWindowWMInfo(window, &wminfo)) {
+            SetForegroundWindow(wminfo.info.win.window);
+            SetFocus(wminfo.info.win.window);
+        }
+    }
+#endif
 
     glGenTextures(1, &scn.textures);
 
