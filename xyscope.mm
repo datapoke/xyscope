@@ -2678,6 +2678,23 @@ int main(int argc, char *argv[])
 
     // Enable VSync
     SDL_GL_SetSwapInterval(1);
+
+#ifdef __APPLE__
+    /* Disable color clamping for EDR/HDR on macOS.
+     * SDL_GL_FLOATBUFFERS gives us a float framebuffer via
+     * NSOpenGLPFAColorFloat; unclamping lets values > 1.0
+     * reach Extended Dynamic Range. */
+    {
+        #ifndef GL_CLAMP_VERTEX_COLOR_ARB
+        #define GL_CLAMP_VERTEX_COLOR_ARB   0x891A
+        #define GL_CLAMP_FRAGMENT_COLOR_ARB 0x891B
+        #endif
+        extern void glClampColorARB(GLenum, GLenum);
+        glClampColorARB(GL_CLAMP_VERTEX_COLOR_ARB, GL_FALSE);
+        glClampColorARB(GL_CLAMP_FRAGMENT_COLOR_ARB, GL_FALSE);
+    }
+#endif
+
 #ifdef _WIN32
     } /* end of SDL fallback block */
 
