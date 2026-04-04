@@ -2790,10 +2790,7 @@ int main(int argc, char *argv[])
 
     if (scn.prefs.brightness <= 0.0) {
         double detected = detect_hdr_brightness();
-#ifdef _WIN32
-        /* Windows scRGB: 1.0 = 80 nits, peak can be extreme */
-        scn.prefs.brightness = (detected > 10.0) ? 10.0 : detected;
-#elif defined(__APPLE__)
+#ifdef __APPLE__
         /* macOS EDR: 1.0 = SDR white (~500 nits on XDR), so 2.0
          * is already very bright.  The API reports up to 16.0 but
          * that washes out colors completely. */
@@ -2804,7 +2801,7 @@ int main(int argc, char *argv[])
     }
 
     if (scn.prefs.velocity_dim <= 0.0)
-        scn.prefs.velocity_dim = 10.0;
+        scn.prefs.velocity_dim = scn.prefs.brightness / 2.0;
 
     scn.showAutoScale(NOT_TIMED);
     scn.showSplines(NOT_TIMED);
