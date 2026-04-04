@@ -1662,7 +1662,7 @@ public:
         { "d and D",           "Display mode" },
         { "f",                 "Enter/Exit full screen mode" },
         { "h",                 "Show/Hide help" },
-        { "i and I",           "Adjust brightness" },
+        { "u/i and U/I",       "Adjust brightness" },
         { "j/k and J/K",       "Adjust display delay" },
         { "n/m and N/M",       "Adjust velocity dim" },
         { "r",                 "Recenter" },
@@ -2546,7 +2546,13 @@ void keyboard(unsigned char key, int xPos, int yPos)
             scn.setBrightness(scn.getBrightness() + 1.0);
             break;
         case 'I':
+            scn.setBrightness(scn.getBrightness() + 0.1);
+            break;
+        case 'u':
             scn.setBrightness(scn.getBrightness() - 1.0);
+            break;
+        case 'U':
+            scn.setBrightness(scn.getBrightness() - 0.1);
             break;
         case 'n':
             scn.setVelocityDim(scn.prefs.velocity_dim - 1.0);
