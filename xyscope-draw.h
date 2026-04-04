@@ -85,7 +85,7 @@ static inline unsigned int draw_xy_vertices(
          * phosphor.  Alpha blending with additive mode lets
          * slow parts glow bright while fast parts go transparent. */
         if (velocity_dim > 0.0)
-            a = 1.0 / (1.0 + d * velocity_dim * scale_factor);
+            a = 1.0 / (1.0 + d * 10.0 * velocity_dim * scale_factor);
         else
             a = 1.0;
 
