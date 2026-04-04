@@ -1140,12 +1140,12 @@ public:
 
     /* Color/display mode enums now in xyscope-shared.h */
     #define NUM_COLOR_MODES 2
-    #define NUM_DISPLAY_MODES 5
+    #define NUM_DISPLAY_MODES 3
     static const unsigned int DefaultColorMode   = DEFAULT_COLOR_MODE;
     static const unsigned int DefaultDisplayMode  = DEFAULT_DISPLAY_MODE;
     const char *color_mode_names[NUM_COLOR_MODES] = {"Standard", "Delta"};
     const char *display_mode_names[NUM_DISPLAY_MODES] = {
-        "Standard", "Radius", "Length", "Frequency", "Time"
+        "Standard", "Radius", "Frequency"
     };
 
     scene()

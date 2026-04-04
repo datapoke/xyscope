@@ -113,16 +113,6 @@ static inline unsigned int draw_xy_vertices(
                      * 360.0 * color_range
                      * scale_factor) + hue;
                 break;
-            case DisplayLengthMode:
-                h = (d * 360.0 * color_range) + hue;
-                if (h < hue) {
-                    h = hue + 360.0 + h;
-                    if (h < hue)
-                        h = hue;
-                }
-                if (h > hue + 360.0)
-                    h = hue + 360.0;
-                break;
             case DisplayFrequencyMode:
                 if (avg_magnitudes != NULL && max_magnitude > 0) {
                     h = map_value(
@@ -130,10 +120,6 @@ static inline unsigned int draw_xy_vertices(
                             * color_range * window_size / 2,
                         0, max_magnitude, 0, 360) + hue;
                 }
-                break;
-            case DisplayTimeMode:
-                h = (((double) i / (double) frames_read)
-                     * 90.0 * color_range) + hue;
                 break;
             default:
                 break;
