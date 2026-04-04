@@ -1730,8 +1730,8 @@ public:
             snprintf(fps_string, sizeof(fps_string), "%.1f fps", fps);
             drawString(60.0, 60.0, fps_string);
             snprintf(vps_string, sizeof(vps_string), "%d vps", vertex_count * frame_rate);
-            double ref_width = getTextWidth((char *)"00000000 vps");
-            drawString(-(ref_width + 280), -100.0, vps_string);
+            double vps_width = getTextWidth(vps_string);
+            drawString(-(vps_width + 280), -100.0, vps_string);
         }
 
         /* calculate latency */
@@ -1745,8 +1745,8 @@ public:
             latency = 0.0;
         if (! t_data->pause_scope) {
             snprintf(time_string, sizeof(time_string), "%.0f usec", latency * 100000.0);
-            double time_ref = getTextWidth((char *)"0000 usec");
-            drawString(-(time_ref + 280), 60.0, time_string);
+            double time_width = getTextWidth(time_string);
+            drawString(-(time_width + 280), 60.0, time_string);
         }
     }
 
