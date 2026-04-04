@@ -325,7 +325,7 @@ static inline double detect_hdr_brightness(void)
 #ifdef __OBJC__
     @autoreleasepool {
         NSScreen *screen = [NSScreen mainScreen];
-        CGFloat edr = screen.maximumExtendedDynamicRangeColorComponentValue;
+        CGFloat edr = screen.maximumPotentialExtendedDynamicRangeColorComponentValue;
         if (edr > 1.0)
             return (double)edr;
     }
