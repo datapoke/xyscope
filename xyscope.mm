@@ -2529,16 +2529,16 @@ void keyboard(unsigned char key, int xPos, int yPos)
             scn.setBrightness(scn.getBrightness() - 1.0);
             break;
         case 'n':
-            scn.setVelocityDim(scn.prefs.velocity_dim + 1.0);
-            break;
-        case 'm':
             scn.setVelocityDim(scn.prefs.velocity_dim - 1.0);
             break;
+        case 'm':
+            scn.setVelocityDim(scn.prefs.velocity_dim + 1.0);
+            break;
         case 'N':
-            scn.setVelocityDim(scn.prefs.velocity_dim + 0.1);
+            scn.setVelocityDim(scn.prefs.velocity_dim - 0.1);
             break;
         case 'M':
-            scn.setVelocityDim(scn.prefs.velocity_dim - 0.1);
+            scn.setVelocityDim(scn.prefs.velocity_dim + 0.1);
             break;
         default:
             break;
