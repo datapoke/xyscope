@@ -2803,6 +2803,9 @@ int main(int argc, char *argv[])
 #endif
     }
 
+    if (scn.prefs.velocity_dim <= 0.0)
+        scn.prefs.velocity_dim = 10.0;
+
     scn.showAutoScale(NOT_TIMED);
     scn.showSplines(NOT_TIMED);
     scn.showLineWidth(NOT_TIMED);
