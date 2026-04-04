@@ -1157,7 +1157,7 @@ public:
         bump                 = 0;
         bytes_per_buf        = 0;
         for (int i = 0; i < 2; i++) {
-            prefs.dim[i] = prefs.normal_dim[i] = prefs.old_dim[i] = 600;
+            prefs.dim[i] = prefs.normal_dim[i] = prefs.old_dim[i] = 1000;
             prefs.position[i] = 100;
         }
         for (int i = 0; i < 4; i += 2) {
@@ -2759,6 +2759,8 @@ int main(int argc, char *argv[])
         }
     }
 #endif
+
+    SDL_RaiseWindow(window);
 
     glGenTextures(1, &scn.textures);
 
