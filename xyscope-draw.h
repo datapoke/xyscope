@@ -51,7 +51,8 @@ static inline unsigned int draw_xy_vertices(
     unsigned int window_size,
     unsigned int overlap_size,
     double max_magnitude,
-    double brightness)
+    double brightness,
+    double velocity_dim)
 {
     unsigned int vertex_count = 0;
     double h   = -1.0;
@@ -78,6 +79,13 @@ static inline unsigned int draw_xy_vertices(
         lc = framebuf[i].left_channel;
         rc = framebuf[i].right_channel;
         d  = hypot(lc - olc, rc - orc) / SQRT_TWO;
+
+        /* Velocity brightness: dim fast-moving segments like
+         * analog phosphor.  v = 1 / (1 + d * velocity_dim) */
+        if (velocity_dim > 0.0)
+            v = 1.0 / (1.0 + d * velocity_dim);
+        else
+            v = 1.0;
 
         /* Color mode accumulation */
         switch (color_mode) {
@@ -129,6 +137,11 @@ static inline unsigned int draw_xy_vertices(
         }
         if (h > -1.0) {
             HSVtoRGB(&r, &g, &b, h, s, v);
+            glColor3d(r * brightness, g * brightness, b * brightness);
+        } else if (velocity_dim > 0.0) {
+            /* Standard mode with velocity brightness: recompute
+             * color each vertex since v changes per sample */
+            HSVtoRGB(&r, &g, &b, hue, s, v);
             glColor3d(r * brightness, g * brightness, b * brightness);
         }
 

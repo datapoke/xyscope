@@ -330,7 +330,8 @@ int main(int argc, char *argv[])
                 DEFAULT_SPLINE_STEPS,
                 NULL,               /* no frequency magnitudes */
                 0, 0, 0.0,
-                1.0);               /* brightness */
+                1.0,                /* brightness */
+                0.0);               /* velocity_dim */
             glEnd();
 
             glFinish();

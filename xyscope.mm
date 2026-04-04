@@ -1104,8 +1104,8 @@ public:
     bool show_help;
     bool show_mouse;
 
-    #define NUM_TEXT_TIMERS 14
-    #define NUM_AUTO_TEXT_TIMERS 11
+    #define NUM_TEXT_TIMERS 15
+    #define NUM_AUTO_TEXT_TIMERS 12
     typedef struct _text_timer_t {
         bool show;
         timeval time;
@@ -1126,10 +1126,11 @@ public:
         FrameRateTimer   = 8,
         DelayTimer       = 9,
         BrightnessTimer  = 10,
+        VelocityDimTimer = 11,
         /* End of text timers automatically included in stats display */
-        PausedTimer      = 11,
-        ScaleTimer       = 12,
-        CounterTimer     = 13
+        PausedTimer      = 12,
+        ScaleTimer       = 13,
+        CounterTimer     = 14
     } text_timer_handles;
     text_timer_t text_timer[NUM_TEXT_TIMERS];
     timeval show_intro_time;
@@ -1486,7 +1487,7 @@ public:
             prefs.spline_steps,
             (prefs.display_mode == DisplayFrequencyMode) ? avg_magnitudes : NULL,
             window_size, overlap_size, max_magnitude,
-            prefs.brightness);
+            prefs.brightness, prefs.velocity_dim);
 
         glEnd();
         glPopMatrix();
@@ -1632,7 +1633,7 @@ public:
     {
         double left_offset   =  40.0;
         double right_offset  = 700.0;
-        unsigned int n_items =  18;
+        unsigned int n_items =  20;
 
         char help[][2][64] = {
         { "Escape",            "Quit" },
@@ -1650,7 +1651,9 @@ public:
         { "d and D",           "Display mode" },
         { "f",                 "Enter/Exit full screen mode" },
         { "h",                 "Show/Hide help" },
+        { "i and I",           "Adjust brightness" },
         { "j/k and J/K",       "Adjust display delay" },
+        { "n/m and N/M",       "Adjust velocity dim" },
         { "r",                 "Recenter" },
         { "s and S",           "Show/Hide statistics" },
         { "w and W",           "Adjust line width" }
@@ -1812,6 +1815,7 @@ public:
         showTimedText(BrightnessTimer, true, t, "Brightness: %.1f", prefs.brightness);
 #endif
     }
+    void showVelocityDim(bool t) { showTimedText(VelocityDimTimer, true, t, "Velocity dim: %.1f", prefs.velocity_dim); }
     void showPaused(bool t) { showTimedText(PausedTimer, true, t, "Paused"); }
 
     void showScale(bool timed)
@@ -2251,6 +2255,13 @@ public:
         showBrightness(TIMED);
     }
 
+    void setVelocityDim(double d)
+    {
+        prefs.velocity_dim = d;
+        if (prefs.velocity_dim < 0.0) prefs.velocity_dim = 0.0;
+        showVelocityDim(TIMED);
+    }
+
     double getDelay(void)
     {
         return prefs.delay;
@@ -2512,10 +2523,22 @@ void keyboard(unsigned char key, int xPos, int yPos)
             scn.setLineWidth(scn.getLineWidth() - 1);
             break;
         case 'i':
-            scn.setBrightness(scn.getBrightness() + 0.1);
+            scn.setBrightness(scn.getBrightness() + 1.0);
             break;
         case 'I':
-            scn.setBrightness(scn.getBrightness() - 0.1);
+            scn.setBrightness(scn.getBrightness() - 1.0);
+            break;
+        case 'n':
+            scn.setVelocityDim(scn.prefs.velocity_dim + 1.0);
+            break;
+        case 'm':
+            scn.setVelocityDim(scn.prefs.velocity_dim - 1.0);
+            break;
+        case 'N':
+            scn.setVelocityDim(scn.prefs.velocity_dim + 0.1);
+            break;
+        case 'M':
+            scn.setVelocityDim(scn.prefs.velocity_dim - 0.1);
             break;
         default:
             break;
@@ -2780,6 +2803,7 @@ int main(int argc, char *argv[])
     scn.showFrameRate(NOT_TIMED);
     scn.showDelay(NOT_TIMED);
     scn.showBrightness(NOT_TIMED);
+    scn.showVelocityDim(NOT_TIMED);
     scn.showScale(NOT_TIMED);
 
     // Main event loop
