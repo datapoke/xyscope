@@ -2167,8 +2167,6 @@ public:
                     SetWindowPos(hwnd, HWND_TOP, 0, 0,
                                  mode.w, mode.h - 1,
                                  SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-                    SetForegroundWindow(hwnd);
-                    SetFocus(hwnd);
                 }
 
                 /* Black cover window for the 1-pixel gap at the bottom */
@@ -2189,6 +2187,12 @@ public:
                     SetWindowPos(fs_cover_hwnd, HWND_TOP,
                                  0, mode.h - 1, mode.w, 1,
                                  SWP_SHOWWINDOW | SWP_NOACTIVATE);
+                }
+
+                /* Grab focus after everything is set up */
+                if (SDL_GetWindowWMInfo(window, &wminfo)) {
+                    SetForegroundWindow(wminfo.info.win.window);
+                    SetFocus(wminfo.info.win.window);
                 }
             }
         }
