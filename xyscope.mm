@@ -1563,17 +1563,7 @@ public:
     {
         if (!font || !string || strlen(string) == 0) return;
 
-        if (x >= 0.0)
-            x = -1.0 + x / (double) prefs.dim[0];
-        else
-            x =  1.0 + x / (double) prefs.dim[0];
-
-        if (y >= 0.0)
-            y = -1.0 + y / (double) prefs.dim[1];
-        else
-            y =  1.0 + y / (double) prefs.dim[1];
-
-        // Render text to surface
+        // Render text to surface first (need actual width for right-alignment)
         SDL_Color white = {255, 255, 255, 255};
         SDL_Surface *text_surface = TTF_RenderText_Blended(font, string, white);
         if (!text_surface) {
@@ -1590,6 +1580,24 @@ public:
             return;
         }
 
+        // Calculate text width and height in normalized coordinates
+        double text_w = (double)rgba_surface->w / (double)prefs.dim[0] * 2.0;
+        double text_h = (double)rgba_surface->h / (double)prefs.dim[1] * 2.0;
+
+        /* Position: positive x = offset from left edge.
+         * Negative x = right-align with margin from right edge.
+         * For right-align, use actual rendered surface width
+         * so position is stable regardless of content. */
+        if (x >= 0.0)
+            x = -1.0 + x / (double) prefs.dim[0];
+        else
+            x = 1.0 - text_w - (-x) / (double) prefs.dim[0];
+
+        if (y >= 0.0)
+            y = -1.0 + y / (double) prefs.dim[1];
+        else
+            y =  1.0 + y / (double) prefs.dim[1];
+
         // Create OpenGL texture from surface
         GLuint texture;
         glGenTextures(1, &texture);
@@ -1601,10 +1609,6 @@ public:
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
                      rgba_surface->w, rgba_surface->h,
                      0, GL_RGBA, GL_UNSIGNED_BYTE, rgba_surface->pixels);
-
-        // Calculate text width and height in normalized coordinates
-        double text_w = (double)rgba_surface->w / (double)prefs.dim[0] * 2.0;
-        double text_h = (double)rgba_surface->h / (double)prefs.dim[1] * 2.0;
 
         // Enable blending for text transparency
         glEnable(GL_BLEND);
@@ -1729,8 +1733,7 @@ public:
             snprintf(fps_string, sizeof(fps_string), "%.1f fps", fps);
             drawString(60.0, 60.0, fps_string);
             snprintf(vps_string, sizeof(vps_string), "%d vps", vertex_count * frame_rate);
-            double vps_width = getTextWidth(vps_string);
-            drawString(-(vps_width + 280), -100.0, vps_string);
+            drawString(-80.0, -100.0, vps_string);
         }
 
         /* calculate latency */
@@ -1744,8 +1747,7 @@ public:
             latency = 0.0;
         if (! t_data->pause_scope) {
             snprintf(time_string, sizeof(time_string), "%.0f usec", latency * 100000.0);
-            double time_width = getTextWidth(time_string);
-            drawString(-(time_width + 280), 60.0, time_string);
+            drawString(-80.0, 60.0, time_string);
         }
     }
 
@@ -1847,7 +1849,7 @@ public:
     {
         text_timer_t *timer  = &text_timer[CounterTimer];
         timer->auto_position = false;
-        timer->x_position    = -440.0;
+        timer->x_position    = -80.0;
         timer->y_position    =   60.0;
         if (timed)
             gettimeofday(&timer->time, NULL);
