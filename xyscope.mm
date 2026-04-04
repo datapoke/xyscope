@@ -33,6 +33,9 @@
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
+#ifdef _WIN32
+#include <SDL2/SDL_syswm.h>
+#endif
 
 #ifdef __APPLE__
 #define GL_SILENCE_DEPRECATION
@@ -146,9 +149,8 @@ static const GUID XYSCOPE_IID_IAudioCaptureClient = {0xC8ADBD64, 0xE71E, 0x48a0,
 #endif /* _WIN32 */
 
 #ifdef _WIN32
-/* Forward declarations — defined after scene class */
+/* Forward declaration — defined after scene class */
 extern HDC hdr_hdc;
-extern HWND fs_cover_hwnd;
 #endif
 
 /* Constants now in xyscope-shared.h */
@@ -2078,10 +2080,19 @@ public:
     {
         if (prefs.is_full_screen) {
 #ifdef _WIN32
-            /* Undo borderless fullscreen: restore border, hide cover */
-            SDL_SetWindowBordered(window, SDL_TRUE);
-            if (fs_cover_hwnd)
-                ShowWindow(fs_cover_hwnd, SW_HIDE);
+            /* Restore normal window styles */
+            {
+                SDL_SysWMinfo wminfo;
+                SDL_VERSION(&wminfo.version);
+                if (SDL_GetWindowWMInfo(window, &wminfo)) {
+                    HWND hwnd = wminfo.info.win.window;
+                    SetWindowLongPtr(hwnd, GWL_STYLE,
+                        WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VISIBLE);
+                    SetWindowLongPtr(hwnd, GWL_EXSTYLE, WS_EX_APPWINDOW);
+                    SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+                        SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER);
+                }
+            }
 #else
             SDL_SetWindowFullscreen(window, 0);
 #endif
@@ -2115,30 +2126,20 @@ public:
             SDL_DisplayMode mode;
             int di = SDL_GetWindowDisplayIndex(window);
             if (SDL_GetDesktopDisplayMode(di, &mode) == 0) {
-                SDL_SetWindowBordered(window, SDL_FALSE);
-                SDL_SetWindowPosition(window, 0, 0);
-                SDL_SetWindowSize(window, mode.w - 1, mode.h);
-
-                /* 1-pixel cover window on the right edge so the
-                 * full screen is covered without either window
-                 * matching the desktop resolution (which triggers
-                 * Windows exclusive fullscreen promotion). */
-                if (!fs_cover_hwnd) {
-                    WNDCLASSA wc = {};
-                    wc.lpfnWndProc  = DefWindowProcA;
-                    wc.hInstance    = GetModuleHandle(NULL);
-                    wc.lpszClassName = "XYScopeCover";
-                    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
-                    RegisterClassA(&wc);
-                    fs_cover_hwnd = CreateWindowExA(
-                        WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
-                        wc.lpszClassName, "", WS_POPUP | WS_VISIBLE,
-                        mode.w - 1, 0, 1, mode.h,
-                        NULL, NULL, wc.hInstance, NULL);
-                } else {
-                    SetWindowPos(fs_cover_hwnd, HWND_TOPMOST,
-                                 mode.w - 1, 0, 1, mode.h,
-                                 SWP_SHOWWINDOW);
+                /* Set window styles that prevent the GPU driver from
+                 * detecting this as a fullscreen-eligible window.
+                 * Without this, the driver silently promotes to
+                 * exclusive fullscreen on SwapBuffers, breaking
+                 * overlays and audio.  (SDL#12791, SFML workaround) */
+                SDL_SysWMinfo wminfo;
+                SDL_VERSION(&wminfo.version);
+                if (SDL_GetWindowWMInfo(window, &wminfo)) {
+                    HWND hwnd = wminfo.info.win.window;
+                    SetWindowLongPtr(hwnd, GWL_STYLE,
+                        WS_OVERLAPPED | WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
+                    SetWindowLongPtr(hwnd, GWL_EXSTYLE, WS_EX_APPWINDOW);
+                    SetWindowPos(hwnd, HWND_TOP, 0, 0, mode.w, mode.h,
+                        SWP_FRAMECHANGED | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
                 }
             }
         }
@@ -2538,7 +2539,6 @@ SDL_GLContext gl_context = NULL;
 #ifdef _WIN32
 HDC hdr_hdc = NULL;              /* non-NULL when using WGL float framebuffer */
 HGLRC hdr_hglrc = NULL;
-HWND fs_cover_hwnd = NULL;      /* 1-pixel cover window for borderless fullscreen */
 #endif
 TTF_Font *font = NULL;
 
