@@ -82,7 +82,6 @@
 
 #ifdef _WIN32
 /* ---- Windows compatibility layer ---- */
-/* timeval, gettimeofday, timespec, clock_gettime, bzero now in xyscope-shared.h */
 
 typedef unsigned int useconds_t;
 #define usleep(us) Sleep(((us) + 999) / 1000)
@@ -154,8 +153,6 @@ extern HDC hdr_hdc;
 extern HWND fs_cover_hwnd;
 #endif
 
-/* Constants now in xyscope-shared.h */
-
 /* Audio sample rate and display frame rate — detected at runtime */
 static int sample_rate = 96000;
 static int frame_rate  = 120;
@@ -192,8 +189,6 @@ static void compute_derived_rates() {
 
 
 
-/* sample_t, ringbuffer_t now in shared headers */
-
 typedef struct _thread_data {
     pthread_t thread_id;
 #ifdef __APPLE__
@@ -220,8 +215,6 @@ typedef struct _thread_data {
     timeval last_write;
 } thread_data_t;
 
-/* frame_t now in xyscope-shared.h */
-
 thread_data_t Thread_Data;
 
 #define LEFT_PORT  0
@@ -235,10 +228,6 @@ thread_data_t Thread_Data;
 #define sign(A) ((A) < 0.0 ? -1.0 : 1.0)
 
 
-
-/* timeDiff() now in xyscope-shared.h */
-
-/* Ringbuffer functions now in xyscope-ringbuffer.h */
 
 /* Signal reader thread that data is ready */
 static inline void signal_data_ready(thread_data_t *t_data)
@@ -1056,14 +1045,10 @@ public:
 
 /* The scene object */
 
-/* preferences_t now in xyscope-shared.h (with audio_delay/display_delay fields) */
-
 // Global SDL variables (declared here so scene class can access them)
 extern TTF_Font *font;
 extern SDL_Window *window;
 extern SDL_GLContext gl_context;
-
-/* wrapValue(), normalizeHue() now in xyscope-shared.h */
 
 class scene
 {
@@ -1104,8 +1089,8 @@ public:
     bool show_help;
     bool show_mouse;
 
-    #define NUM_TEXT_TIMERS 15
-    #define NUM_AUTO_TEXT_TIMERS 12
+    #define NUM_TEXT_TIMERS 16
+    #define NUM_AUTO_TEXT_TIMERS 13
     typedef struct _text_timer_t {
         bool show;
         timeval time;
@@ -1118,19 +1103,20 @@ public:
         AutoScaleTimer   = 0,
         SplineTimer      = 1,
         LineWidthTimer   = 2,
-        ColorModeTimer   = 3, 
-        DisplayModeTimer = 4,
-        ColorRangeTimer  = 5,
-        ColorRateTimer   = 6,
-        DelayTimer       = 7,
-        BrightnessTimer  = 8,
-        VelocityDimTimer = 9,
-        SampleRateTimer  = 10,
-        FrameRateTimer   = 11,
+        ParticlesTimer   = 3,
+        ColorModeTimer   = 4, 
+        DisplayModeTimer = 5,
+        ColorRangeTimer  = 6,
+        ColorRateTimer   = 7,
+        DelayTimer       = 8,
+        BrightnessTimer  = 9,
+        VelocityDimTimer = 10,
+        SampleRateTimer  = 11,
+        FrameRateTimer   = 12,
         /* End of text timers automatically included in stats display */
-        PausedTimer      = 12,
-        ScaleTimer       = 13,
-        CounterTimer     = 14
+        PausedTimer      = 13,
+        ScaleTimer       = 14,
+        CounterTimer     = 15
     } text_timer_handles;
     text_timer_t text_timer[NUM_TEXT_TIMERS];
     timeval show_intro_time;
@@ -1138,7 +1124,6 @@ public:
     timeval reset_frame_time;
     timeval mouse_dirty_time;
 
-    /* Color/display mode enums now in xyscope-shared.h */
     #define NUM_COLOR_MODES 2
     #define NUM_DISPLAY_MODES 3
     static const unsigned int DefaultColorMode   = DEFAULT_COLOR_MODE;
@@ -1174,6 +1159,7 @@ public:
         prefs.color_rate     = DEFAULT_COLOR_RATE;
         prefs.display_mode   = DEFAULT_DISPLAY_MODE;
         prefs.line_width     = DEFAULT_LINE_WIDTH;
+        prefs.particles      = false;
         prefs.show_stats     = 0;
         prefs.hue            = 0.0;
         prefs.delay          = 0.0;
@@ -1373,7 +1359,12 @@ public:
         glMatrixMode(GL_MODELVIEW);
         glPushMatrix();
         glLoadIdentity();
-        glLineWidth((GLfloat) prefs.line_width);
+        if (prefs.particles) {
+            glPointSize((GLfloat) prefs.line_width);
+        }
+        else {
+            glLineWidth((GLfloat) prefs.line_width);
+        }
 
         /* FFT setup for frequency mode (must happen before glBegin) */
         if (prefs.display_mode == DisplayFrequencyMode) {
@@ -1484,7 +1475,12 @@ public:
             glBlendFunc(GL_SRC_ALPHA, GL_ONE);
         }
 
-        glBegin(GL_LINE_STRIP);
+        if (prefs.particles) {
+            glBegin(GL_POINTS);
+        }
+        else {
+            glBegin(GL_LINE_STRIP);
+        }
 
         /* display framebuf contents */
         vertex_count = draw_xy_vertices(
@@ -1669,7 +1665,8 @@ public:
         { "n/m and N/M",       "Adjust velocity dim" },
         { "r",                 "Recenter" },
         { "s and S",           "Show/Hide statistics" },
-        { "w and W",           "Adjust line width" }
+        { "w and W",           "Adjust line width" },
+        { "p",                 "Particles on/off" }
         };
 
         for (unsigned int i = 0; i < n_items; i++) {
@@ -1817,6 +1814,7 @@ public:
     void showAutoScale(bool t) { showTimedText(AutoScaleTimer, true, t, "Auto-scale: %s", prefs.auto_scale ? "on" : "off"); }
     void showSplines(bool t) { showTimedText(SplineTimer, true, t, "Splines: %d", prefs.spline_steps); }
     void showLineWidth(bool t) { showTimedText(LineWidthTimer, true, t, "Line width: %d", prefs.line_width); }
+    void showParticles(bool t) { showTimedText(ParticlesTimer, true, t, "Particles: %s", prefs.particles ? "on" : "off"); }
     void showColorMode(bool t) { showTimedText(ColorModeTimer, true, t, "Color mode: %s", color_mode_names[prefs.color_mode]); }
     void showDisplayMode(bool t) { showTimedText(DisplayModeTimer, true, t, "Display mode: %s", display_mode_names[prefs.display_mode]); }
     void showColorRange(bool t) { showTimedText(ColorRangeTimer, true, t, "Color range: %.2f", prefs.color_range); }
@@ -2315,10 +2313,11 @@ public:
         showLineWidth(TIMED);
     }
 
-
-    /* smooth(), HSVtoRGB() now free functions in xyscope-shared.h */
-    /* map() renamed to map_value() in xyscope-shared.h */
-
+    void toggleParticles(void)
+    {
+        prefs.particles = !prefs.particles;
+		showParticles(TIMED);
+    }
 };
 static scene scn;
 
@@ -2547,6 +2546,9 @@ void keyboard(unsigned char key, int xPos, int yPos)
             break;
         case 'W':
             scn.setLineWidth(scn.getLineWidth() - 1);
+            break;
+        case 'p':
+            scn.toggleParticles();
             break;
         case 'i':
             scn.setBrightness(scn.getBrightness() + 1.0);
@@ -2848,6 +2850,7 @@ int main(int argc, char *argv[])
     scn.showAutoScale(NOT_TIMED);
     scn.showSplines(NOT_TIMED);
     scn.showLineWidth(NOT_TIMED);
+    scn.showParticles(NOT_TIMED);
     scn.showColorMode(NOT_TIMED);
     scn.showDisplayMode(NOT_TIMED);
     scn.showColorRange(NOT_TIMED);

@@ -132,6 +132,7 @@ typedef struct _preferences_t {
     double color_rate;
     unsigned int display_mode;
     unsigned int line_width;
+    bool particles;
     unsigned int show_stats;
     double hue;
     double delay;
