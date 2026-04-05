@@ -1721,17 +1721,18 @@ public:
         char vps_string[64];
         char time_string[64];
 
+        /* Frame counting — always runs, needed by frame rate limiter */
+        gettimeofday(&this_frame_time, NULL);
+        elapsed_time = timeDiff(reset_frame_time, this_frame_time);
+        frame_count++;
+        if (elapsed_time >= 1.0) {
+            fps = frame_count / elapsed_time;
+            reset_frame_time = this_frame_time;
+            frame_count = 0;
+        }
+        last_frame_time = this_frame_time;
+
         if (show_intro || (prefs.show_stats > 0 && prefs.show_stats < 3)) {
-            /* calculate framerate */
-            gettimeofday(&this_frame_time, NULL);
-            elapsed_time = timeDiff(reset_frame_time, this_frame_time);
-            frame_count++;
-            if (elapsed_time >= 1.0) {
-                fps = frame_count / elapsed_time;
-                reset_frame_time = this_frame_time;
-                frame_count = 0;
-            }
-            last_frame_time = this_frame_time;
             snprintf(fps_string, sizeof(fps_string), "%.1f fps", fps);
             drawString(60.0, 60.0, fps_string);
             snprintf(vps_string, sizeof(vps_string), "%d vps", vertex_count * frame_rate);
