@@ -1071,6 +1071,7 @@ public:
     GLuint textures;
 
     preferences_t prefs;
+    presets_t presets;
 
     double target_side[4];
     double latency;
@@ -1089,7 +1090,7 @@ public:
     bool show_help;
     bool show_mouse;
 
-    #define NUM_TEXT_TIMERS 16
+    #define NUM_TEXT_TIMERS 17
     #define NUM_AUTO_TEXT_TIMERS 13
     typedef struct _text_timer_t {
         bool show;
@@ -1114,9 +1115,10 @@ public:
         SampleRateTimer  = 11,
         FrameRateTimer   = 12,
         /* End of text timers automatically included in stats display */
-        PausedTimer      = 13,
-        ScaleTimer       = 14,
-        CounterTimer     = 15
+        PresetTimer      = 13,
+        PausedTimer      = 14,
+        ScaleTimer       = 15,
+        CounterTimer     = 16
     } text_timer_handles;
     text_timer_t text_timer[NUM_TEXT_TIMERS];
     timeval show_intro_time;
@@ -1159,12 +1161,13 @@ public:
         prefs.color_rate     = DEFAULT_COLOR_RATE;
         prefs.display_mode   = DEFAULT_DISPLAY_MODE;
         prefs.line_width     = DEFAULT_LINE_WIDTH;
-        prefs.particles      = false;
+        prefs.particles      = DEFAULT_PARTICLES;
         prefs.show_stats     = 0;
         prefs.hue            = 0.0;
         prefs.delay          = 0.0;
         prefs.audio_delay    = 0.0;
         prefs.display_delay  = 0.0;
+        memset(&presets, 0, sizeof(presets));
         latency              = 0.0;
         fps                  = 0.0;
         frame_count          = 0;
@@ -1277,6 +1280,7 @@ public:
         int FH;
         if ((FH = open(DEFAULT_PREF_FILE, O_CREAT | O_WRONLY | O_TRUNC, 00660)) != -1) {
             write(FH, (void *) &prefs, sizeof(preferences_t));
+            write(FH, (void *) &presets, sizeof(presets_t));
             close(FH);
         }
         free(framebuf);
@@ -1472,10 +1476,18 @@ public:
 
         if (prefs.velocity_dim > 0.0) {
             glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+            if (prefs.particles) {
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            }
+            else {
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+            }
         }
 
         if (prefs.particles) {
+            glClear(GL_DEPTH_BUFFER_BIT);
+            glEnable(GL_DEPTH_TEST);
+            glDepthFunc(GL_LESS);
             glBegin(GL_POINTS);
         }
         else {
@@ -1494,6 +1506,8 @@ public:
 
         glEnd();
 
+        if (prefs.particles)
+            glDisable(GL_DEPTH_TEST);
         if (prefs.velocity_dim > 0.0)
             glDisable(GL_BLEND);
         glPopMatrix();
@@ -1642,14 +1656,16 @@ public:
     {
         double left_offset   =  80.0;
         double right_offset  = 740.0;
-        unsigned int n_items =  20;
+        unsigned int n_items =  22;
 
         char help[][2][64] = {
         { "Escape",            "Quit" },
         { "F1 thru F5",        "Quickly resize window" },
         { "Home and Page Up",  "Zoom in" },
         { "End and Page Down", "Zoom out" },
-        { "0 thru 9",          "Set zoom factor" },
+        { "Shift+0 thru 9",    "Set zoom factor" },
+        { "0 thru 9",          "Load preset" },
+        { "Ctrl+0 thru 9",     "Save preset" },
         { "Spacebar",          "Pause/Resume" },
         { "< and >",           "Rewind/Fast-Forward when paused" },
         { "[ and ]",           "Adjust color range" },
@@ -2316,7 +2332,42 @@ public:
     void toggleParticles(void)
     {
         prefs.particles = !prefs.particles;
-		showParticles(TIMED);
+        showParticles(TIMED);
+    }
+
+    void savePreset(int n)
+    {
+        presets.slot[n] = prefs;
+        presets.saved[n] = true;
+        showTimedText(PresetTimer, true, TIMED, "Preset %d saved", n);
+    }
+
+    void loadPreset(int n)
+    {
+        if (!presets.saved[n]) {
+            showTimedText(PresetTimer, true, TIMED, "Preset %d empty", n);
+            return;
+        }
+        /* preserve window geometry and fullscreen state */
+        int dim[2], normal_dim[2], old_dim[2], position[2];
+        bool is_full_screen;
+        memcpy(dim, prefs.dim, sizeof(dim));
+        memcpy(normal_dim, prefs.normal_dim, sizeof(normal_dim));
+        memcpy(old_dim, prefs.old_dim, sizeof(old_dim));
+        memcpy(position, prefs.position, sizeof(position));
+        is_full_screen = prefs.is_full_screen;
+
+        prefs = presets.slot[n];
+
+        memcpy(prefs.dim, dim, sizeof(dim));
+        memcpy(prefs.normal_dim, normal_dim, sizeof(normal_dim));
+        memcpy(prefs.old_dim, old_dim, sizeof(old_dim));
+        memcpy(prefs.position, position, sizeof(position));
+        prefs.is_full_screen = is_full_screen;
+
+        for (int i = 0; i < 4; i++)
+            target_side[i] = prefs.side[i];
+        showTimedText(PresetTimer, true, TIMED, "Preset %d loaded", n);
     }
 };
 static scene scn;
@@ -2443,13 +2494,9 @@ void keyboard(unsigned char key, int xPos, int yPos)
         case 27:                         /* escape */
             scn.ai->quitNow();
             exit(0);
-        case '0':
-            scn.setZoom(pow(2.0, 9.0));
-            break;
-        case '1': case '2': case '3': case '4': case '5':
-        case '6': case '7': case '8': case '9':
-            /* atof ((const char *) &key); ? */
-            scn.setZoom(pow(2.0, key - '1'));
+        case '0': case '1': case '2': case '3': case '4':
+        case '5': case '6': case '7': case '8': case '9':
+            scn.loadPreset(key - '0');
             break;
         case ',':
             scn.rewind(1);
@@ -2645,6 +2692,8 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Warning: pref file size mismatch, using defaults\n");
             scn = scene();
         }
+        /* presets are optional — old pref files won't have them */
+        read(FH, (void *) &scn.presets, sizeof(presets_t));
         close(FH);
     }
 
@@ -2713,6 +2762,7 @@ int main(int argc, char *argv[])
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
 #ifdef __APPLE__
     SDL_GL_SetAttribute(SDL_GL_FLOATBUFFERS, 1);
 #endif
@@ -2837,14 +2887,8 @@ int main(int argc, char *argv[])
          * that washes out colors completely. */
         scn.prefs.brightness = (detected > 2.0) ? 2.0 : detected;
 #else
-        scn.prefs.brightness = detected;
+        scn.prefs.brightness = (detected > 10.0) ? 10.0 : detected;
 #endif
-    }
-
-    if (scn.prefs.velocity_dim <= 0.0) {
-        scn.prefs.velocity_dim = scn.prefs.brightness / 2.0;
-        if (scn.prefs.velocity_dim < 4.0)
-            scn.prefs.velocity_dim = 4.0;
     }
 
     scn.showAutoScale(NOT_TIMED);
@@ -2897,36 +2941,39 @@ int main(int argc, char *argv[])
                 } else if (key == SDLK_ESCAPE) {
                     running = false;
                 } else if (key < 256) {
-                    // Regular ASCII keys - handle shift modifier
+                    // Regular ASCII keys - handle modifiers
                     unsigned char ch = (unsigned char)key;
 
-                    // Convert lowercase to uppercase if shift is held
-                    if ((mod & KMOD_SHIFT) && ch >= 'a' && ch <= 'z') {
-                        ch = ch - 'a' + 'A';
+                    // Ctrl+number: save preset
+                    if ((mod & KMOD_CTRL) && ch >= '0' && ch <= '9') {
+                        scn.savePreset(ch - '0');
                     }
-                    // Handle shifted number keys for special characters
-                    else if (mod & KMOD_SHIFT) {
-                        switch(ch) {
-                            case '1': ch = '!'; break;
-                            case '2': ch = '@'; break;
-                            case '3': ch = '#'; break;
-                            case '4': ch = '$'; break;
-                            case '5': ch = '%'; break;
-                            case '6': ch = '^'; break;
-                            case '7': ch = '&'; break;
-                            case '8': ch = '*'; break;
-                            case '9': ch = '('; break;
-                            case '0': ch = ')'; break;
-                            case '-': ch = '_'; break;
-                            case '=': ch = '+'; break;
-                            case '[': ch = '{'; break;
-                            case ']': ch = '}'; break;
-                            case ',': ch = '<'; break;
-                            case '.': ch = '>'; break;
+                    // Shift+number: quick zoom (was plain number)
+                    else if ((mod & KMOD_SHIFT) && ch >= '0' && ch <= '9') {
+                        if (ch == '0')
+                            scn.setZoom(pow(2.0, 9.0));
+                        else
+                            scn.setZoom(pow(2.0, ch - '1'));
+                    }
+                    else {
+                        // Convert lowercase to uppercase if shift is held
+                        if ((mod & KMOD_SHIFT) && ch >= 'a' && ch <= 'z') {
+                            ch = ch - 'a' + 'A';
                         }
-                    }
+                        // Handle shifted non-number keys for special characters
+                        else if (mod & KMOD_SHIFT) {
+                            switch(ch) {
+                                case '-': ch = '_'; break;
+                                case '=': ch = '+'; break;
+                                case '[': ch = '{'; break;
+                                case ']': ch = '}'; break;
+                                case ',': ch = '<'; break;
+                                case '.': ch = '>'; break;
+                            }
+                        }
 
-                    keyboard(ch, 0, 0);
+                        keyboard(ch, 0, 0);
+                    }
                 }
             } else if (event.type == SDL_WINDOWEVENT) {
                 if (event.window.event == SDL_WINDOWEVENT_RESIZED) {

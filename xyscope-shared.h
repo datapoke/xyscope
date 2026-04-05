@@ -77,10 +77,11 @@ static inline int clock_gettime(int clk_id, struct timespec *ts) {
 /* Constants */
 #define DEFAULT_PREF_FILE     ".xyscope.pref"
 #define DEFAULT_LINE_WIDTH    1
+#define DEFAULT_PARTICLES     true
 #define MAX_LINE_WIDTH        8
 #define DEFAULT_FULL_SCREEN   true
 #define DEFAULT_AUTO_SCALE    true
-#define DEFAULT_SPLINE_STEPS  128
+#define DEFAULT_SPLINE_STEPS  8
 #define DEFAULT_COLOR_RANGE   1.0
 #define DEFAULT_COLOR_RATE    0.0
 #define SQRT_TWO              1.41421356237309504880
@@ -141,6 +142,12 @@ typedef struct _preferences_t {
     double brightness;
     double velocity_dim;
 } preferences_t;
+
+#define NUM_PRESETS 10
+typedef struct _presets_t {
+    preferences_t slot[NUM_PRESETS];
+    bool          saved[NUM_PRESETS];
+} presets_t;
 
 
 /* ---- Utility functions ---- */
