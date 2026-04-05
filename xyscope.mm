@@ -2887,8 +2887,14 @@ int main(int argc, char *argv[])
          * that washes out colors completely. */
         scn.prefs.brightness = (detected > 2.0) ? 2.0 : detected;
 #else
-        scn.prefs.brightness = (detected > 10.0) ? 10.0 : detected;
+        scn.prefs.brightness = detected;
 #endif
+    }
+
+    if (scn.prefs.velocity_dim <= 0.0) {
+        scn.prefs.velocity_dim = scn.prefs.brightness / 2.0;
+        if (scn.prefs.velocity_dim < 4.0)
+            scn.prefs.velocity_dim = 4.0;
     }
 
     scn.showAutoScale(NOT_TIMED);
