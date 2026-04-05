@@ -1306,6 +1306,8 @@ public:
         /* FFT stuff */
         unsigned int window_size  = draw_frames / 100;
         unsigned int overlap_size = draw_frames / 200;
+        if (window_size < 2) window_size = 2;
+        if (overlap_size >= window_size) overlap_size = window_size / 2;
         double max_magnitude = 0.0;
         double* avg_magnitudes = NULL;
         double** stft_results;
@@ -1449,7 +1451,7 @@ public:
 #endif
 
                 // Calculate the average magnitude of the STFT array
-                avg_magnitudes = new double[frames_read / (window_size - overlap_size)];
+                avg_magnitudes = new double[frames_read / (window_size - overlap_size) + 1]();
                 for (unsigned int i = 0; i < frames_read / (window_size - overlap_size); i++) {
                     double sum = 0.0;
                     for (unsigned int j = 0; j < window_size; j++) {
@@ -2650,6 +2652,10 @@ int main(int argc, char *argv[])
         scn.prefs.display_mode = scene::DefaultDisplayMode;
     if (scn.prefs.color_mode >= NUM_COLOR_MODES)
         scn.prefs.color_mode = scene::DefaultColorMode;
+    if (scn.prefs.spline_steps < 1 || scn.prefs.spline_steps > 1024)
+        scn.prefs.spline_steps = DEFAULT_SPLINE_STEPS;
+    if (scn.prefs.line_width < 1 || scn.prefs.line_width > MAX_LINE_WIDTH)
+        scn.prefs.line_width = DEFAULT_LINE_WIDTH;
 
     // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {

@@ -4,6 +4,27 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Memory barrier helpers for SPSC correctness on ARM (Apple Silicon).
+ * On x86 these compile to plain loads/stores. */
+#if defined(__cplusplus) && (__cplusplus >= 201103L)
+#include <atomic>
+#define rb_store_release(ptr, val) \
+    __atomic_store_n(ptr, val, __ATOMIC_RELEASE)
+#define rb_load_acquire(ptr) \
+    __atomic_load_n(ptr, __ATOMIC_ACQUIRE)
+#elif defined(__GNUC__) || defined(__clang__)
+#define rb_store_release(ptr, val) \
+    do { __atomic_store_n(ptr, val, __ATOMIC_RELEASE); } while(0)
+#define rb_load_acquire(ptr) \
+    __atomic_load_n(ptr, __ATOMIC_ACQUIRE)
+#else
+/* MSVC / fallback — full barrier */
+#define rb_store_release(ptr, val) \
+    do { _ReadWriteBarrier(); *(ptr) = (val); _ReadWriteBarrier(); } while(0)
+#define rb_load_acquire(ptr) \
+    ((_ReadWriteBarrier()), *(ptr))
+#endif
+
 typedef struct {
     char   *buf;
     size_t  size;
@@ -31,7 +52,7 @@ static inline void ringbuffer_free(ringbuffer_t *rb) {
 
 static inline size_t ringbuffer_write_space(ringbuffer_t *rb) {
     size_t w = rb->write_ptr;
-    size_t r = rb->read_ptr;
+    size_t r = rb_load_acquire(&rb->read_ptr);
     if (w > r) {
         return ((r - w + rb->size) & (rb->size - 1)) - 1;
     } else if (w < r) {
@@ -42,7 +63,7 @@ static inline size_t ringbuffer_write_space(ringbuffer_t *rb) {
 }
 
 static inline size_t ringbuffer_read_space(ringbuffer_t *rb) {
-    size_t w = rb->write_ptr;
+    size_t w = rb_load_acquire(&rb->write_ptr);
     size_t r = rb->read_ptr;
     if (w > r) {
         return w - r;
@@ -72,12 +93,14 @@ static inline size_t ringbuffer_write(ringbuffer_t *rb, const char *src, size_t 
     }
 
     memcpy(rb->buf + rb->write_ptr, src, n1);
-    rb->write_ptr = (rb->write_ptr + n1) & (rb->size - 1);
-
     if (n2) {
-        memcpy(rb->buf + rb->write_ptr, src + n1, n2);
-        rb->write_ptr = (rb->write_ptr + n2) & (rb->size - 1);
+        size_t wrap = (rb->write_ptr + n1) & (rb->size - 1);
+        memcpy(rb->buf + wrap, src + n1, n2);
     }
+
+    /* Release barrier: ensure memcpy is visible before advancing write_ptr */
+    rb_store_release(&rb->write_ptr,
+        (rb->write_ptr + to_write) & (rb->size - 1));
 
     return to_write;
 }
@@ -103,18 +126,21 @@ static inline size_t ringbuffer_read(ringbuffer_t *rb, char *dest, size_t cnt) {
     }
 
     memcpy(dest, rb->buf + rb->read_ptr, n1);
-    rb->read_ptr = (rb->read_ptr + n1) & (rb->size - 1);
-
     if (n2) {
-        memcpy(dest + n1, rb->buf + rb->read_ptr, n2);
-        rb->read_ptr = (rb->read_ptr + n2) & (rb->size - 1);
+        size_t wrap = (rb->read_ptr + n1) & (rb->size - 1);
+        memcpy(dest + n1, rb->buf + wrap, n2);
     }
+
+    /* Release barrier: ensure memcpy is done before advancing read_ptr */
+    rb_store_release(&rb->read_ptr,
+        (rb->read_ptr + to_read) & (rb->size - 1));
 
     return to_read;
 }
 
 static inline void ringbuffer_read_advance(ringbuffer_t *rb, size_t cnt) {
-    rb->read_ptr = (rb->read_ptr + cnt) & (rb->size - 1);
+    rb_store_release(&rb->read_ptr,
+        (rb->read_ptr + cnt) & (rb->size - 1));
 }
 
 #endif /* XYSCOPE_RINGBUFFER_H */
