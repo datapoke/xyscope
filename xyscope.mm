@@ -1656,7 +1656,7 @@ public:
     {
         double left_offset   =  80.0;
         double right_offset  = 740.0;
-        unsigned int n_items =  22;
+        unsigned int n_items =  24;
 
         char help[][2][64] = {
         { "Escape",            "Quit" },
