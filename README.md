@@ -34,27 +34,28 @@ Install dependencies and build:
 ```bash
 sudo apt install libsdl2-dev libsdl2-ttf-dev libpipewire-0.3-dev libfftw3-dev
 make
-./release/xyscope
+./release/linux/xyscope
 ```
 
 No virtual audio device needed — Pipewire captures system audio directly.
+
+To target a specific Pipewire node:
+```bash
+./release/linux/xyscope -t alsa_output.pci-0000_0c_00.4.analog-stereo
+```
+
+Or set it permanently in `~/.config/xyscope/xyscope.conf`:
+```ini
+target=alsa_output.pci-0000_0c_00.4.analog-stereo
+```
 
 ### Windows
 
 No virtual audio device needed — WASAPI loopback captures system audio directly.
 
-**Cross-compile from Linux using Docker:**
+Download from [Releases](https://github.com/datapoke/xyscope/releases) or cross-compile from Linux using Docker:
 ```bash
-./build_windows.sh
-```
-
-This produces `release/xyscope.exe` with all required DLLs in `release/`.
-
-**Native build with MSVC + vcpkg:**
-```bash
-vcpkg install sdl2 sdl2-ttf fftw3
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=[vcpkg-root]/scripts/buildsystems/vcpkg.cmake
-cmake --build build --config Release
+./build-windows.sh
 ```
 
 ## Building from Source
@@ -71,11 +72,16 @@ sudo apt install libsdl2-dev libsdl2-ttf-dev libpipewire-0.3-dev libfftw3-dev
 make
 ```
 
-### CMake (all platforms)
+### Windows (cross-compile)
 ```bash
-cmake -B build
-cmake --build build
+./build-windows.sh    # requires Docker
 ```
+
+### Release builds (all platforms)
+```bash
+make release VERSION=1.8.0
+```
+Builds macOS natively, Linux and Windows via Docker, and packages release archives.
 
 ## How It Works
 
@@ -97,51 +103,85 @@ Audio Source → Multi-Output Device → BlackHole 2ch (visualization)
 
 ## Features
 
-- **5 Display Modes**: Standard, Radius, Length, Frequency, Time
-- **Frequency Mode**: STFT-based spectral analysis coloring
-- **Catmull-Rom Spline**: Smooth curve interpolation
+- **3 Display Modes**: Standard, Radius, Frequency (STFT spectral analysis)
+- **2 Color Modes**: Standard (static hue rotation), Delta (motion-reactive)
+- **Catmull-Rom Spline**: Smooth curve interpolation between samples
+- **Particles Mode**: Point rendering with depth testing and alpha blending
+- **Velocity Dim**: Phosphor-style fading for fast-moving segments
 - **Auto-scaling**: Automatic amplitude adjustment
-- **Preferences**: Saved settings for window, zoom, colors
+- **10 Presets**: Save and recall visualization settings
+- **Calibration Tool**: `xyscope-calibrate` measures audio and display latency
+
+## CLI Arguments
+
+```
+xyscope [-p preset] [-t target]
+  -p, --preset N   Load preset N (0-9) on startup
+  -t, --target ID  Pipewire target node name or serial (Linux only)
+```
 
 ## Keyboard Controls
 
 | Key | Action |
 |-----|--------|
 | Escape | Quit |
-| F1–F5 | Resize window / fullscreen |
-| Home/Page Up | Zoom in |
-| End/Page Down | Zoom out |
-| 0–9 | Set zoom factor |
+| F1-F5 | Resize window |
+| Home / Page Up | Zoom in |
+| End / Page Down | Zoom out |
+| Shift+0-9 | Set zoom factor |
+| 0-9 | Load preset |
+| Ctrl+0-9 | Save preset |
 | Spacebar | Pause/Resume |
 | < > | Rewind/Fast-forward (when paused) |
 | [ ] | Adjust color range |
 | - + | Adjust color rate |
 | a | Toggle auto-scale |
-| b B | Adjust splines |
+| b B | Adjust spline steps |
 | c C | Cycle color mode |
 | d D | Cycle display mode |
 | f | Toggle fullscreen |
-| h | Show/hide help |
+| h | Show/hide help overlay |
+| u/i U/I | Adjust brightness |
+| j/k J/K | Adjust display delay |
+| n/m N/M | Adjust velocity dim |
+| p | Toggle particles mode |
 | r | Recenter |
 | s S | Show/hide statistics |
 | w W | Adjust line width |
+
+## Configuration
+
+Settings are saved as an INI-style text file:
+
+| Platform | Path |
+|----------|------|
+| Windows | `%APPDATA%\XYScope\xyscope.conf` |
+| Linux | `~/.config/xyscope/xyscope.conf` |
+| macOS | `~/.config/xyscope/xyscope.conf` |
 
 ## Project Structure
 
 ```
 xyscope/
-├── xyscope.mm              Main visualizer source (all platforms)
-├── Makefile                Build file (macOS/Linux)
-├── CMakeLists.txt          CMake build (all platforms)
-├── Dockerfile.windows      Docker cross-compilation for Windows
-├── build_windows.sh        One-step Windows cross-compilation
-├── release/                Build output (gitignored)
-│   ├── xyscope             Linux/macOS binary
-│   ├── XYScope.app/        macOS app bundle
-│   └── xyscope.exe + DLLs  Windows build
-└── resources/              macOS app bundle resources
-    ├── Info.plist
-    └── XYScope.command
+├── xyscope.mm              Main source (all platforms, single-file)
+├── xyscope-shared.h        Types, constants, config file I/O
+├── xyscope-draw.h          GL vertex drawing loop
+├── xyscope-ringbuffer.h    Lock-free SPSC ring buffer
+├── xyscope-hdr.h           HDR brightness detection
+├── xyscope-calibrate.mm    Audio/display latency calibration tool
+├── Makefile                Build (macOS native, Linux native)
+├── Dockerfile              Linux build container
+├── Dockerfile-windows      Windows cross-compile container
+├── build-linux.sh          Docker Linux build script
+├── build-windows.sh        Docker Windows build script
+├── docker-entrypoint.sh    Linux container entrypoint
+├── resources/
+│   ├── Info.plist          macOS app bundle metadata
+│   └── XYScope.command     macOS first-run setup script
+└── release/                Build output (gitignored)
+    ├── macOS/              macOS binary + XYScope.app
+    ├── linux/              Linux binary
+    └── windows/            Windows exe + DLLs
 ```
 
 ## Troubleshooting
@@ -169,19 +209,8 @@ xyscope/
 **No audio visualization?**
 - Ensure Pipewire is running: `systemctl --user status pipewire`
 - Check that audio is playing through Pipewire (not raw ALSA)
-
-## Uninstalling
-
-**macOS:**
-```bash
-brew uninstall blackhole-2ch sdl2 sdl2_ttf
-```
-Remove the Multi-Output Device in Audio MIDI Setup.
-
-**Linux:**
-```bash
-sudo apt remove libsdl2-dev libsdl2-ttf-dev libpipewire-0.3-dev libfftw3-dev
-```
+- Try targeting a specific node: `xyscope -t $(wpctl status | grep -m1 'RUNNING')`
+- Use `pw-cli list-objects` or `wpctl status` to find node names
 
 ## License
 
