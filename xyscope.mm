@@ -1151,30 +1151,7 @@ public:
         offset               = 0;
         bump                 = 0;
         bytes_per_buf        = 0;
-        for (int i = 0; i < 2; i++) {
-            prefs.dim[i] = prefs.normal_dim[i] = prefs.old_dim[i] = 1000;
-            prefs.position[i] = 100;
-        }
-        for (int i = 0; i < 4; i += 2) {
-            prefs.side[i] = 1.0;
-            prefs.side[i+1] = -1.0;
-        }
-        prefs.scale_factor   = 1.0;
-        prefs.scale_locked   = true;
-        prefs.is_full_screen = DEFAULT_FULL_SCREEN;
-        prefs.auto_scale     = DEFAULT_AUTO_SCALE;
-        prefs.spline_steps   = DEFAULT_SPLINE_STEPS;
-        prefs.color_mode     = DEFAULT_COLOR_MODE;
-        prefs.color_range    = DEFAULT_COLOR_RANGE;
-        prefs.color_rate     = DEFAULT_COLOR_RATE;
-        prefs.display_mode   = DEFAULT_DISPLAY_MODE;
-        prefs.line_width     = DEFAULT_LINE_WIDTH;
-        prefs.particles      = DEFAULT_PARTICLES;
-        prefs.show_stats     = 0;
-        prefs.hue            = 0.0;
-        prefs.delay          = 0.0;
-        prefs.audio_delay    = 0.0;
-        prefs.display_delay  = 0.0;
+        memset(&prefs, 0, sizeof(prefs));
         memset(&presets, 0, sizeof(presets));
         memset(&app, 0, sizeof(app));
         latency              = 0.0;
@@ -1660,7 +1637,7 @@ public:
     {
         double left_offset   =  80.0;
         double right_offset  = 740.0;
-        unsigned int n_items =  24;
+        unsigned int n_items =  25;
 
         char help[][2][64] = {
         { "Escape",            "Quit" },
@@ -1668,6 +1645,7 @@ public:
         { "Home and Page Up",  "Zoom in" },
         { "End and Page Down", "Zoom out" },
         { "Shift+0 thru 9",    "Set zoom factor" },
+        { "`",                 "Load default settings" },
         { "0 thru 9",          "Load preset" },
         { "Ctrl+0 thru 9",     "Save preset" },
         { "Spacebar",          "Pause/Resume" },
@@ -2388,6 +2366,41 @@ public:
             target_side[i] = prefs.side[i];
         showTimedText(PresetTimer, true, TIMED, "Preset %d loaded", n);
     }
+
+    void loadDefaults()
+    {
+        for (int i = 0; i < 4; i += 2) {
+            prefs.side[i] = 1.0;
+            prefs.side[i+1] = -1.0;
+        }
+        prefs.scale_factor   = 1.0;
+        prefs.scale_locked   = true;
+        prefs.auto_scale     = DEFAULT_AUTO_SCALE;
+        prefs.spline_steps   = DEFAULT_SPLINE_STEPS;
+        prefs.color_mode     = DEFAULT_COLOR_MODE;
+        prefs.color_range    = DEFAULT_COLOR_RANGE;
+        prefs.color_rate     = DEFAULT_COLOR_RATE;
+        prefs.display_mode   = DEFAULT_DISPLAY_MODE;
+        prefs.line_width     = DEFAULT_LINE_WIDTH;
+        prefs.particles      = DEFAULT_PARTICLES;
+        prefs.show_stats     = 0;
+        prefs.hue            = 0.0;
+        prefs.delay          = 0.0;
+        prefs.audio_delay    = 0.0;
+        prefs.display_delay  = 0.0;
+        double detected = detect_hdr_brightness();
+#ifdef __APPLE__
+        prefs.brightness = (detected > 2.0) ? 2.0 : detected;
+#else
+        prefs.brightness = detected;
+#endif
+        prefs.velocity_dim = prefs.brightness / 2.0;
+        if (prefs.velocity_dim < 4.0)
+            prefs.velocity_dim = 4.0;
+        for (int i = 0; i < 4; i++)
+            target_side[i] = prefs.side[i];
+        showTimedText(PresetTimer, true, TIMED, "Defaults loaded");
+    }
 };
 static scene scn;
 
@@ -2640,6 +2653,9 @@ void keyboard(unsigned char key, int xPos, int yPos)
         case 'M':
             scn.setVelocityDim(scn.prefs.velocity_dim + 0.1);
             break;
+        case '`':
+            scn.loadDefaults();
+            break;
         default:
             break;
     }
@@ -2702,7 +2718,9 @@ int main(int argc, char *argv[])
     timeBeginPeriod(1);
 #endif
     // Load preferences
-    load_config(&scn.prefs, &scn.presets, &scn.app);
+    bool config_loaded = load_config(&scn.prefs, &scn.presets, &scn.app);
+    if (!config_loaded)
+        scn.prefs.is_full_screen = DEFAULT_FULL_SCREEN;
 
     // Parse CLI arguments
     int start_preset = -1;
@@ -2906,23 +2924,8 @@ int main(int argc, char *argv[])
            frames_per_buf, draw_frames, default_rb_size);
     scn.init();
 
-    if (scn.prefs.brightness <= 0.0) {
-        double detected = detect_hdr_brightness();
-#ifdef __APPLE__
-        /* macOS EDR: 1.0 = SDR white (~500 nits on XDR), so 2.0
-         * is already very bright.  The API reports up to 16.0 but
-         * that washes out colors completely. */
-        scn.prefs.brightness = (detected > 2.0) ? 2.0 : detected;
-#else
-        scn.prefs.brightness = detected;
-#endif
-    }
-
-    if (scn.prefs.velocity_dim <= 0.0) {
-        scn.prefs.velocity_dim = scn.prefs.brightness / 2.0;
-        if (scn.prefs.velocity_dim < 4.0)
-            scn.prefs.velocity_dim = 4.0;
-    }
+    if (!config_loaded)
+        scn.loadDefaults();
 
     scn.showAutoScale(NOT_TIMED);
     scn.showSplines(NOT_TIMED);

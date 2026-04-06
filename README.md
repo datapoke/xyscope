@@ -7,6 +7,13 @@ Supports macOS (CoreAudio/BlackHole), Linux (Pipewire), and Windows (WASAPI loop
 
 ### macOS
 
+Install from the [latest release](https://github.com/datapoke/xyscope/releases) using `wget` to avoid macOS Gatekeeper:
+```bash
+wget https://github.com/datapoke/xyscope/releases/download/v1.8.1/XYScope-macOS-v1.8.1.zip
+unzip XYScope-macOS-v1.8.1.zip
+cp -r xyscope-1.8.1/XYScope.app /Applications/
+```
+
 1. **Double-click `XYScope.app`**
    - Opens Terminal and installs dependencies automatically
    - Installs BlackHole audio driver via Homebrew
@@ -79,7 +86,7 @@ make
 
 ### Release builds (all platforms)
 ```bash
-make release VERSION=1.8.0
+make release VERSION=1.8.1
 ```
 Builds macOS natively, Linux and Windows via Docker, and packages release archives.
 
@@ -129,6 +136,7 @@ xyscope [-p preset] [-t target]
 | Home / Page Up | Zoom in |
 | End / Page Down | Zoom out |
 | Shift+0-9 | Set zoom factor |
+| ` | Load default settings |
 | 0-9 | Load preset |
 | Ctrl+0-9 | Save preset |
 | Spacebar | Pause/Resume |
