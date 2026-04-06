@@ -345,7 +345,7 @@ static inline bool load_config(preferences_t *prefs, presets_t *presets,
     if (!fp) return false;
 
     char line[256];
-    preferences_t *target = NULL;
+    preferences_t *current_prefs = NULL;
     bool in_settings = false;
     int preset_idx = -1;
 
@@ -367,22 +367,22 @@ static inline bool load_config(preferences_t *prefs, presets_t *presets,
             const char *section = line + 1;
             in_settings = false;
             if (!strcmp(section, "settings")) {
-                target = prefs;
+                current_prefs = prefs;
                 in_settings = true;
                 preset_idx = -1;
             }
             else if (!strncmp(section, "preset.", 7)) {
                 preset_idx = atoi(section + 7);
                 if (preset_idx >= 0 && preset_idx < NUM_PRESETS) {
-                    target = &presets->slot[preset_idx];
+                    current_prefs = &presets->slot[preset_idx];
                     presets->saved[preset_idx] = true;
                 } else {
-                    target = NULL;
+                    current_prefs = NULL;
                     preset_idx = -1;
                 }
             }
             else {
-                target = NULL;
+                current_prefs = NULL;
                 preset_idx = -1;
             }
             continue;
@@ -397,8 +397,8 @@ static inline bool load_config(preferences_t *prefs, presets_t *presets,
 
         if (in_settings && app && !strcmp(key, "target"))
             snprintf(app->target, sizeof(app->target), "%s", val);
-        else if (target)
-            parse_prefs_key(target, key, val);
+        else if (current_prefs)
+            parse_prefs_key(current_prefs, key, val);
     }
 
     fclose(fp);
