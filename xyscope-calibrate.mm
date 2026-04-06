@@ -131,15 +131,17 @@ static int update_prefs(double delay_ms, double audio_ms, double display_ms)
 {
     preferences_t prefs;
     presets_t presets;
+    app_config_t app;
     memset(&prefs, 0, sizeof(prefs));
     memset(&presets, 0, sizeof(presets));
-    load_config(&prefs, &presets);
+    memset(&app, 0, sizeof(app));
+    load_config(&prefs, &presets, &app);
 
     prefs.delay         = delay_ms;
     prefs.audio_delay   = audio_ms;
     prefs.display_delay = display_ms;
 
-    if (!save_config(&prefs, &presets)) {
+    if (!save_config(&prefs, &presets, &app)) {
         fprintf(stderr, "Error: cannot write %s\n", get_config_path());
         return -1;
     }

@@ -150,6 +150,10 @@ typedef struct _presets_t {
     bool          saved[NUM_PRESETS];
 } presets_t;
 
+typedef struct _app_config_t {
+    char target[256];
+} app_config_t;
+
 
 /* ---- Utility functions ---- */
 
@@ -282,11 +286,14 @@ static inline void write_prefs_section(FILE *fp, const char *section,
 }
 
 static inline bool save_config(const preferences_t *prefs,
-                               const presets_t *presets) {
+                               const presets_t *presets,
+                               const app_config_t *app) {
     const char *path = get_config_path();
     FILE *fp = fopen(path, "w");
     if (!fp) return false;
     write_prefs_section(fp, "settings", prefs);
+    if (app && app->target[0])
+        fprintf(fp, "target=%s\n\n", app->target);
     for (int i = 0; i < NUM_PRESETS; i++) {
         if (presets->saved[i]) {
             char section[16];
@@ -331,13 +338,15 @@ static inline void parse_prefs_key(preferences_t *p,
     else if (!strcmp(key, "velocity_dim"))   p->velocity_dim   = atof(val);
 }
 
-static inline bool load_config(preferences_t *prefs, presets_t *presets) {
+static inline bool load_config(preferences_t *prefs, presets_t *presets,
+                               app_config_t *app) {
     const char *path = get_config_path();
     FILE *fp = fopen(path, "r");
     if (!fp) return false;
 
     char line[256];
     preferences_t *target = NULL;
+    bool in_settings = false;
     int preset_idx = -1;
 
     while (fgets(line, sizeof(line), fp)) {
@@ -356,8 +365,10 @@ static inline bool load_config(preferences_t *prefs, presets_t *presets) {
             if (!end) continue;
             *end = '\0';
             const char *section = line + 1;
+            in_settings = false;
             if (!strcmp(section, "settings")) {
                 target = prefs;
+                in_settings = true;
                 preset_idx = -1;
             }
             else if (!strncmp(section, "preset.", 7)) {
@@ -378,11 +389,16 @@ static inline bool load_config(preferences_t *prefs, presets_t *presets) {
         }
 
         /* key=value */
-        if (!target) continue;
         char *eq = strchr(line, '=');
         if (!eq) continue;
         *eq = '\0';
-        parse_prefs_key(target, line, eq + 1);
+        const char *key = line;
+        const char *val = eq + 1;
+
+        if (in_settings && app && !strcmp(key, "target"))
+            snprintf(app->target, sizeof(app->target), "%s", val);
+        else if (target)
+            parse_prefs_key(target, key, val);
     }
 
     fclose(fp);

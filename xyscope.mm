@@ -209,6 +209,7 @@ typedef struct _thread_data {
     volatile bool pause_scope;
     volatile int negotiated_sample_rate;
     timeval last_write;
+    char target[256];
 } thread_data_t;
 
 thread_data_t Thread_Data;
@@ -569,9 +570,15 @@ public:
     pthread_t capture_thread;
     bool quit;
 
-    audioInput()
+    audioInput(const char *target)
     {
+        char saved_target[256];
+        if (target && target[0])
+            snprintf(saved_target, sizeof(saved_target), "%s", target);
+        else
+            saved_target[0] = '\0';
         bzero(&Thread_Data, sizeof(Thread_Data));
+        memcpy(Thread_Data.target, saved_target, sizeof(Thread_Data.target));
 #ifdef _WIN32
         InitializeCriticalSection(&Thread_Data.ringbuffer_lock);
         InitializeConditionVariable(&Thread_Data.data_ready);
@@ -976,15 +983,19 @@ public:
         /* Create Pipewire stream */
         pw_thread_loop_lock(t_data->loop);
 
-        t_data->stream = pw_stream_new_simple(
-            pw_thread_loop_get_loop(t_data->loop),
-            "xyscope",
-            pw_properties_new(
+        struct pw_properties *props = pw_properties_new(
                 PW_KEY_MEDIA_TYPE, "Audio",
                 PW_KEY_MEDIA_CATEGORY, "Capture",
                 PW_KEY_MEDIA_ROLE, "Music",
                 PW_KEY_STREAM_CAPTURE_SINK, "true",
-                NULL),
+                NULL);
+        if (t_data->target[0])
+            pw_properties_set(props, PW_KEY_TARGET_OBJECT, t_data->target);
+
+        t_data->stream = pw_stream_new_simple(
+            pw_thread_loop_get_loop(t_data->loop),
+            "xyscope",
+            props,
             &stream_events,
             t_data);
 
@@ -1068,6 +1079,7 @@ public:
 
     preferences_t prefs;
     presets_t presets;
+    app_config_t app;
 
     double target_side[4];
     double latency;
@@ -1164,6 +1176,7 @@ public:
         prefs.audio_delay    = 0.0;
         prefs.display_delay  = 0.0;
         memset(&presets, 0, sizeof(presets));
+        memset(&app, 0, sizeof(app));
         latency              = 0.0;
         fps                  = 0.0;
         frame_count          = 0;
@@ -1204,7 +1217,7 @@ public:
 #else
         fft_out              = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * draw_frames);
 #endif
-        ai = new audioInput();
+        ai = new audioInput(app.target);
     }
 
     void reinit_frame_rate(int new_rate)
@@ -1273,7 +1286,7 @@ public:
 
     ~scene()
     {
-        save_config(&prefs, &presets);
+        save_config(&prefs, &presets, &app);
         free(framebuf);
     }
 
@@ -2333,6 +2346,20 @@ public:
         showTimedText(PresetTimer, true, TIMED, "Preset %d saved", n);
     }
 
+    void validate_prefs()
+    {
+        if (prefs.normal_dim[0] < 1) prefs.normal_dim[0] = 1000;
+        if (prefs.normal_dim[1] < 1) prefs.normal_dim[1] = 1000;
+        if (prefs.display_mode >= NUM_DISPLAY_MODES)
+            prefs.display_mode = DefaultDisplayMode;
+        if (prefs.color_mode >= NUM_COLOR_MODES)
+            prefs.color_mode = DefaultColorMode;
+        if (prefs.spline_steps < 1 || prefs.spline_steps > 1024)
+            prefs.spline_steps = DEFAULT_SPLINE_STEPS;
+        if (prefs.line_width < 1 || prefs.line_width > MAX_LINE_WIDTH)
+            prefs.line_width = DEFAULT_LINE_WIDTH;
+    }
+
     void loadPreset(int n)
     {
         if (!presets.saved[n]) {
@@ -2349,6 +2376,7 @@ public:
         is_full_screen = prefs.is_full_screen;
 
         prefs = presets.slot[n];
+        validate_prefs();
 
         memcpy(prefs.dim, dim, sizeof(dim));
         memcpy(prefs.normal_dim, normal_dim, sizeof(normal_dim));
@@ -2674,19 +2702,39 @@ int main(int argc, char *argv[])
     timeBeginPeriod(1);
 #endif
     // Load preferences
-    load_config(&scn.prefs, &scn.presets);
+    load_config(&scn.prefs, &scn.presets, &scn.app);
+
+    // Parse CLI arguments
+    int start_preset = -1;
+    for (int i = 1; i < argc; i++) {
+        if ((!strcmp(argv[i], "-p") || !strcmp(argv[i], "--preset")) && i + 1 < argc) {
+            start_preset = atoi(argv[++i]);
+        }
+#if !defined(__APPLE__) && !defined(_WIN32)
+        else if ((!strcmp(argv[i], "-t") || !strcmp(argv[i], "--target")) && i + 1 < argc) {
+            snprintf(scn.app.target, sizeof(scn.app.target), "%s", argv[++i]);
+        }
+#endif
+        else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
+            printf("Usage: xyscope [-p preset]"
+#if !defined(__APPLE__) && !defined(_WIN32)
+                   " [-t target]"
+#endif
+                   "\n");
+            printf("  -p, --preset N   Load preset N (0-9) on startup\n");
+#if !defined(__APPLE__) && !defined(_WIN32)
+            printf("  -t, --target ID  Pipewire target node name or serial\n");
+#endif
+            return 0;
+        }
+    }
 
     // Validate loaded preferences
-    if (scn.prefs.normal_dim[0] < 1) scn.prefs.normal_dim[0] = 1000;
-    if (scn.prefs.normal_dim[1] < 1) scn.prefs.normal_dim[1] = 1000;
-    if (scn.prefs.display_mode >= NUM_DISPLAY_MODES)
-        scn.prefs.display_mode = scene::DefaultDisplayMode;
-    if (scn.prefs.color_mode >= NUM_COLOR_MODES)
-        scn.prefs.color_mode = scene::DefaultColorMode;
-    if (scn.prefs.spline_steps < 1 || scn.prefs.spline_steps > 1024)
-        scn.prefs.spline_steps = DEFAULT_SPLINE_STEPS;
-    if (scn.prefs.line_width < 1 || scn.prefs.line_width > MAX_LINE_WIDTH)
-        scn.prefs.line_width = DEFAULT_LINE_WIDTH;
+    scn.validate_prefs();
+
+    // Apply startup preset (CLI overrides config)
+    if (start_preset >= 0 && start_preset < NUM_PRESETS)
+        scn.loadPreset(start_preset);
 
     // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
