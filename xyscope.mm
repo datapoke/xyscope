@@ -1145,54 +1145,58 @@ public:
 
     scene()
     {
-        frame_size           = sizeof(frame_t);
-        framebuf             = NULL;
-        ai                   = NULL;
-        offset               = 0;
-        bump                 = 0;
-        bytes_per_buf        = 0;
-        memset(&prefs, 0, sizeof(prefs));
+        frame_size         = sizeof(frame_t);
+        framebuf           = NULL;
+        ai                 = NULL;
+        offset             = 0;
+        bump               = 0;
+        bytes_per_buf      = 0;
+        latency            = 0.0;
+        fps                = 0.0;
+        frame_count        = 0;
+        vertex_count       = 0;
+        window_is_dirty    = true;
+        mouse_is_dirty     = true;
+        max_sample_value   = 1.0;
+        top_offset         = -60.0;
+        vertical_increment = -60.0;
+        color_delta        = 0.0;
+        color_threshold    = 0.0;
+        show_intro         = true;
+        show_help          = false;
+        show_mouse         = true;
+        memset(&prefs,   0, sizeof(prefs));
         memset(&presets, 0, sizeof(presets));
-        memset(&app, 0, sizeof(app));
-        latency              = 0.0;
-        fps                  = 0.0;
-        frame_count          = 0;
-        vertex_count         = 0;
-        window_is_dirty      = true;
-        mouse_is_dirty       = true;
-        max_sample_value     = 1.0;
-        top_offset           = -60.0;
-        vertical_increment   = -60.0;
-        color_delta          = 0.0;
-        color_threshold      = 0.0;
-        show_intro           = true;
-        show_help            = false;
-        show_mouse           = true;
+        memset(&app,     0, sizeof(app));
 
         bzero(&text_timer, sizeof(text_timer_t) * NUM_TEXT_TIMERS);
         timeval now;
         gettimeofday(&now, NULL);
         show_intro_time = last_frame_time = reset_frame_time = mouse_dirty_time = now;
 
+        for (int i = 0; i < 4; i += 2) {
+			prefs.side[i]   = 1.0;
+            prefs.side[i+1] = -1.0;
+        }
         for (int i = 0; i < 4; i++)
             target_side[i] = prefs.side[i];
     }
 
     void init()
     {
-        bytes_per_buf        = draw_frames * frame_size;
-        framebuf             = (frame_t *) malloc(bytes_per_buf);
-        offset               = -frames_per_buf;
-        bump                 = -draw_frames;
+        bytes_per_buf = draw_frames * frame_size;
+        framebuf      = (frame_t *) malloc(bytes_per_buf);
+        offset        = -frames_per_buf;
+        bump          = -draw_frames;
 #ifdef __APPLE__
-        int log2n = 0;
-        int n = draw_frames;
+        int log2n     = 0;
+        int n         = draw_frames;
         while (n > 1) { n >>= 1; log2n++; }
-        fft_setup            = vDSP_create_fftsetup(log2n, FFT_RADIX2);
-        fft_out.realp        = (float *) malloc(draw_frames/2 * sizeof(float));
-        fft_out.imagp        = (float *) malloc(draw_frames/2 * sizeof(float));
+        fft_setup     = vDSP_create_fftsetup(log2n, FFT_RADIX2);
+        fft_out.realp = (float *) malloc(draw_frames/2 * sizeof(float));
+        fft_out.imagp = (float *) malloc(draw_frames/2 * sizeof(float));
 #else
-        fft_out              = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * draw_frames);
+        fft_out       = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * draw_frames);
 #endif
         ai = new audioInput(app.target);
     }
@@ -1297,7 +1301,7 @@ public:
             clock_gettime(CLOCK_REALTIME, &ts);
             ts.tv_nsec += 1000000000 / frame_rate;
             if (ts.tv_nsec >= 1000000000) {
-                ts.tv_sec += 1;
+                ts.tv_sec  += 1;
                 ts.tv_nsec -= 1000000000;
             }
             pthread_cond_timedwait(&t_data->data_ready, &t_data->ringbuffer_lock, &ts);
@@ -1973,9 +1977,9 @@ public:
 
     void toggleAutoScale(void)
     {
-        max_sample_value   = min((prefs.side[0] - prefs.side[1]) / 2.1,
-                                 (prefs.side[2] - prefs.side[3]) / 2.1);
-        prefs.auto_scale   = ! prefs.auto_scale;
+        max_sample_value = min((prefs.side[0] - prefs.side[1]) / 2.1,
+                               (prefs.side[2] - prefs.side[3]) / 2.1);
+        prefs.auto_scale = ! prefs.auto_scale;
         showAutoScale(TIMED);
     }
 
@@ -2364,15 +2368,12 @@ public:
 
         for (int i = 0; i < 4; i++)
             target_side[i] = prefs.side[i];
+        refreshStats(TIMED);
         showTimedText(PresetTimer, true, TIMED, "Preset %d loaded", n);
     }
 
     void loadDefaults()
     {
-        for (int i = 0; i < 4; i += 2) {
-			prefs.side[i]   = 1.0;
-            prefs.side[i+1] = -1.0;
-        }
         prefs.scale_factor  = 1.0;
         prefs.scale_locked  = true;
         prefs.auto_scale    = DEFAULT_AUTO_SCALE;
@@ -2393,9 +2394,25 @@ public:
         prefs.velocity_dim  = prefs.brightness / 2.0;
         if (prefs.velocity_dim < 4.0)
             prefs.velocity_dim = 4.0;
-        for (int i = 0; i < 4; i++)
-            target_side[i] = prefs.side[i];
+        max_sample_value = min((prefs.side[0] - prefs.side[1]) / 2.1,
+                               (prefs.side[2] - prefs.side[3]) / 2.1);
+        refreshStats(TIMED);
         showTimedText(PresetTimer, true, TIMED, "Defaults loaded");
+    }
+
+    void refreshStats(bool t)
+    {
+        showAutoScale(t);
+        showSplines(t);
+        showLineWidth(t);
+        showParticles(t);
+        showColorMode(t);
+        showDisplayMode(t);
+        showColorRange(t);
+        showColorRate(t);
+        showDelay(t);
+        showBrightness(t);
+        showVelocityDim(t);
     }
 };
 static scene scn;
@@ -2923,20 +2940,10 @@ int main(int argc, char *argv[])
     if (!config_loaded)
         scn.loadDefaults();
 
-    scn.showAutoScale(NOT_TIMED);
-    scn.showSplines(NOT_TIMED);
-    scn.showLineWidth(NOT_TIMED);
-    scn.showParticles(NOT_TIMED);
-    scn.showColorMode(NOT_TIMED);
-    scn.showDisplayMode(NOT_TIMED);
-    scn.showColorRange(NOT_TIMED);
-    scn.showColorRate(NOT_TIMED);
-    scn.showDelay(NOT_TIMED);
-    scn.showBrightness(NOT_TIMED);
+    scn.refreshStats(NOT_TIMED);
+    scn.showScale(NOT_TIMED);
     scn.showSampleRate(NOT_TIMED);
     scn.showFrameRate(NOT_TIMED);
-    scn.showVelocityDim(NOT_TIMED);
-    scn.showScale(NOT_TIMED);
 
     // Main event loop
     bool running = true;
