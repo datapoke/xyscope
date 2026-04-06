@@ -20,7 +20,7 @@ Supports macOS (CoreAudio/BlackHole), Linux (Pipewire), and Windows (WASAPI loop
      - ☑ **MacBook Pro Speakers** (or your speakers) - must be first
      - ☑ **BlackHole 2ch**
    - **Select Multi-Output Device in sidebar**
-   - **Set Sample Rate to 96000 Hz (96 kHz)** ⚠️ Important!
+   - **Set Sample Rate to 96000 Hz (96 kHz)**
    - Right-click Multi-Output Device → **"Use This Device For Sound Output"**
    - Close Audio MIDI Setup
 
