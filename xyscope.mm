@@ -2370,31 +2370,27 @@ public:
     void loadDefaults()
     {
         for (int i = 0; i < 4; i += 2) {
-            prefs.side[i] = 1.0;
+			prefs.side[i]   = 1.0;
             prefs.side[i+1] = -1.0;
         }
-        prefs.scale_factor   = 1.0;
-        prefs.scale_locked   = true;
-        prefs.auto_scale     = DEFAULT_AUTO_SCALE;
-        prefs.spline_steps   = DEFAULT_SPLINE_STEPS;
-        prefs.color_mode     = DEFAULT_COLOR_MODE;
-        prefs.color_range    = DEFAULT_COLOR_RANGE;
-        prefs.color_rate     = DEFAULT_COLOR_RATE;
-        prefs.display_mode   = DEFAULT_DISPLAY_MODE;
-        prefs.line_width     = DEFAULT_LINE_WIDTH;
-        prefs.particles      = DEFAULT_PARTICLES;
-        prefs.show_stats     = 0;
-        prefs.hue            = 0.0;
-        prefs.delay          = 0.0;
-        prefs.audio_delay    = 0.0;
-        prefs.display_delay  = 0.0;
-        double detected = detect_hdr_brightness();
+        prefs.scale_factor  = 1.0;
+        prefs.scale_locked  = true;
+        prefs.auto_scale    = DEFAULT_AUTO_SCALE;
+        prefs.spline_steps  = DEFAULT_SPLINE_STEPS;
+        prefs.color_mode    = DEFAULT_COLOR_MODE;
+        prefs.color_range   = DEFAULT_COLOR_RANGE;
+        prefs.color_rate    = DEFAULT_COLOR_RATE;
+        prefs.display_mode  = DEFAULT_DISPLAY_MODE;
+        prefs.line_width    = DEFAULT_LINE_WIDTH;
+        prefs.particles     = DEFAULT_PARTICLES;
+        prefs.hue           = 0.0;
+        double detected     = detect_hdr_brightness();
 #ifdef __APPLE__
-        prefs.brightness = (detected > 2.0) ? 2.0 : detected;
+        prefs.brightness    = (detected > 2.0) ? 2.0 : detected;
 #else
-        prefs.brightness = detected;
+        prefs.brightness    = detected;
 #endif
-        prefs.velocity_dim = prefs.brightness / 2.0;
+        prefs.velocity_dim  = prefs.brightness / 2.0;
         if (prefs.velocity_dim < 4.0)
             prefs.velocity_dim = 4.0;
         for (int i = 0; i < 4; i++)
