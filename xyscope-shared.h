@@ -225,22 +225,29 @@ static inline void HSVtoRGB(double *r, double *g, double *b,
 #define CONFIG_FILENAME "xyscope.conf"
 
 static inline const char *get_config_path(void) {
-    static char path[1024];
+    static char path[512];
+    char confdir[480];
     const char *dir;
 #ifdef _WIN32
     dir = getenv("APPDATA");
     if (!dir) dir = ".";
-    snprintf(path, sizeof(path), "%s\\XYScope", dir);
-    _mkdir(path);
-    snprintf(path, sizeof(path), "%s\\XYScope\\%s", dir, CONFIG_FILENAME);
+    snprintf(confdir, sizeof(confdir), "%s\\XYScope", dir);
+    CreateDirectoryA(confdir, NULL);
 #else
     dir = getenv("HOME");
     if (!dir) dir = ".";
-    char confdir[1024];
+    snprintf(confdir, sizeof(confdir), "%s/.config", dir);
+    mkdir(confdir, 0755);
     snprintf(confdir, sizeof(confdir), "%s/.config/xyscope", dir);
     mkdir(confdir, 0755);
-    snprintf(path, sizeof(path), "%s/%s", confdir, CONFIG_FILENAME);
 #endif
+    snprintf(path, sizeof(path), "%s%c%s", confdir,
+#ifdef _WIN32
+             '\\',
+#else
+             '/',
+#endif
+             CONFIG_FILENAME);
     return path;
 }
 
