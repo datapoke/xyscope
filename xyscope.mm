@@ -71,10 +71,6 @@
 #include <unistd.h>
 #endif
 #include <math.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-
 #include "xyscope-shared.h"
 #include "xyscope-ringbuffer.h"
 #include "xyscope-draw.h"
@@ -1277,12 +1273,7 @@ public:
 
     ~scene()
     {
-        int FH;
-        if ((FH = open(DEFAULT_PREF_FILE, O_CREAT | O_WRONLY | O_TRUNC, 00660)) != -1) {
-            write(FH, (void *) &prefs, sizeof(preferences_t));
-            write(FH, (void *) &presets, sizeof(presets_t));
-            close(FH);
-        }
+        save_config(&prefs, &presets);
         free(framebuf);
     }
 
@@ -2682,20 +2673,8 @@ int main(int argc, char *argv[])
     SDL_SetMainReady();
     timeBeginPeriod(1);
 #endif
-    int FH;
-
     // Load preferences
-    if ((FH = open(DEFAULT_PREF_FILE, O_RDONLY)) != -1) {
-        if (read(FH, (void *) &scn.prefs, sizeof(preferences_t))
-            != sizeof(preferences_t))
-        {
-            fprintf(stderr, "Warning: pref file size mismatch, using defaults\n");
-            scn = scene();
-        }
-        /* presets are optional — old pref files won't have them */
-        read(FH, (void *) &scn.presets, sizeof(presets_t));
-        close(FH);
-    }
+    load_config(&scn.prefs, &scn.presets);
 
     // Validate loaded preferences
     if (scn.prefs.normal_dim[0] < 1) scn.prefs.normal_dim[0] = 1000;

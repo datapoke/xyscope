@@ -14,7 +14,7 @@
  *   display_delay = (T_render  - T_capture) in ms
  *   delay         = max(0, audio_delay - display_delay) in ms
  *
- * Writes all three values to .xyscope.pref.
+ * Writes all three values to xyscope.conf.
  *
  * Usage: xyscope-calibrate
  */
@@ -129,32 +129,20 @@ static void capture_callback(void *userdata, Uint8 *stream, int len)
 
 static int update_prefs(double delay_ms, double audio_ms, double display_ms)
 {
-    unsigned char buf[sizeof(preferences_t)];
-    FILE *f = fopen(DEFAULT_PREF_FILE, "rb");
-    if (f) {
-        size_t n = fread(buf, 1, sizeof(buf), f);
-        fclose(f);
-        if (n != sizeof(buf)) {
-            fprintf(stderr, "Warning: pref file size mismatch (%zu != %zu), creating new\n",
-                    n, sizeof(buf));
-            memset(buf, 0, sizeof(buf));
-        }
-    } else {
-        memset(buf, 0, sizeof(buf));
-    }
+    preferences_t prefs;
+    presets_t presets;
+    memset(&prefs, 0, sizeof(prefs));
+    memset(&presets, 0, sizeof(presets));
+    load_config(&prefs, &presets);
 
-    preferences_t *prefs = (preferences_t *)buf;
-    prefs->delay         = delay_ms;
-    prefs->audio_delay   = audio_ms;
-    prefs->display_delay = display_ms;
+    prefs.delay         = delay_ms;
+    prefs.audio_delay   = audio_ms;
+    prefs.display_delay = display_ms;
 
-    f = fopen(DEFAULT_PREF_FILE, "wb");
-    if (!f) {
-        fprintf(stderr, "Error: cannot write %s\n", DEFAULT_PREF_FILE);
+    if (!save_config(&prefs, &presets)) {
+        fprintf(stderr, "Error: cannot write %s\n", get_config_path());
         return -1;
     }
-    fwrite(buf, 1, sizeof(buf), f);
-    fclose(f);
     return 0;
 }
 
@@ -377,7 +365,7 @@ int main(int argc, char *argv[])
         printf("Net delay:     %.2f ms  (compensation value)\n", delay);
 
         if (update_prefs(delay, audio_delay, display_delay) == 0) {
-            printf("Updated %s\n", DEFAULT_PREF_FILE);
+            printf("Updated %s\n", get_config_path());
         }
         result = 0;
     } else {

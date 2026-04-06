@@ -16,7 +16,10 @@
 
 #include <math.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <stdbool.h>
+#include <sys/stat.h>
 
 #ifdef _WIN32
 /* ---- Windows compatibility layer ---- */
@@ -75,7 +78,6 @@ static inline int clock_gettime(int clk_id, struct timespec *ts) {
 
 
 /* Constants */
-#define DEFAULT_PREF_FILE     ".xyscope.pref"
 #define DEFAULT_LINE_WIDTH    1
 #define DEFAULT_PARTICLES     true
 #define MAX_LINE_WIDTH        8
@@ -115,8 +117,7 @@ typedef enum {
 #define DEFAULT_DISPLAY_MODE  DisplayFrequencyMode
 
 
-/* Preferences struct -- binary compatible with .xyscope.pref file.
- * Field order and types matter for file I/O. */
+/* Preferences struct */
 typedef struct _preferences_t {
     int dim[2];
     int normal_dim[2];
@@ -217,6 +218,168 @@ static inline void HSVtoRGB(double *r, double *g, double *b,
             *r = v; *g = p; *b = q;
             break;
     }
+}
+
+/* ---- Config file (INI format) ---- */
+
+#define CONFIG_FILENAME "xyscope.conf"
+
+static inline const char *get_config_path(void) {
+    static char path[1024];
+    const char *dir;
+#ifdef _WIN32
+    dir = getenv("APPDATA");
+    if (!dir) dir = ".";
+    snprintf(path, sizeof(path), "%s\\XYScope", dir);
+    _mkdir(path);
+    snprintf(path, sizeof(path), "%s\\XYScope\\%s", dir, CONFIG_FILENAME);
+#else
+    dir = getenv("HOME");
+    if (!dir) dir = ".";
+    char confdir[1024];
+    snprintf(confdir, sizeof(confdir), "%s/.config/xyscope", dir);
+    mkdir(confdir, 0755);
+    snprintf(path, sizeof(path), "%s/%s", confdir, CONFIG_FILENAME);
+#endif
+    return path;
+}
+
+static inline void write_prefs_section(FILE *fp, const char *section,
+                                       const preferences_t *p) {
+    fprintf(fp, "[%s]\n", section);
+    fprintf(fp, "dim=%d,%d\n",        p->dim[0], p->dim[1]);
+    fprintf(fp, "normal_dim=%d,%d\n",  p->normal_dim[0], p->normal_dim[1]);
+    fprintf(fp, "old_dim=%d,%d\n",     p->old_dim[0], p->old_dim[1]);
+    fprintf(fp, "position=%d,%d\n",    p->position[0], p->position[1]);
+    fprintf(fp, "side=%.17g,%.17g,%.17g,%.17g\n",
+            p->side[0], p->side[1], p->side[2], p->side[3]);
+    fprintf(fp, "scale_factor=%.17g\n", p->scale_factor);
+    fprintf(fp, "scale_locked=%d\n",    p->scale_locked);
+    fprintf(fp, "is_full_screen=%d\n",  p->is_full_screen);
+    fprintf(fp, "auto_scale=%d\n",      p->auto_scale);
+    fprintf(fp, "spline_steps=%u\n",    p->spline_steps);
+    fprintf(fp, "color_mode=%u\n",      p->color_mode);
+    fprintf(fp, "color_range=%.17g\n",  p->color_range);
+    fprintf(fp, "color_rate=%.17g\n",   p->color_rate);
+    fprintf(fp, "display_mode=%u\n",    p->display_mode);
+    fprintf(fp, "line_width=%u\n",      p->line_width);
+    fprintf(fp, "particles=%d\n",       p->particles);
+    fprintf(fp, "show_stats=%u\n",      p->show_stats);
+    fprintf(fp, "hue=%.17g\n",          p->hue);
+    fprintf(fp, "delay=%.17g\n",        p->delay);
+    fprintf(fp, "audio_delay=%.17g\n",  p->audio_delay);
+    fprintf(fp, "display_delay=%.17g\n",p->display_delay);
+    fprintf(fp, "brightness=%.17g\n",   p->brightness);
+    fprintf(fp, "velocity_dim=%.17g\n", p->velocity_dim);
+    fprintf(fp, "\n");
+}
+
+static inline bool save_config(const preferences_t *prefs,
+                               const presets_t *presets) {
+    const char *path = get_config_path();
+    FILE *fp = fopen(path, "w");
+    if (!fp) return false;
+    write_prefs_section(fp, "settings", prefs);
+    for (int i = 0; i < NUM_PRESETS; i++) {
+        if (presets->saved[i]) {
+            char section[16];
+            snprintf(section, sizeof(section), "preset.%d", i);
+            write_prefs_section(fp, section, &presets->slot[i]);
+        }
+    }
+    fclose(fp);
+    return true;
+}
+
+static inline void parse_prefs_key(preferences_t *p,
+                                   const char *key, const char *val) {
+    if      (!strcmp(key, "dim"))
+        sscanf(val, "%d,%d", &p->dim[0], &p->dim[1]);
+    else if (!strcmp(key, "normal_dim"))
+        sscanf(val, "%d,%d", &p->normal_dim[0], &p->normal_dim[1]);
+    else if (!strcmp(key, "old_dim"))
+        sscanf(val, "%d,%d", &p->old_dim[0], &p->old_dim[1]);
+    else if (!strcmp(key, "position"))
+        sscanf(val, "%d,%d", &p->position[0], &p->position[1]);
+    else if (!strcmp(key, "side"))
+        sscanf(val, "%lf,%lf,%lf,%lf",
+               &p->side[0], &p->side[1], &p->side[2], &p->side[3]);
+    else if (!strcmp(key, "scale_factor"))   p->scale_factor   = atof(val);
+    else if (!strcmp(key, "scale_locked"))   p->scale_locked   = atoi(val);
+    else if (!strcmp(key, "is_full_screen")) p->is_full_screen = atoi(val);
+    else if (!strcmp(key, "auto_scale"))     p->auto_scale     = atoi(val);
+    else if (!strcmp(key, "spline_steps"))   p->spline_steps   = atoi(val);
+    else if (!strcmp(key, "color_mode"))     p->color_mode     = atoi(val);
+    else if (!strcmp(key, "color_range"))    p->color_range    = atof(val);
+    else if (!strcmp(key, "color_rate"))     p->color_rate     = atof(val);
+    else if (!strcmp(key, "display_mode"))   p->display_mode   = atoi(val);
+    else if (!strcmp(key, "line_width"))     p->line_width     = atoi(val);
+    else if (!strcmp(key, "particles"))      p->particles      = atoi(val);
+    else if (!strcmp(key, "show_stats"))     p->show_stats     = atoi(val);
+    else if (!strcmp(key, "hue"))            p->hue            = atof(val);
+    else if (!strcmp(key, "delay"))          p->delay          = atof(val);
+    else if (!strcmp(key, "audio_delay"))    p->audio_delay    = atof(val);
+    else if (!strcmp(key, "display_delay"))  p->display_delay  = atof(val);
+    else if (!strcmp(key, "brightness"))     p->brightness     = atof(val);
+    else if (!strcmp(key, "velocity_dim"))   p->velocity_dim   = atof(val);
+}
+
+static inline bool load_config(preferences_t *prefs, presets_t *presets) {
+    const char *path = get_config_path();
+    FILE *fp = fopen(path, "r");
+    if (!fp) return false;
+
+    char line[256];
+    preferences_t *target = NULL;
+    int preset_idx = -1;
+
+    while (fgets(line, sizeof(line), fp)) {
+        /* strip newline */
+        char *nl = strchr(line, '\n');
+        if (nl) *nl = '\0';
+        nl = strchr(line, '\r');
+        if (nl) *nl = '\0';
+
+        /* skip empty lines and comments */
+        if (line[0] == '\0' || line[0] == '#') continue;
+
+        /* section header */
+        if (line[0] == '[') {
+            char *end = strchr(line, ']');
+            if (!end) continue;
+            *end = '\0';
+            const char *section = line + 1;
+            if (!strcmp(section, "settings")) {
+                target = prefs;
+                preset_idx = -1;
+            }
+            else if (!strncmp(section, "preset.", 7)) {
+                preset_idx = atoi(section + 7);
+                if (preset_idx >= 0 && preset_idx < NUM_PRESETS) {
+                    target = &presets->slot[preset_idx];
+                    presets->saved[preset_idx] = true;
+                } else {
+                    target = NULL;
+                    preset_idx = -1;
+                }
+            }
+            else {
+                target = NULL;
+                preset_idx = -1;
+            }
+            continue;
+        }
+
+        /* key=value */
+        if (!target) continue;
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        parse_prefs_key(target, line, eq + 1);
+    }
+
+    fclose(fp);
+    return true;
 }
 
 #endif /* XYSCOPE_SHARED_H */
