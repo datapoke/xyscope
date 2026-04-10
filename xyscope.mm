@@ -987,10 +987,11 @@ public:
                 PW_KEY_MEDIA_TYPE, "Audio",
                 PW_KEY_MEDIA_CATEGORY, "Capture",
                 PW_KEY_MEDIA_ROLE, "Music",
-                PW_KEY_STREAM_CAPTURE_SINK, "true",
                 NULL);
         if (t_data->target[0])
             pw_properties_set(props, PW_KEY_TARGET_OBJECT, t_data->target);
+        else
+            pw_properties_set(props, PW_KEY_STREAM_CAPTURE_SINK, "true");
 
         t_data->stream = pw_stream_new_simple(
             pw_thread_loop_get_loop(t_data->loop),
@@ -2745,16 +2746,20 @@ int main(int argc, char *argv[])
         else if ((!strcmp(argv[i], "-t") || !strcmp(argv[i], "--target")) && i + 1 < argc) {
             snprintf(scn.app.target, sizeof(scn.app.target), "%s", argv[++i]);
         }
+        else if (!strcmp(argv[i], "-r") || !strcmp(argv[i], "--reset-target")) {
+            scn.app.target[0] = '\0';
+        }
 #endif
         else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
             printf("Usage: xyscope [-p preset]"
 #if !defined(__APPLE__) && !defined(_WIN32)
-                   " [-t target]"
+                   " [-t target] [-r]"
 #endif
                    "\n");
-            printf("  -p, --preset N   Load preset N (0-9) on startup\n");
+            printf("  -p, --preset N     Load preset N (0-9) on startup\n");
 #if !defined(__APPLE__) && !defined(_WIN32)
-            printf("  -t, --target ID  Pipewire target node name or serial\n");
+            printf("  -t, --target ID    Pipewire target node name or serial\n");
+            printf("  -r, --reset-target Clear saved Pipewire target (use default source)\n");
 #endif
             return 0;
         }
