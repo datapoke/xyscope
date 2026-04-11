@@ -33,7 +33,7 @@
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
-#ifdef _WIN32
+#ifndef __APPLE__
 #include <SDL2/SDL_syswm.h>
 #endif
 
@@ -2826,7 +2826,7 @@ int main(int argc, char *argv[])
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
-#ifdef __APPLE__
+#ifndef _WIN32
     SDL_GL_SetAttribute(SDL_GL_FLOATBUFFERS, 1);
 #endif
 
