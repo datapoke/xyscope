@@ -334,11 +334,373 @@ static inline double detect_hdr_brightness(void)
 }
 
 #else
-/* Linux: no standard HDR detection */
+/* Linux: Wayland HDR via wp_color_management_v1 protocol */
+
+#ifdef HAVE_WP_COLOR_MANAGEMENT
+
+#include <wayland-client.h>
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <SDL2/SDL_syswm.h>
+#include "color-management-v1-client-protocol.h"
+
+typedef struct {
+    struct wl_display *display;
+    struct wp_color_manager_v1 *manager;
+    struct wp_color_management_surface_v1 *cm_surface;
+    struct wp_color_management_surface_feedback_v1 *feedback;
+    struct wp_image_description_v1 *image_desc;
+    bool has_parametric;
+    bool has_ext_linear;
+    bool has_srgb;
+    bool ready;
+    double headroom;
+} wayland_hdr_state_t;
+
+static wayland_hdr_state_t wl_hdr = {};
+
+/* --- wp_color_manager_v1 listener --- */
+
+static void cm_supported_intent(void *data, struct wp_color_manager_v1 *mgr,
+                                uint32_t intent)
+{ (void)data; (void)mgr; (void)intent; }
+
+static void cm_supported_feature(void *data, struct wp_color_manager_v1 *mgr,
+                                 uint32_t feature)
+{
+    (void)mgr;
+    wayland_hdr_state_t *st = (wayland_hdr_state_t *)data;
+    if (feature == WP_COLOR_MANAGER_V1_FEATURE_PARAMETRIC)
+        st->has_parametric = true;
+}
+
+static void cm_supported_tf_named(void *data, struct wp_color_manager_v1 *mgr,
+                                  uint32_t tf)
+{
+    (void)mgr;
+    wayland_hdr_state_t *st = (wayland_hdr_state_t *)data;
+    if (tf == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR)
+        st->has_ext_linear = true;
+}
+
+static void cm_supported_primaries_named(void *data, struct wp_color_manager_v1 *mgr,
+                                         uint32_t primaries)
+{
+    (void)mgr;
+    wayland_hdr_state_t *st = (wayland_hdr_state_t *)data;
+    if (primaries == WP_COLOR_MANAGER_V1_PRIMARIES_SRGB)
+        st->has_srgb = true;
+}
+
+static void cm_done(void *data, struct wp_color_manager_v1 *mgr)
+{ (void)data; (void)mgr; }
+
+static const struct wp_color_manager_v1_listener cm_listener = {
+    .supported_intent          = cm_supported_intent,
+    .supported_feature         = cm_supported_feature,
+    .supported_tf_named        = cm_supported_tf_named,
+    .supported_primaries_named = cm_supported_primaries_named,
+    .done                      = cm_done,
+};
+
+/* --- wp_image_description_v1 listener --- */
+
+static void img_desc_failed(void *data, struct wp_image_description_v1 *desc,
+                            uint32_t cause, const char *msg)
+{
+    (void)desc;
+    wayland_hdr_state_t *st = (wayland_hdr_state_t *)data;
+    st->ready = false;
+    fprintf(stderr, "HDR: image description failed: %s\n", msg);
+}
+
+static void img_desc_ready(void *data, struct wp_image_description_v1 *desc,
+                           uint32_t identity)
+{
+    (void)desc; (void)identity;
+    wayland_hdr_state_t *st = (wayland_hdr_state_t *)data;
+    st->ready = true;
+}
+
+static void img_desc_ready2(void *data, struct wp_image_description_v1 *desc,
+                            uint32_t identity_hi, uint32_t identity_lo)
+{
+    (void)desc; (void)identity_hi; (void)identity_lo;
+    wayland_hdr_state_t *st = (wayland_hdr_state_t *)data;
+    st->ready = true;
+}
+
+static const struct wp_image_description_v1_listener img_desc_listener = {
+    .failed = img_desc_failed,
+    .ready  = img_desc_ready,
+    .ready2 = img_desc_ready2,
+};
+
+/* --- wp_image_description_info_v1 listener (headroom query) --- */
+
+typedef struct {
+    wayland_hdr_state_t *hdr;
+    double max_luminance;
+    double reference_luminance;
+} feedback_query_t;
+
+static void info_done(void *data, struct wp_image_description_info_v1 *info)
+{
+    (void)info;
+    feedback_query_t *q = (feedback_query_t *)data;
+    if (q->reference_luminance > 0 && q->max_luminance > 0)
+        q->hdr->headroom = q->max_luminance / q->reference_luminance;
+}
+
+static void info_icc_file(void *data, struct wp_image_description_info_v1 *info,
+                          int32_t icc, uint32_t icc_size)
+{ (void)data; (void)info; (void)icc; (void)icc_size; }
+
+static void info_primaries(void *data, struct wp_image_description_info_v1 *info,
+                           int32_t r_x, int32_t r_y, int32_t g_x, int32_t g_y,
+                           int32_t b_x, int32_t b_y, int32_t w_x, int32_t w_y)
+{ (void)data; (void)info; (void)r_x; (void)r_y; (void)g_x; (void)g_y;
+  (void)b_x; (void)b_y; (void)w_x; (void)w_y; }
+
+static void info_primaries_named(void *data, struct wp_image_description_info_v1 *info,
+                                 uint32_t primaries)
+{ (void)data; (void)info; (void)primaries; }
+
+static void info_tf_power(void *data, struct wp_image_description_info_v1 *info,
+                          uint32_t eexp)
+{ (void)data; (void)info; (void)eexp; }
+
+static void info_tf_named(void *data, struct wp_image_description_info_v1 *info,
+                          uint32_t tf)
+{ (void)data; (void)info; (void)tf; }
+
+static void info_luminances(void *data, struct wp_image_description_info_v1 *info,
+                            uint32_t min_lum, uint32_t max_lum, uint32_t reference_lum)
+{
+    (void)info; (void)min_lum;
+    feedback_query_t *q = (feedback_query_t *)data;
+    q->reference_luminance = (double)reference_lum;
+    q->max_luminance       = (double)max_lum;
+}
+
+static void info_target_primaries(void *data, struct wp_image_description_info_v1 *info,
+                                  int32_t r_x, int32_t r_y, int32_t g_x, int32_t g_y,
+                                  int32_t b_x, int32_t b_y, int32_t w_x, int32_t w_y)
+{ (void)data; (void)info; (void)r_x; (void)r_y; (void)g_x; (void)g_y;
+  (void)b_x; (void)b_y; (void)w_x; (void)w_y; }
+
+static void info_target_luminance(void *data, struct wp_image_description_info_v1 *info,
+                                  uint32_t min_lum, uint32_t max_lum)
+{
+    (void)info; (void)min_lum;
+    feedback_query_t *q = (feedback_query_t *)data;
+    /* Override max luminance with display's actual peak if available */
+    if (max_lum > 0)
+        q->max_luminance = (double)max_lum;
+}
+
+static void info_target_max_cll(void *data, struct wp_image_description_info_v1 *info,
+                                uint32_t max_cll)
+{ (void)data; (void)info; (void)max_cll; }
+
+static void info_target_max_fall(void *data, struct wp_image_description_info_v1 *info,
+                                 uint32_t max_fall)
+{ (void)data; (void)info; (void)max_fall; }
+
+static const struct wp_image_description_info_v1_listener info_listener = {
+    .done              = info_done,
+    .icc_file          = info_icc_file,
+    .primaries         = info_primaries,
+    .primaries_named   = info_primaries_named,
+    .tf_power          = info_tf_power,
+    .tf_named          = info_tf_named,
+    .luminances        = info_luminances,
+    .target_primaries  = info_target_primaries,
+    .target_luminance  = info_target_luminance,
+    .target_max_cll    = info_target_max_cll,
+    .target_max_fall   = info_target_max_fall,
+};
+
+/* --- wp_color_management_surface_feedback_v1 listener --- */
+
+static void feedback_preferred_changed(void *data,
+    struct wp_color_management_surface_feedback_v1 *fb, uint32_t identity)
+{
+    (void)identity;
+    wayland_hdr_state_t *st = (wayland_hdr_state_t *)data;
+
+    struct wp_image_description_v1 *pref =
+        wp_color_management_surface_feedback_v1_get_preferred(fb);
+
+    st->ready = false;
+    wp_image_description_v1_add_listener(pref, &img_desc_listener, st);
+    wl_display_roundtrip(st->display);
+
+    if (st->ready) {
+        feedback_query_t q = { st, 0, 0 };
+        struct wp_image_description_info_v1 *info =
+            wp_image_description_v1_get_information(pref);
+        wp_image_description_info_v1_add_listener(info, &info_listener, &q);
+        wl_display_roundtrip(st->display);
+        /* info object is auto-destroyed after done event */
+    }
+
+    wp_image_description_v1_destroy(pref);
+}
+
+static void feedback_preferred_changed2(void *data,
+    struct wp_color_management_surface_feedback_v1 *fb,
+    uint32_t identity_hi, uint32_t identity_lo)
+{
+    (void)identity_hi; (void)identity_lo;
+    /* Reuse v1 logic — identity is just a hint for caching */
+    feedback_preferred_changed(data, fb, 0);
+}
+
+static const struct wp_color_management_surface_feedback_v1_listener feedback_listener = {
+    .preferred_changed  = feedback_preferred_changed,
+    .preferred_changed2 = feedback_preferred_changed2,
+};
+
+/* --- wl_registry listener --- */
+
+static void registry_global(void *data, struct wl_registry *registry,
+    uint32_t name, const char *interface, uint32_t version)
+{
+    (void)version;
+    wayland_hdr_state_t *st = (wayland_hdr_state_t *)data;
+    if (!strcmp(interface, wp_color_manager_v1_interface.name)) {
+        st->manager = (struct wp_color_manager_v1 *)
+            wl_registry_bind(registry, name, &wp_color_manager_v1_interface, 1);
+    }
+}
+
+static void registry_global_remove(void *data, struct wl_registry *registry,
+                                   uint32_t name)
+{ (void)data; (void)registry; (void)name; }
+
+static const struct wl_registry_listener registry_listener = {
+    .global        = registry_global,
+    .global_remove = registry_global_remove,
+};
+
+/* --- Main setup function --- */
+
+static bool wayland_hdr_setup(SDL_Window *window)
+{
+    /* Step 1: Get Wayland display and surface from SDL */
+    SDL_SysWMinfo wminfo;
+    SDL_VERSION(&wminfo.version);
+    if (!SDL_GetWindowWMInfo(window, &wminfo))
+        return false;
+    if (wminfo.subsystem != SDL_SYSWM_WAYLAND)
+        return false;
+
+    wl_hdr.display = wminfo.info.wl.display;
+    struct wl_surface *surface = wminfo.info.wl.surface;
+
+    /* Step 2: Verify float framebuffer */
+    int red_size = 0;
+    SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &red_size);
+    if (red_size < 16) {
+        fprintf(stderr, "HDR: float framebuffer not available (red_size=%d)\n", red_size);
+        return false;
+    }
+
+    /* Step 3: Bind color manager from registry */
+    struct wl_registry *registry = wl_display_get_registry(wl_hdr.display);
+    wl_registry_add_listener(registry, &registry_listener, &wl_hdr);
+    wl_display_roundtrip(wl_hdr.display);
+    wl_registry_destroy(registry);
+
+    if (!wl_hdr.manager) {
+        fprintf(stderr, "HDR: compositor does not support wp_color_management_v1\n");
+        return false;
+    }
+
+    /* Step 4: Enumerate capabilities */
+    wp_color_manager_v1_add_listener(wl_hdr.manager, &cm_listener, &wl_hdr);
+    wl_display_roundtrip(wl_hdr.display);
+
+    if (!wl_hdr.has_parametric || !wl_hdr.has_ext_linear || !wl_hdr.has_srgb) {
+        fprintf(stderr, "HDR: compositor lacks required capabilities"
+                " (parametric=%d ext_linear=%d srgb=%d)\n",
+                wl_hdr.has_parametric, wl_hdr.has_ext_linear, wl_hdr.has_srgb);
+        wp_color_manager_v1_destroy(wl_hdr.manager);
+        wl_hdr.manager = NULL;
+        return false;
+    }
+
+    /* Step 5: Create parametric image description (ext_linear TF, sRGB primaries) */
+    struct wp_image_description_creator_params_v1 *creator =
+        wp_color_manager_v1_create_parametric_creator(wl_hdr.manager);
+    wp_image_description_creator_params_v1_set_tf_named(
+        creator, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR);
+    wp_image_description_creator_params_v1_set_primaries_named(
+        creator, WP_COLOR_MANAGER_V1_PRIMARIES_SRGB);
+    wl_hdr.image_desc =
+        wp_image_description_creator_params_v1_create(creator);
+    /* creator is destroyed by create */
+
+    wl_hdr.ready = false;
+    wp_image_description_v1_add_listener(wl_hdr.image_desc, &img_desc_listener, &wl_hdr);
+    wl_display_roundtrip(wl_hdr.display);
+
+    if (!wl_hdr.ready) {
+        fprintf(stderr, "HDR: ext_linear/sRGB image description not accepted\n");
+        wp_image_description_v1_destroy(wl_hdr.image_desc);
+        wp_color_manager_v1_destroy(wl_hdr.manager);
+        wl_hdr.image_desc = NULL;
+        wl_hdr.manager = NULL;
+        return false;
+    }
+
+    /* Step 6: Attach image description to surface */
+    wl_hdr.cm_surface = wp_color_manager_v1_get_surface(wl_hdr.manager, surface);
+    wp_color_management_surface_v1_set_image_description(
+        wl_hdr.cm_surface, wl_hdr.image_desc,
+        WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL);
+
+    /* Step 7: Set up feedback listener for headroom updates */
+    wl_hdr.feedback =
+        wp_color_manager_v1_get_surface_feedback(wl_hdr.manager, surface);
+    wp_color_management_surface_feedback_v1_add_listener(
+        wl_hdr.feedback, &feedback_listener, &wl_hdr);
+
+    /* Initial headroom query */
+    {
+        struct wp_image_description_v1 *pref =
+            wp_color_management_surface_feedback_v1_get_preferred(wl_hdr.feedback);
+        wl_hdr.ready = false;
+        wp_image_description_v1_add_listener(pref, &img_desc_listener, &wl_hdr);
+        wl_display_roundtrip(wl_hdr.display);
+        if (wl_hdr.ready) {
+            feedback_query_t q = { &wl_hdr, 0, 0 };
+            struct wp_image_description_info_v1 *info =
+                wp_image_description_v1_get_information(pref);
+            wp_image_description_info_v1_add_listener(info, &info_listener, &q);
+            wl_display_roundtrip(wl_hdr.display);
+        }
+        wp_image_description_v1_destroy(pref);
+    }
+
+    printf("HDR: Wayland color management active (headroom=%.2f)\n",
+           wl_hdr.headroom > 0 ? wl_hdr.headroom : 1.0);
+    return true;
+}
+
+static inline double detect_hdr_brightness(void)
+{
+    return wl_hdr.headroom > 0 ? wl_hdr.headroom : 1.0;
+}
+
+#else
+/* Linux without wp_color_management_v1: no HDR */
 static inline double detect_hdr_brightness(void)
 {
     return 1.0;
 }
+#endif /* HAVE_WP_COLOR_MANAGEMENT */
 
 #endif /* platform */
 

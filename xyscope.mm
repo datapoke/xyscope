@@ -147,6 +147,8 @@ static const GUID XYSCOPE_IID_IAudioCaptureClient = {0xC8ADBD64, 0xE71E, 0x48a0,
 /* Forward declarations — defined after scene class */
 extern HDC hdr_hdc;
 extern HWND fs_cover_hwnd;
+#elif !defined(__APPLE__)
+extern bool wayland_hdr_active;
 #endif
 
 /* Audio sample rate and display frame rate — detected at runtime */
@@ -1827,8 +1829,11 @@ public:
 #ifdef _WIN32
         showTimedText(BrightnessTimer, true, t, "Brightness: %.1f %s",
                       prefs.brightness, hdr_hdc ? "(HDR)" : "(SDR)");
-#else
+#elif defined(__APPLE__)
         showTimedText(BrightnessTimer, true, t, "Brightness: %.1f", prefs.brightness);
+#else
+        showTimedText(BrightnessTimer, true, t, "Brightness: %.1f %s",
+                      prefs.brightness, wayland_hdr_active ? "(HDR)" : "(SDR)");
 #endif
     }
     void showVelocityDim(bool t) { showTimedText(VelocityDimTimer, true, t, "Velocity dim: %.1f", prefs.velocity_dim); }
@@ -2722,6 +2727,8 @@ SDL_GLContext gl_context = NULL;
 HDC hdr_hdc = NULL;              /* non-NULL when using WGL float framebuffer */
 HGLRC hdr_hglrc = NULL;
 HWND fs_cover_hwnd = NULL;
+#elif !defined(__APPLE__)
+bool wayland_hdr_active = false;
 #endif
 TTF_Font *font = NULL;
 
@@ -2908,6 +2915,10 @@ int main(int argc, char *argv[])
             glClampColorARB(GL_CLAMP_FRAGMENT_COLOR_ARB, GL_FALSE_ARB);
         }
     }
+#endif
+
+#if !defined(__APPLE__) && !defined(_WIN32) && defined(HAVE_WP_COLOR_MANAGEMENT)
+    wayland_hdr_active = wayland_hdr_setup(window);
 #endif
 
     glGenTextures(1, &scn.textures);
