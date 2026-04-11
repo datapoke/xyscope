@@ -3105,6 +3105,18 @@ int main(int argc, char *argv[])
         wglDeleteContext(hdr_hglrc);
     } else
 #endif
+#if !defined(__APPLE__) && !defined(_WIN32) && defined(HAVE_WP_COLOR_MANAGEMENT)
+    if (wayland_hdr_active) {
+        if (wl_hdr.feedback)
+            wp_color_management_surface_feedback_v1_destroy(wl_hdr.feedback);
+        if (wl_hdr.cm_surface)
+            wp_color_management_surface_v1_destroy(wl_hdr.cm_surface);
+        if (wl_hdr.image_desc)
+            wp_image_description_v1_destroy(wl_hdr.image_desc);
+        if (wl_hdr.manager)
+            wp_color_manager_v1_destroy(wl_hdr.manager);
+    }
+#endif
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
     SDL_Quit();
