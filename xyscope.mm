@@ -2857,19 +2857,29 @@ int main(int argc, char *argv[])
     if (SDL_GL_SetSwapInterval(-1) == -1)  /* try adaptive vsync first */
         SDL_GL_SetSwapInterval(1);
 
-#ifdef __APPLE__
-    /* Disable color clamping for EDR/HDR on macOS.
-     * SDL_GL_FLOATBUFFERS gives us a float framebuffer via
-     * NSOpenGLPFAColorFloat; unclamping lets values > 1.0
-     * reach Extended Dynamic Range. */
+#ifndef _WIN32
+    /* Disable color clamping for HDR.
+     * SDL_GL_FLOATBUFFERS gives us a float framebuffer;
+     * unclamping lets values > 1.0 reach HDR luminance.
+     * (Windows handles this in the WGL HDR path below.) */
     {
         #ifndef GL_CLAMP_VERTEX_COLOR_ARB
         #define GL_CLAMP_VERTEX_COLOR_ARB   0x891A
         #define GL_CLAMP_FRAGMENT_COLOR_ARB 0x891B
         #endif
+#ifdef __APPLE__
         extern void glClampColorARB(GLenum, GLenum);
+#else
+        typedef void (*PFNGLCLAMPCOLORARBPROC)(GLenum, GLenum);
+        PFNGLCLAMPCOLORARBPROC glClampColorARB =
+            (PFNGLCLAMPCOLORARBPROC)SDL_GL_GetProcAddress("glClampColorARB");
+        if (!glClampColorARB) goto skip_clamp;
+#endif
         glClampColorARB(GL_CLAMP_VERTEX_COLOR_ARB, GL_FALSE);
         glClampColorARB(GL_CLAMP_FRAGMENT_COLOR_ARB, GL_FALSE);
+#ifndef __APPLE__
+        skip_clamp:;
+#endif
     }
 #endif
 
