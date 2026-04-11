@@ -30,9 +30,28 @@ else
     CXX = g++
     PIPEWIRE_CFLAGS = $(shell pkg-config --cflags libpipewire-0.3)
     PIPEWIRE_LIBS = $(shell pkg-config --libs libpipewire-0.3)
-    CXX_FLAGS = -Wall -O3 -march=native -mtune=native -std=c++11 -x c++ $(PIPEWIRE_CFLAGS)
-    LD_LIBS = -lpthread -lSDL2 -lSDL2_ttf -lGL $(PIPEWIRE_LIBS) -lfftw3
+    WL_PROTO_DIR = $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)
+    CM_XML = $(WL_PROTO_DIR)/staging/color-management/color-management-v1.xml
+    CM_HEADER = $(RELEASE_DIR)/color-management-v1-client-protocol.h
+    CM_CODE = $(RELEASE_DIR)/color-management-v1-protocol.c
+    HAS_CM = $(if $(wildcard $(CM_XML)),yes,)
+    ifeq ($(HAS_CM),yes)
+        CM_CFLAGS = -DHAVE_WP_COLOR_MANAGEMENT -I$(RELEASE_DIR)
+        CM_LDLIBS = -lwayland-client -lEGL
+    else
+        CM_CFLAGS =
+        CM_LDLIBS =
+    endif
+    CXX_FLAGS = -Wall -O3 -march=native -mtune=native -std=c++11 -x c++ $(PIPEWIRE_CFLAGS) $(CM_CFLAGS)
+    LD_LIBS = -lpthread -lSDL2 -lSDL2_ttf -lGL $(PIPEWIRE_LIBS) -lfftw3 $(CM_LDLIBS)
 endif
+
+# Wayland color management protocol bindings (Linux only)
+$(CM_HEADER): $(CM_XML)
+	wayland-scanner client-header $< $@
+
+$(CM_CODE): $(CM_XML)
+	wayland-scanner private-code $< $@
 
 # Default target: build binary + calibrate (+ app bundle on macOS)
 ifeq ($(UNAME_S),Darwin)
@@ -42,11 +61,19 @@ all: $(BINARY) $(CALIBRATE)
 endif
 
 # Build xyscope binary
+ifneq ($(HAS_CM),yes)
 $(BINARY): $(SRC) Makefile
 	@mkdir -p $(RELEASE_DIR)
 	@echo "Building xyscope binary..."
 	$(CXX) $(CXX_FLAGS) $(SRC) $(LD_LIBS) -o $(BINARY)
 	@echo "✓ xyscope binary built → $(BINARY)"
+else
+$(BINARY): $(SRC) $(CM_HEADER) $(CM_CODE) Makefile
+	@mkdir -p $(RELEASE_DIR)
+	@echo "Building xyscope binary (with HDR)..."
+	$(CXX) $(CXX_FLAGS) $(SRC) $(CM_CODE) $(LD_LIBS) -o $(BINARY)
+	@echo "✓ xyscope binary built → $(BINARY) (HDR enabled)"
+endif
 
 # Build calibration tool
 $(CALIBRATE): $(CALIBRATE_SRC) xyscope-shared.h xyscope-ringbuffer.h xyscope-draw.h Makefile

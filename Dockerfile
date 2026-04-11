@@ -8,6 +8,9 @@ RUN apt-get update && \
         libsdl2-dev                            \
         libsdl2-ttf-dev                        \
         pipewire                               \
+        wayland-protocols                      \
+        libwayland-dev                         \
+        libegl-dev                             \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ./                     /usr/src/xyscope
