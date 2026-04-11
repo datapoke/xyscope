@@ -422,18 +422,9 @@ static void img_desc_ready(void *data, struct wp_image_description_v1 *desc,
     st->ready = true;
 }
 
-static void img_desc_ready2(void *data, struct wp_image_description_v1 *desc,
-                            uint32_t identity_hi, uint32_t identity_lo)
-{
-    (void)desc; (void)identity_hi; (void)identity_lo;
-    wayland_hdr_state_t *st = (wayland_hdr_state_t *)data;
-    st->ready = true;
-}
-
 static const struct wp_image_description_v1_listener img_desc_listener = {
     .failed = img_desc_failed,
     .ready  = img_desc_ready,
-    .ready2 = img_desc_ready2,
 };
 
 /* --- wp_image_description_info_v1 listener (headroom query) --- */
@@ -548,18 +539,8 @@ static void feedback_preferred_changed(void *data,
     wp_image_description_v1_destroy(pref);
 }
 
-static void feedback_preferred_changed2(void *data,
-    struct wp_color_management_surface_feedback_v1 *fb,
-    uint32_t identity_hi, uint32_t identity_lo)
-{
-    (void)identity_hi; (void)identity_lo;
-    /* Reuse v1 logic — identity is just a hint for caching */
-    feedback_preferred_changed(data, fb, 0);
-}
-
 static const struct wp_color_management_surface_feedback_v1_listener feedback_listener = {
-    .preferred_changed  = feedback_preferred_changed,
-    .preferred_changed2 = feedback_preferred_changed2,
+    .preferred_changed = feedback_preferred_changed,
 };
 
 /* --- wl_registry listener --- */

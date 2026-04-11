@@ -34,6 +34,7 @@ else
     CM_XML = $(WL_PROTO_DIR)/staging/color-management/color-management-v1.xml
     CM_HEADER = $(RELEASE_DIR)/color-management-v1-client-protocol.h
     CM_CODE = $(RELEASE_DIR)/color-management-v1-protocol.c
+    CM_OBJ = $(RELEASE_DIR)/color-management-v1-protocol.o
     HAS_CM = $(if $(wildcard $(CM_XML)),yes,)
     ifeq ($(HAS_CM),yes)
         CM_CFLAGS = -DHAVE_WP_COLOR_MANAGEMENT -I$(RELEASE_DIR)
@@ -46,6 +47,13 @@ else
     LD_LIBS = -lpthread -lSDL2 -lSDL2_ttf -lGL $(PIPEWIRE_LIBS) -lfftw3 $(CM_LDLIBS)
 endif
 
+# Default target: build binary + calibrate (+ app bundle on macOS)
+ifeq ($(UNAME_S),Darwin)
+all: $(BINARY) $(CALIBRATE) app
+else
+all: $(BINARY) $(CALIBRATE)
+endif
+
 # Wayland color management protocol bindings (Linux only)
 $(CM_HEADER): $(CM_XML)
 	wayland-scanner client-header $< $@
@@ -53,12 +61,8 @@ $(CM_HEADER): $(CM_XML)
 $(CM_CODE): $(CM_XML)
 	wayland-scanner private-code $< $@
 
-# Default target: build binary + calibrate (+ app bundle on macOS)
-ifeq ($(UNAME_S),Darwin)
-all: $(BINARY) $(CALIBRATE) app
-else
-all: $(BINARY) $(CALIBRATE)
-endif
+$(CM_OBJ): $(CM_CODE)
+	cc -c -fPIC $< -o $@
 
 # Build xyscope binary
 ifneq ($(HAS_CM),yes)
@@ -68,10 +72,10 @@ $(BINARY): $(SRC) Makefile
 	$(CXX) $(CXX_FLAGS) $(SRC) $(LD_LIBS) -o $(BINARY)
 	@echo "✓ xyscope binary built → $(BINARY)"
 else
-$(BINARY): $(SRC) $(CM_HEADER) $(CM_CODE) Makefile
+$(BINARY): $(SRC) $(CM_HEADER) $(CM_OBJ) Makefile
 	@mkdir -p $(RELEASE_DIR)
 	@echo "Building xyscope binary (with HDR)..."
-	$(CXX) $(CXX_FLAGS) $(SRC) $(CM_CODE) $(LD_LIBS) -o $(BINARY)
+	$(CXX) $(CXX_FLAGS) $(SRC) -x none $(CM_OBJ) $(LD_LIBS) -o $(BINARY)
 	@echo "✓ xyscope binary built → $(BINARY) (HDR enabled)"
 endif
 
