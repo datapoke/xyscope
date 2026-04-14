@@ -293,8 +293,84 @@ static inline void bloom_resize(bloom_state_t *b, int w, int h)
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-/* bloom_begin / bloom_end — still stubs. Task 3 implements these. */
-static inline void bloom_begin  (bloom_state_t *b)               { (void)b; }
-static inline void bloom_end    (bloom_state_t *b, float intensity) { (void)b; (void)intensity; }
+static inline void bloom_draw_fullscreen_quad(void)
+{
+    glBegin(GL_QUADS);
+    glMultiTexCoord2f(GL_TEXTURE0, 0.0f, 0.0f); glVertex2f(-1.0f, -1.0f);
+    glMultiTexCoord2f(GL_TEXTURE0, 1.0f, 0.0f); glVertex2f( 1.0f, -1.0f);
+    glMultiTexCoord2f(GL_TEXTURE0, 1.0f, 1.0f); glVertex2f( 1.0f,  1.0f);
+    glMultiTexCoord2f(GL_TEXTURE0, 0.0f, 1.0f); glVertex2f(-1.0f,  1.0f);
+    glEnd();
+}
+
+static inline void bloom_begin(bloom_state_t *b)
+{
+    if (!b->enabled) return;
+    p_glBindFramebuffer(GL_FRAMEBUFFER, b->scene_fbo);
+    glViewport(0, 0, b->width, b->height);
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
+static inline void bloom_end(bloom_state_t *b, float intensity)
+{
+    if (!b->enabled) return;
+
+    int bw = b->width / 4; if (bw < 1) bw = 1;
+    int bh = b->height / 4; if (bh < 1) bh = 1;
+
+    /* 1. Downsample scene_fbo -> blur_fbo[0] via linear blit. */
+    p_glBindFramebuffer(GL_READ_FRAMEBUFFER, b->scene_fbo);
+    p_glBindFramebuffer(GL_DRAW_FRAMEBUFFER, b->blur_fbo[0]);
+    p_glBlitFramebuffer(0, 0, b->width, b->height,
+                        0, 0, bw, bh,
+                        GL_COLOR_BUFFER_BIT, GL_LINEAR);
+
+    /* Save caller's matrices; set identity for clip-space fullscreen quad. */
+    glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity();
+    glMatrixMode(GL_MODELVIEW);  glPushMatrix(); glLoadIdentity();
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+    /* 2. Horizontal blur: blur_fbo[0] -> blur_fbo[1]. */
+    p_glBindFramebuffer(GL_FRAMEBUFFER, b->blur_fbo[1]);
+    glViewport(0, 0, bw, bh);
+    p_glUseProgram(b->blur_prog);
+    p_glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, b->blur_tex[0]);
+    p_glUniform1i(b->blur_loc_tex, 0);
+    p_glUniform2f(b->blur_loc_dir, 1.0f / (float)bw, 0.0f);
+    bloom_draw_fullscreen_quad();
+
+    /* 3. Vertical blur: blur_fbo[1] -> blur_fbo[0]. */
+    p_glBindFramebuffer(GL_FRAMEBUFFER, b->blur_fbo[0]);
+    glBindTexture(GL_TEXTURE_2D, b->blur_tex[1]);
+    p_glUniform2f(b->blur_loc_dir, 0.0f, 1.0f / (float)bh);
+    bloom_draw_fullscreen_quad();
+
+    /* 4. Composite scene + bloom to default framebuffer. */
+    p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, b->width, b->height);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    p_glUseProgram(b->composite_prog);
+    p_glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, b->scene_tex);
+    p_glUniform1i(b->comp_loc_scene, 0);
+    p_glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, b->blur_tex[0]);
+    p_glUniform1i(b->comp_loc_bloom, 1);
+    p_glUniform1f(b->comp_loc_intensity, intensity);
+    bloom_draw_fullscreen_quad();
+
+    /* Restore GL state drawText expects. */
+    p_glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    p_glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    p_glUseProgram(0);
+    glMatrixMode(GL_PROJECTION); glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);  glPopMatrix();
+}
 
 #endif /* XYSCOPE_BLOOM_H */
