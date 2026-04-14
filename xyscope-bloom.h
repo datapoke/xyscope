@@ -1,7 +1,8 @@
 #ifndef XYSCOPE_BLOOM_H
 #define XYSCOPE_BLOOM_H
 
-#include <SDL2/SDL.h>
+/* Include this header from a translation unit that has already pulled in
+ * SDL2/SDL.h (for SDL_GL_GetProcAddress used by Task 2's init path). */
 
 #if defined(__APPLE__)
     #include <OpenGL/gl.h>
