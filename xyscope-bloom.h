@@ -295,11 +295,14 @@ static inline void bloom_resize(bloom_state_t *b, int w, int h)
 
 static inline void bloom_draw_fullscreen_quad(void)
 {
+    /* Use glTexCoord2f (GL 1.1 core) instead of glMultiTexCoord2f (GL 1.3),
+     * which is not declared in Windows mingw-w64's gl.h. gl_MultiTexCoord0
+     * in the vertex shader reads the same value for texture unit 0. */
     glBegin(GL_QUADS);
-    glMultiTexCoord2f(GL_TEXTURE0, 0.0f, 0.0f); glVertex2f(-1.0f, -1.0f);
-    glMultiTexCoord2f(GL_TEXTURE0, 1.0f, 0.0f); glVertex2f( 1.0f, -1.0f);
-    glMultiTexCoord2f(GL_TEXTURE0, 1.0f, 1.0f); glVertex2f( 1.0f,  1.0f);
-    glMultiTexCoord2f(GL_TEXTURE0, 0.0f, 1.0f); glVertex2f(-1.0f,  1.0f);
+    glTexCoord2f(0.0f, 0.0f); glVertex2f(-1.0f, -1.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex2f( 1.0f, -1.0f);
+    glTexCoord2f(1.0f, 1.0f); glVertex2f( 1.0f,  1.0f);
+    glTexCoord2f(0.0f, 1.0f); glVertex2f(-1.0f,  1.0f);
     glEnd();
 }
 
