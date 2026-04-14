@@ -75,6 +75,7 @@
 #include "xyscope-ringbuffer.h"
 #include "xyscope-draw.h"
 #include "xyscope-hdr.h"
+#include "xyscope-bloom.h"
 
 #ifdef _WIN32
 /* ---- Windows compatibility layer ---- */
@@ -2400,6 +2401,8 @@ public:
         prefs.velocity_dim  = prefs.brightness / 2.0;
         if (prefs.velocity_dim < 4.0)
             prefs.velocity_dim = 4.0;
+        prefs.bloom_enabled   = false;
+        prefs.bloom_intensity = 1.0;
         max_sample_value = min((prefs.side[0] - prefs.side[1]) / 2.1,
                                (prefs.side[2] - prefs.side[3]) / 2.1);
         refreshStats(TIMED);
@@ -2422,13 +2425,16 @@ public:
     }
 };
 static scene scn;
+static bloom_state_t bloom = {0};
 
 void display()
 {
     glClear(GL_COLOR_BUFFER_BIT);
 
     /* plot the samples on the screen */
+    bloom_begin(&bloom);
     scn.drawPlot();
+    bloom_end(&bloom, (float)scn.prefs.bloom_intensity);
 
     /* draw any text that needs drawing */
     scn.drawText();
@@ -2463,6 +2469,7 @@ void idle(void)
         else
             scn.rescale();
         glViewport(0, 0, drawable_w, drawable_h);
+        bloom_resize(&bloom, drawable_w, drawable_h);
         scn.window_is_dirty = false;
     }
 
@@ -2927,6 +2934,9 @@ int main(int argc, char *argv[])
     int drawable_w, drawable_h;
     SDL_GL_GetDrawableSize(window, &drawable_w, &drawable_h);
     reshape(drawable_w, drawable_h);
+    if (!bloom_init(&bloom, drawable_w, drawable_h)) {
+        fprintf(stderr, "Bloom init failed or disabled; rendering without bloom.\n");
+    }
 
     if (scn.prefs.is_full_screen) {
         scn.setFullScreen();
@@ -3117,6 +3127,7 @@ int main(int argc, char *argv[])
             wp_color_manager_v1_destroy(wl_hdr.manager);
     }
 #endif
+    bloom_cleanup(&bloom);
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
     SDL_Quit();
