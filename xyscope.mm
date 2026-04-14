@@ -1102,7 +1102,7 @@ public:
     bool show_help;
     bool show_mouse;
 
-    #define NUM_TEXT_TIMERS 17
+    #define NUM_TEXT_TIMERS 18
     #define NUM_AUTO_TEXT_TIMERS 13
     typedef struct _text_timer_t {
         bool show;
@@ -1126,11 +1126,12 @@ public:
         VelocityDimTimer = 10,
         SampleRateTimer  = 11,
         FrameRateTimer   = 12,
+        BloomTimer       = 13,
         /* End of text timers automatically included in stats display */
-        PresetTimer      = 13,
-        PausedTimer      = 14,
-        ScaleTimer       = 15,
-        CounterTimer     = 16
+        PresetTimer      = 14,
+        PausedTimer      = 15,
+        ScaleTimer       = 16,
+        CounterTimer     = 17
     } text_timer_handles;
     text_timer_t text_timer[NUM_TEXT_TIMERS];
     timeval show_intro_time;
@@ -1821,6 +1822,7 @@ public:
     void showSplines(bool t) { showTimedText(SplineTimer, true, t, "Splines: %d", prefs.spline_steps); }
     void showLineWidth(bool t) { showTimedText(LineWidthTimer, true, t, "Line width: %d", prefs.line_width); }
     void showParticles(bool t) { showTimedText(ParticlesTimer, true, t, "Particles: %s", prefs.particles ? "on" : "off"); }
+    void showBloom(bool t) { showTimedText(BloomTimer, true, t, "Bloom: %s", prefs.bloom_enabled ? "on" : "off"); }
     void showColorMode(bool t) { showTimedText(ColorModeTimer, true, t, "Color mode: %s", color_mode_names[prefs.color_mode]); }
     void showDisplayMode(bool t) { showTimedText(DisplayModeTimer, true, t, "Display mode: %s", display_mode_names[prefs.display_mode]); }
     void showColorRange(bool t) { showTimedText(ColorRangeTimer, true, t, "Color range: %.2f", prefs.color_range); }
@@ -2328,6 +2330,12 @@ public:
         showParticles(TIMED);
     }
 
+    void toggleBloom(void)
+    {
+        prefs.bloom_enabled = !prefs.bloom_enabled;
+        showBloom(TIMED);
+    }
+
     void savePreset(int n)
     {
         presets.slot[n] = prefs;
@@ -2422,6 +2430,7 @@ public:
         showDelay(t);
         showBrightness(t);
         showVelocityDim(t);
+        showBloom(t);
     }
 };
 static scene scn;
@@ -2432,9 +2441,10 @@ void display()
     glClear(GL_COLOR_BUFFER_BIT);
 
     /* plot the samples on the screen */
-    bloom_begin(&bloom);
+    bool use_bloom = bloom.enabled && scn.prefs.bloom_enabled;
+    if (use_bloom) bloom_begin(&bloom);
     scn.drawPlot();
-    bloom_end(&bloom, (float)scn.prefs.bloom_intensity);
+    if (use_bloom) bloom_end(&bloom, (float)scn.prefs.bloom_intensity);
 
     /* draw any text that needs drawing */
     scn.drawText();
@@ -2654,6 +2664,9 @@ void keyboard(unsigned char key, int xPos, int yPos)
             break;
         case 'p':
             scn.toggleParticles();
+            break;
+        case 'g':
+            scn.toggleBloom();
             break;
         case 'i':
             scn.setBrightness(scn.getBrightness() + 1.0);
