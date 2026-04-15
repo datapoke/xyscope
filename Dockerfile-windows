@@ -28,3 +28,5 @@ RUN wget -q https://fftw.org/pub/fftw/fftw-3.3.5-dll64.zip        \
     && x86_64-w64-mingw32-dlltool -d /tmp/fftw/libfftw3-3.def     \
        -l /usr/x86_64-w64-mingw32/lib/libfftw3.a                  \
     && rm -rf /tmp/fftw fftw-3.3.5-dll64.zip
+
+COPY ./ /usr/src/xyscope
