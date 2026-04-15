@@ -987,9 +987,14 @@ public:
         pw_thread_loop_lock(t_data->loop);
 
         struct pw_properties *props = pw_properties_new(
-                PW_KEY_MEDIA_TYPE, "Audio",
-                PW_KEY_MEDIA_CATEGORY, "Capture",
-                PW_KEY_MEDIA_ROLE, "Music",
+                PW_KEY_MEDIA_TYPE,        "Audio",
+                PW_KEY_MEDIA_CATEGORY,    "Capture",
+                PW_KEY_MEDIA_ROLE,        "Music",
+                PW_KEY_APP_NAME,          "XYScope",
+                PW_KEY_APP_ID,            "xyscope",
+                PW_KEY_NODE_NAME,         "xyscope",
+                PW_KEY_NODE_DESCRIPTION,  "XY Scope visualizer",
+                PW_KEY_MEDIA_NAME,        "XY Scope capture",
                 NULL);
         if (t_data->target[0])
             pw_properties_set(props, PW_KEY_TARGET_OBJECT, t_data->target);
@@ -2834,6 +2839,10 @@ int main(int argc, char *argv[])
             printf("  -p, --preset N     Load preset N (0-9) on startup\n");
 #if !defined(__APPLE__) && !defined(_WIN32)
             printf("  -t, --target ID    Pipewire target node name or serial\n");
+            printf("                     Default: capture from the default sink monitor\n");
+            printf("                     Discover names with: pw-link -io\n");
+            printf("                     Examples: -t alsa_output.pci-0000_0c_00.4.analog-stereo.monitor\n");
+            printf("                               -t \"Built-in Audio Analog Stereo\"\n");
             printf("  -r, --reset-target Clear saved Pipewire target (use default source)\n");
 #endif
             return 0;
