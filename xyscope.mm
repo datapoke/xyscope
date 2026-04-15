@@ -1415,73 +1415,124 @@ public:
         /* FFT setup for frequency / spectrum modes (must happen before glBegin) */
         if (prefs.display_mode == DisplayFrequencyMode
             || prefs.display_mode == DisplaySpectrumMode) {
+                /* For spectrum mode, run the FFT on Catmull-Rom-splined
+                 * audio rather than the raw samples. The interpolation
+                 * doesn't add real frequency content but it does
+                 * introduce overshoot at sharp transitions, which
+                 * shows up as extra energy above the original Nyquist.
+                 * Combined with a proportionally larger FFT window
+                 * (so bin width stays the same), those extra bins
+                 * land in the B band and bias the trace toward more
+                 * blue for music with transients. spline_steps is
+                 * always a power of two (more/lessSplines only ever
+                 * double or halve), so window_size_fft stays pow2. */
+                unsigned int fft_spline = (prefs.display_mode == DisplaySpectrumMode
+                                           && prefs.spline_steps > 1)
+                                          ? prefs.spline_steps : 1;
+                unsigned int fft_count = frames_read * fft_spline;
+                unsigned int window_size_fft = window_size * fft_spline;
+                unsigned int overlap_size_fft = overlap_size * fft_spline;
+                unsigned int stride_fft = window_size_fft - overlap_size_fft;
+
+                /* Build the FFT input buffer. Spectrum mode splines
+                 * (mono averaged L+R); Frequency mode just averages. */
+                double *fft_input = new double[fft_count];
+                if (fft_spline == 1) {
+                    for (unsigned int i = 0; i < frames_read; i++) {
+                        fft_input[i] = (framebuf[i].left_channel + framebuf[i].right_channel) / 2.0;
+                    }
+                } else {
+                    for (unsigned int i = 0; i < frames_read; i++) {
+                        unsigned int i_p1 = (i >= 1) ? i - 1 : 0;
+                        unsigned int i_p2 = (i + 1 < frames_read) ? i + 1 : frames_read - 1;
+                        unsigned int i_p3 = (i + 2 < frames_read) ? i + 2 : frames_read - 1;
+                        double P0 = (framebuf[i_p1].left_channel + framebuf[i_p1].right_channel) / 2.0;
+                        double P1 = (framebuf[i].left_channel    + framebuf[i].right_channel)    / 2.0;
+                        double P2 = (framebuf[i_p2].left_channel + framebuf[i_p2].right_channel) / 2.0;
+                        double P3 = (framebuf[i_p3].left_channel + framebuf[i_p3].right_channel) / 2.0;
+                        for (unsigned int s = 0; s < fft_spline; s++) {
+                            double t  = (double)s / (double)fft_spline;
+                            double t2 = t * t;
+                            double t3 = t2 * t;
+                            double v = 0.5 * (2.0*P1
+                                              + (-P0 + P2) * t
+                                              + (2.0*P0 - 5.0*P1 + 4.0*P2 - P3) * t2
+                                              + (-P0 + 3.0*P1 - 3.0*P2 + P3) * t3);
+                            fft_input[i * fft_spline + s] = v;
+                        }
+                    }
+                }
+
                 // Create the STFT array (zero-initialised so trailing
                 // windows that don't get computed are detectably empty)
-                stft_results = new double*[frames_read / (window_size - overlap_size)];
-                for (unsigned int i = 0; i < frames_read / (window_size - overlap_size); i++) {
-                    stft_results[i] = new double[window_size]();
+                unsigned int n_window_slots = fft_count / stride_fft;
+                stft_results = new double*[n_window_slots];
+                for (unsigned int i = 0; i < n_window_slots; i++) {
+                    stft_results[i] = new double[window_size_fft]();
                 }
 #ifdef __APPLE__
                 // Set up vDSP FFT once outside loop (performance optimization)
                 int log2n_win = 0;
-                int n_win = window_size;
+                int n_win = window_size_fft;
                 while (n_win > 1) { n_win >>= 1; log2n_win++; }
                 FFTSetup fft_setup_local = vDSP_create_fftsetup(log2n_win, FFT_RADIX2);
                 DSPSplitComplex fft_data;
-                fft_data.realp = new float[window_size/2];
-                fft_data.imagp = new float[window_size/2];
+                fft_data.realp = new float[window_size_fft/2];
+                fft_data.imagp = new float[window_size_fft/2];
 #endif
-                // Loop over the frame buffer
-                for (unsigned int i = 0; i + window_size <= frames_read; i += window_size - overlap_size) {
+                // Loop over the (possibly splined) FFT input
+                unsigned int w_idx = 0;
+                for (unsigned int i = 0; i + window_size_fft <= fft_count; i += stride_fft) {
 #ifdef __APPLE__
-                    // Copy the next window_size samples to a temporary array
-                    float *input_data = new float[window_size];
-                    for (unsigned int j = 0; j < window_size; j++) {
-                        input_data[j] = (framebuf[i + j].left_channel + framebuf[i + j].right_channel) / 2.0;
+                    // Copy the next window_size_fft samples to a temporary array
+                    float *input_data = new float[window_size_fft];
+                    for (unsigned int j = 0; j < window_size_fft; j++) {
+                        input_data[j] = (float)fft_input[i + j];
                     }
 
                     // Convert real input to split complex (required by vDSP)
-                    vDSP_ctoz((DSPComplex*)input_data, 2, &fft_data, 1, window_size/2);
+                    vDSP_ctoz((DSPComplex*)input_data, 2, &fft_data, 1, window_size_fft/2);
 
                     // Perform FFT
                     vDSP_fft_zrip(fft_setup_local, &fft_data, 1, log2n_win, FFT_FORWARD);
 
                     // Store the FFT results in the STFT array
-                    for (unsigned int j = 0; j < window_size/2; j++) {
+                    for (unsigned int j = 0; j < window_size_fft/2; j++) {
                         double real = fft_data.realp[j];
                         double imag = fft_data.imagp[j];
-                        stft_results[i / (window_size - overlap_size)][j] = sqrt(real * real + imag * imag);
+                        stft_results[w_idx][j] = sqrt(real * real + imag * imag);
                     }
                     // Mirror for second half (DC and Nyquist)
-                    for (unsigned int j = window_size/2; j < window_size; j++) {
-                        stft_results[i / (window_size - overlap_size)][j] = stft_results[i / (window_size - overlap_size)][window_size - j];
+                    for (unsigned int j = window_size_fft/2; j < window_size_fft; j++) {
+                        stft_results[w_idx][j] = stft_results[w_idx][window_size_fft - j];
                     }
 
                     delete[] input_data;
 #else
-                    double (*temp_data)[2] = new double[window_size][2];
-                    for (unsigned int j = 0; j < window_size; j++) {
-                        // average both channels
-                        temp_data[j][0] = (framebuf[i + j].left_channel + framebuf[i + j].right_channel) / 2.0; // Real part
-                        temp_data[j][1] = 0.0; // Imaginary part
+                    double (*temp_data)[2] = new double[window_size_fft][2];
+                    for (unsigned int j = 0; j < window_size_fft; j++) {
+                        temp_data[j][0] = fft_input[i + j];
+                        temp_data[j][1] = 0.0;
                     }
 
                     // Perform an FFT on the temporary array
-                    fft_plan = fftw_plan_dft_1d(window_size, temp_data, fft_out, FFTW_FORWARD, FFTW_ESTIMATE);
+                    fft_plan = fftw_plan_dft_1d(window_size_fft, temp_data, fft_out, FFTW_FORWARD, FFTW_ESTIMATE);
                     fftw_execute(fft_plan);
 
                     // Store the FFT results in the STFT array
-                    for (unsigned int j = 0; j < window_size; j++) {
+                    for (unsigned int j = 0; j < window_size_fft; j++) {
                         double real = fft_out[j][0];
                         double imag = fft_out[j][1];
-                        stft_results[i / (window_size - overlap_size)][j] = sqrt(real * real + imag * imag);
+                        stft_results[w_idx][j] = sqrt(real * real + imag * imag);
                     }
 
                     // Clean up the temporary array
                     fftw_destroy_plan(fft_plan);
                     delete[] temp_data;
 #endif
+                    w_idx++;
                 }
+                delete[] fft_input;
 #ifdef __APPLE__
                 // Clean up FFT resources after loop
                 vDSP_destroy_fftsetup(fft_setup_local);
@@ -1520,8 +1571,16 @@ public:
                      * clamp-induced (1,1,1) collapse for energetic
                      * broadband music. Equal energy across the three
                      * channels still gives white because all three
-                     * scale to the same value. */
-                    unsigned int half_w = window_size / 2;
+                     * scale to the same value.
+                     *
+                     * half_w uses window_size_fft because the FFT was
+                     * run on Catmull-Rom-splined audio with a window
+                     * scaled by spline_steps. Bins 4..half_w-1 now
+                     * include the high-frequency content above the
+                     * original audio Nyquist that the spline overshoot
+                     * generates — that's how transients tint the
+                     * trace toward blue. */
+                    unsigned int half_w = window_size_fft / 2;
                     spectrum_colors = new double[(n_windows + 1) * 3]();
                     /* First pass: compute raw band sums and track
                      * the max CHANNEL value across the whole frame. */
