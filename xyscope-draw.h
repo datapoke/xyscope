@@ -133,11 +133,13 @@ static inline unsigned int draw_xy_vertices(
                     double sb = spectrum_colors[w * 3 + 2];
                     double sh, ss, sv;
                     RGBtoHSV(sr, sg, sb, &sh, &ss, &sv);
+                    ss *= 1.5;
+                    if (ss > 1.0) ss = 1.0;
                     sv = sv * 0.5 + 0.5;
                     HSVtoRGB(&r, &g, &b, sh, ss, sv);
-                    r *= color_range;
-                    g *= color_range;
-                    b *= color_range;
+                    /* color_range is repurposed for the spectrum FFT
+                     * window size, so don't also use it as a color
+                     * multiplier here. */
                     glColor4d(r * brightness, g * brightness, b * brightness, a);
                     color_set = true;
                 }
