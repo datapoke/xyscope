@@ -1605,7 +1605,7 @@ public:
                         for (unsigned int j = 4; j < half_w; j++) {
                             B += stft_results[i][j];
                         }
-                        B *= 0.5;
+                        B *= 0.75;
                         spectrum_colors[i * 3 + 0] = R;
                         spectrum_colors[i * 3 + 1] = G;
                         spectrum_colors[i * 3 + 2] = B;
