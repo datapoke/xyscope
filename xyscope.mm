@@ -1319,20 +1319,35 @@ public:
         /* FFT stuff */
         unsigned int window_size, overlap_size;
         if (prefs.display_mode == DisplaySpectrumMode) {
-            /* Spectrum mode: use a tiny FFT (twice as wide as Frequency
-             * mode's, so draw_frames/50 instead of /100) and just take
-             * the first three bins as R, G, B directly. With ~3kHz bin
-             * width at 96 kHz that puts bin 1 in the low-treble range,
-             * bin 2 in the mid-treble, bin 3 in the high-treble — three
-             * "color channels" that any musical content will modulate
-             * differently. Equal magnitudes across the three bins gives
-             * white. Same overlap ratio as Frequency mode keeps the
-             * per-vertex color variation. Round window_size down to a
-             * power of two so vDSP is happy. */
-            unsigned int target = draw_frames / 25;
-            window_size = 4;
-            while ((window_size << 1) <= target) window_size <<= 1;
-            overlap_size = window_size / 2;
+            /* Spectrum mode: color_range indexes octaves of window_size
+             * so each integer step of color_range doubles the FFT
+             * window (and halves the bin width).
+             *
+             *   color_range  0  1  2  3  4  5
+             *   window_size  32 64 128 256 512 1024
+             *
+             * Default color_range=1 gives window_size=64, bin_width
+             * 1500 Hz. Cranks above that give progressively finer
+             * frequency resolution at the cost of fewer STFT windows
+             * per frame.
+             *
+             * overlap_size = 0 means windows tile (stride = window_size)
+             * rather than 50%-overlapping. That halves the FFT count
+             * per frame at small window sizes without meaningfully
+             * reducing color variation, and when frames_read isn't a
+             * clean multiple of window_size the aggregation adds one
+             * "nudged" STFT at frames_read-window_size to cover the
+             * trailing samples. */
+            int steps = (int)prefs.color_range;
+            if (steps < 0)  steps = 0;
+            if (steps > 10) steps = 10;
+            window_size = 32;
+            for (int i = 0; i < steps; i++) {
+                unsigned int next = window_size * 2;
+                if (next > (unsigned int)draw_frames || next > 2048) break;
+                window_size = next;
+            }
+            overlap_size = 0;
         } else {
             window_size  = draw_frames / 100;
             overlap_size = draw_frames / 200;
@@ -1463,11 +1478,15 @@ public:
                     }
                 }
 
-                // Create the STFT array (zero-initialised so trailing
-                // windows that don't get computed are detectably empty)
-                unsigned int n_window_slots = fft_count / stride_fft;
-                stft_results = new double*[n_window_slots];
-                for (unsigned int i = 0; i < n_window_slots; i++) {
+                /* Allocate n_windows + 1 STFT slots. The extra slot is
+                 * either the "nudged" tail window in spectrum mode or
+                 * trailing carry-forward in both modes. n_windows in
+                 * audio units — scales down by fft_spline to match. */
+                unsigned int stride_audio = window_size - overlap_size;
+                unsigned int n_windows_audio = frames_read / stride_audio;
+                unsigned int n_stft_slots = n_windows_audio + 1;
+                stft_results = new double*[n_stft_slots];
+                for (unsigned int i = 0; i < n_stft_slots; i++) {
                     stft_results[i] = new double[window_size_fft]();
                 }
 #ifdef __APPLE__
@@ -1488,57 +1507,62 @@ public:
                 fftw_complex *fft_out_local =
                     (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * window_size_fft);
 #endif
-                // Loop over the (possibly splined) FFT input
-                unsigned int w_idx = 0;
-                for (unsigned int i = 0; i + window_size_fft <= fft_count; i += stride_fft) {
+                /* FFT computation lambda — one body for both the main
+                 * loop and the spectrum-mode nudge. Captures the vDSP
+                 * / FFTW locals by reference. */
+                auto compute_fft_at = [&](unsigned int start_i, unsigned int target_slot) {
 #ifdef __APPLE__
-                    // Copy the next window_size_fft samples to a temporary array
                     float *input_data = new float[window_size_fft];
                     for (unsigned int j = 0; j < window_size_fft; j++) {
-                        input_data[j] = (float)fft_input[i + j];
+                        input_data[j] = (float)fft_input[start_i + j];
                     }
-
-                    // Convert real input to split complex (required by vDSP)
                     vDSP_ctoz((DSPComplex*)input_data, 2, &fft_data, 1, window_size_fft/2);
-
-                    // Perform FFT
                     vDSP_fft_zrip(fft_setup_local, &fft_data, 1, log2n_win, FFT_FORWARD);
-
-                    // Store the FFT results in the STFT array
                     for (unsigned int j = 0; j < window_size_fft/2; j++) {
                         double real = fft_data.realp[j];
                         double imag = fft_data.imagp[j];
-                        stft_results[w_idx][j] = sqrt(real * real + imag * imag);
+                        stft_results[target_slot][j] = sqrt(real * real + imag * imag);
                     }
-                    // Mirror for second half (DC and Nyquist)
                     for (unsigned int j = window_size_fft/2; j < window_size_fft; j++) {
-                        stft_results[w_idx][j] = stft_results[w_idx][window_size_fft - j];
+                        stft_results[target_slot][j] = stft_results[target_slot][window_size_fft - j];
                     }
-
                     delete[] input_data;
 #else
                     double (*temp_data)[2] = new double[window_size_fft][2];
                     for (unsigned int j = 0; j < window_size_fft; j++) {
-                        temp_data[j][0] = fft_input[i + j];
+                        temp_data[j][0] = fft_input[start_i + j];
                         temp_data[j][1] = 0.0;
                     }
-
-                    // Perform an FFT on the temporary array
                     fft_plan = fftw_plan_dft_1d(window_size_fft, temp_data, fft_out_local, FFTW_FORWARD, FFTW_ESTIMATE);
                     fftw_execute(fft_plan);
-
-                    // Store the FFT results in the STFT array
                     for (unsigned int j = 0; j < window_size_fft; j++) {
                         double real = fft_out_local[j][0];
                         double imag = fft_out_local[j][1];
-                        stft_results[w_idx][j] = sqrt(real * real + imag * imag);
+                        stft_results[target_slot][j] = sqrt(real * real + imag * imag);
                     }
-
-                    // Clean up the temporary array
                     fftw_destroy_plan(fft_plan);
                     delete[] temp_data;
 #endif
+                };
+
+                // Regular STFT loop over the (possibly splined) FFT input
+                unsigned int w_idx = 0;
+                for (unsigned int i = 0; i + window_size_fft <= fft_count; i += stride_fft) {
+                    compute_fft_at(i, w_idx);
                     w_idx++;
+                }
+
+                /* Nudge: in spectrum mode, if the last regular window
+                 * doesn't cover the end of the frame, add one more FFT
+                 * positioned to end exactly at fft_count. It lands in
+                 * slot n_windows_audio (the last allocated slot), which
+                 * is exactly where vertex indexing sends the trailing
+                 * vertices via `i / stride`. */
+                if (prefs.display_mode == DisplaySpectrumMode && w_idx > 0) {
+                    unsigned int last_end = (w_idx - 1) * stride_fft + window_size_fft;
+                    if (last_end < fft_count) {
+                        compute_fft_at(fft_count - window_size_fft, n_windows_audio);
+                    }
                 }
                 delete[] fft_input;
 #ifdef __APPLE__
@@ -1554,9 +1578,13 @@ public:
 
                 if (prefs.display_mode == DisplayFrequencyMode) {
                     /* Frequency mode: collapse each window's spectrum to a
-                     * single average magnitude, mapped to hue downstream. */
+                     * single average magnitude, mapped to hue downstream.
+                     * Iterates to n_windows INCLUSIVE so the +1 padding
+                     * stft slot gets deleted too. The padding slot is
+                     * zero-initialised, so avg_magnitudes[n_windows] ends
+                     * up at 0 — matches the allocation's zero init. */
                     avg_magnitudes = new double[n_windows + 1]();
-                    for (unsigned int i = 0; i < n_windows; i++) {
+                    for (unsigned int i = 0; i <= n_windows; i++) {
                         double sum = 0.0;
                         for (unsigned int j = 0; j < window_size; j++) {
                             double magnitude = stft_results[i][j];
@@ -1570,18 +1598,19 @@ public:
                     }
                 } else {
                     /* Spectrum mode:
-                     *   R = bin0                          (~0–750 Hz)
-                     *   G = bin1 + bin2 + bin3            (~750 Hz–5.25 kHz)
-                     *   B = sum(bin4..b_last)             (~5.25–19.5 kHz)
-                     * where b_last is the highest bin whose center
-                     * is at or below 20 kHz. Everything above the
-                     * audible range (including spline-overshoot
-                     * artifacts in the supersonic bins) is excluded
-                     * so pure tones with no real treble don't get
-                     * false blue from accumulated noise or overshoot.
-                     * With only ~10 bins in B (vs the hundreds that
-                     * half_w would give at spline_steps=16), the sum
-                     * no longer dogpiles across noise.
+                     *   R = sum(bin0..r_last)    (~0–1 kHz, sub-bass+kick)
+                     *   G = sum(r_last+1..g_last) (~1–5 kHz, fat mid)
+                     *   B = sum(g_last+1..b_last) (~5–20 kHz, audible treble)
+                     * Boundaries are computed dynamically from bin_width
+                     * so they adapt to whatever FFT window color_range
+                     * picked — at baseline (window_size=64, bin_width
+                     * 1500 Hz) this gives R=bin0, G=bins 1..3, B=bins
+                     * 4..13. At larger windows each band gets many more
+                     * bins and finer frequency resolution.
+                     *
+                     * Supersonic bins (>20 kHz) are excluded so pure
+                     * tones with no real treble don't get false blue
+                     * from accumulated noise or spline overshoot.
                      *
                      * Then divide all three by the per-frame max
                      * CHANNEL value so the strongest band in the
@@ -1593,21 +1622,37 @@ public:
                      * scales both the effective sample rate AND the
                      * window size proportionally). */
                     double bin_width_hz = (double)sample_rate / (double)window_size;
+                    unsigned int r_last = (unsigned int)(1000.0 / bin_width_hz);
+                    unsigned int g_last = (unsigned int)(5000.0 / bin_width_hz);
                     unsigned int b_last = (unsigned int)(20000.0 / bin_width_hz);
-                    if (b_last < 4) b_last = 4;
-                    if (b_last >= half_w) b_last = half_w - 1;
+                    /* Enforce r_last < g_last < b_last < half_w,
+                     * leaving at least one bin per band. */
+                    if (r_last >= half_w)            r_last = half_w - 3;
+                    if (g_last <= r_last)            g_last = r_last + 1;
+                    if (b_last <= g_last)            b_last = g_last + 1;
+                    if (b_last >= half_w)            b_last = half_w - 1;
                     spectrum_colors = new double[(n_windows + 1) * 3]();
                     /* First pass: compute per-band sums and track
-                     * the max CHANNEL value across the whole frame. */
+                     * the max CHANNEL value across the whole frame.
+                     * Iterates to n_windows INCLUSIVE: the extra slot
+                     * holds either the nudged tail FFT (if there was
+                     * a tail gap) or zero (which triggers the trailing
+                     * carry-forward in the second pass). Either way
+                     * the padding slot participates in aggregation so
+                     * vertex indexing beyond the last regular window
+                     * gets a sensible color. */
                     double max_v = 0.0;
-                    for (unsigned int i = 0; i < n_windows; i++) {
-                        double R = stft_results[i][0];
+                    for (unsigned int i = 0; i <= n_windows; i++) {
+                        double R = 0.0;
+                        for (unsigned int j = 0; j <= r_last; j++) {
+                            R += stft_results[i][j];
+                        }
                         double G = 0.0;
-                        if (1 < half_w) G += stft_results[i][1];
-                        if (2 < half_w) G += stft_results[i][2];
-                        if (3 < half_w) G += stft_results[i][3];
+                        for (unsigned int j = r_last + 1; j <= g_last; j++) {
+                            G += stft_results[i][j];
+                        }
                         double B = 0.0;
-                        for (unsigned int j = 4; j <= b_last; j++) {
+                        for (unsigned int j = g_last + 1; j <= b_last; j++) {
                             B += stft_results[i][j];
                         }
                         spectrum_colors[i * 3 + 0] = R;
@@ -1621,7 +1666,7 @@ public:
                     /* Second pass: normalize and carry the previous
                      * valid color forward through trailing zero rows. */
                     double last_r = 0.0, last_g = 0.0, last_b = 0.0;
-                    for (unsigned int i = 0; i < n_windows; i++) {
+                    for (unsigned int i = 0; i <= n_windows; i++) {
                         double R = (max_v > 0.0) ? spectrum_colors[i*3+0] / max_v : 0.0;
                         double G = (max_v > 0.0) ? spectrum_colors[i*3+1] / max_v : 0.0;
                         double B = (max_v > 0.0) ? spectrum_colors[i*3+2] / max_v : 0.0;
@@ -2239,6 +2284,8 @@ public:
     void nextDisplayMode(void)
     {
         prefs.display_mode = (prefs.display_mode + 1) % NUM_DISPLAY_MODES;
+        if (prefs.display_mode == DisplaySpectrumMode)
+            setColorRange(prefs.color_range);   /* re-clamp for new mode */
         showDisplayMode(TIMED);
     }
 
@@ -2248,6 +2295,8 @@ public:
             prefs.display_mode = NUM_DISPLAY_MODES - 1;
         else
             prefs.display_mode = prefs.display_mode - 1;
+        if (prefs.display_mode == DisplaySpectrumMode)
+            setColorRange(prefs.color_range);   /* re-clamp for new mode */
         showDisplayMode(TIMED);
     }
 
@@ -2455,7 +2504,23 @@ public:
     void setColorRange(double range)
     {
         prefs.color_range = range;
-        wrapValue(&prefs.color_range, 100.0);
+        if (prefs.display_mode == DisplaySpectrumMode) {
+            /* Spectrum mode uses color_range as an octave index for
+             * window_size. Clamp to the usable octave range: each
+             * integer step doubles window_size from 32, and we stop
+             * once the next doubling would overflow draw_frames or
+             * the 2048 vDSP cap. */
+            int max_steps = 0;
+            unsigned int ws = 32;
+            while (ws * 2 <= (unsigned int)draw_frames && ws * 2 <= 2048) {
+                ws *= 2;
+                max_steps++;
+            }
+            if (prefs.color_range < 0.0) prefs.color_range = 0.0;
+            if (prefs.color_range > (double)max_steps) prefs.color_range = (double)max_steps;
+        } else {
+            wrapValue(&prefs.color_range, 100.0);
+        }
         showColorRange(TIMED);
     }
 
