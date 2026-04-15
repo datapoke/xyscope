@@ -2784,6 +2784,17 @@ int main(int argc, char *argv[])
         fprintf(stderr, "=== XYScope log ===\n");
         fflush(stderr);
     }
+#elif !defined(__APPLE__)
+    /* COSMIC (and likely other Wayland compositors' app launchers) drain
+     * child stdout but not stderr, so fprintf(stderr, ...) blocks
+     * indefinitely once the stderr pipe fills up during init — the HDR
+     * capability probe alone emits enough output on compositors without
+     * wp_color_management_v1 to deadlock the startup path. Route stderr
+     * through stdout so diagnostic writes can't block. Tradeoff: shell
+     * tricks like `./xyscope 2>errfile` no longer separate the two
+     * streams, but xyscope is a GUI app and the stream separation is
+     * not load-bearing. */
+    dup2(STDOUT_FILENO, STDERR_FILENO);
 #endif
     // Load preferences
     bool config_loaded = load_config(&scn.prefs, &scn.presets, &scn.app);
@@ -2908,6 +2919,23 @@ int main(int argc, char *argv[])
                               scn.prefs.normal_dim[0],
                               scn.prefs.normal_dim[1],
                               SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+
+#ifndef _WIN32
+    if (!window) {
+        /* SDL_GL_FLOATBUFFERS can fail on X11 GLX without
+         * GLX_ARB_fbconfig_float (e.g. pure-X11 sessions or older
+         * drivers). Retry as SDR — users on those setups lose HDR
+         * headroom but keep the app. */
+        fprintf(stderr, "Window creation failed (%s); retrying as SDR (no float framebuffer)\n", SDL_GetError());
+        SDL_GL_SetAttribute(SDL_GL_FLOATBUFFERS, 0);
+        window = SDL_CreateWindow("XY Scope",
+                                  scn.prefs.position[0],
+                                  scn.prefs.position[1],
+                                  scn.prefs.normal_dim[0],
+                                  scn.prefs.normal_dim[1],
+                                  SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+    }
+#endif
 
     if (!window) {
         fprintf(stderr, "Window could not be created! SDL_Error: %s\n", SDL_GetError());
