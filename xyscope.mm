@@ -464,8 +464,22 @@ static void on_param_changed(void *userdata, uint32_t id, const struct spa_pod *
     struct spa_audio_info_raw info;
     if (spa_format_audio_raw_parse(param, &info) >= 0 && info.rate > 0) {
         t_data->negotiated_sample_rate = info.rate;
-        fprintf(stderr, "Pipewire negotiated format: %u Hz, %u channels\n",
-                info.rate, info.channels);
+        /* Pipewire/Wireplumber may pass through the source's channel
+         * count instead of downmixing to our requested stereo
+         * (e.g. capturing a 5.1 HDMI sink monitor produces 6 channels).
+         * Update t_data->channels to match so on_process reads the
+         * interleaved buffer with the correct stride. FL is always
+         * channel 0 and FR is always channel 1 in standard channel
+         * orderings, so picking samples[i*ch] and samples[i*ch+1]
+         * still gets the front-left/front-right pair correctly. */
+        if (info.channels > 0 && info.channels != t_data->channels) {
+            fprintf(stderr, "Pipewire negotiated %u channels (requested %u); using FL/FR from interleaved stream\n",
+                    info.channels, t_data->channels);
+            t_data->channels = info.channels;
+        } else {
+            fprintf(stderr, "Pipewire negotiated format: %u Hz, %u channels\n",
+                    info.rate, info.channels);
+        }
     }
 }
 
