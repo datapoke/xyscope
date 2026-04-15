@@ -52,7 +52,8 @@ static inline unsigned int draw_xy_vertices(
     unsigned int overlap_size,
     double max_magnitude,
     double brightness,
-    double velocity_dim)
+    double velocity_dim,
+    double *spectrum_colors)  /* NULL unless DisplaySpectrumMode; 3 doubles per STFT window */
 {
     unsigned int vertex_count = 0;
     double h   = -1.0;
@@ -98,7 +99,8 @@ static inline unsigned int draw_xy_vertices(
                 break;
         }
 
-        /* Display mode: compute hue */
+        /* Display mode: compute hue (or RGB directly for spectrum mode) */
+        bool color_set = false;
         switch (display_mode) {
             case DisplayStandardMode:
                 break;
@@ -115,22 +117,49 @@ static inline unsigned int draw_xy_vertices(
                         0, max_magnitude, 0, 360) + hue;
                 }
                 break;
+            case DisplaySpectrumMode:
+                if (spectrum_colors != NULL) {
+                    /* Pre-computed per-STFT-window RGB triples; the
+                     * window->color mapping is the same indexing trick
+                     * Frequency mode uses for avg_magnitudes. Lift V
+                     * to the upper half of its range (V = V/2 + 0.5)
+                     * so the trace stays at least 50% bright even on
+                     * quiet windows, while loud windows still hit full
+                     * brightness. Hue and saturation come straight from
+                     * the spectrum bins. */
+                    unsigned int w = i / (window_size - overlap_size);
+                    double sr = spectrum_colors[w * 3 + 0];
+                    double sg = spectrum_colors[w * 3 + 1];
+                    double sb = spectrum_colors[w * 3 + 2];
+                    double sh, ss, sv;
+                    RGBtoHSV(sr, sg, sb, &sh, &ss, &sv);
+                    sv = sv / 2.0 + 0.5;
+                    HSVtoRGB(&r, &g, &b, sh, ss, sv);
+                    r *= color_range;
+                    g *= color_range;
+                    b *= color_range;
+                    glColor4d(r * brightness, g * brightness, b * brightness, a);
+                    color_set = true;
+                }
+                break;
             default:
                 break;
         }
 
         /* Normalize and apply color */
-        if (h > -1.0 && display_mode != DisplayStandardMode) {
-            h = normalizeHue(h);
-        }
-        if (h > -1.0) {
-            HSVtoRGB(&r, &g, &b, h, s, v);
-            glColor4d(r * brightness, g * brightness, b * brightness, a);
-        } else if (velocity_dim > 0.0) {
-            /* Standard mode with velocity dim: recompute color
-             * each vertex since alpha changes per sample */
-            HSVtoRGB(&r, &g, &b, hue, s, v);
-            glColor4d(r * brightness, g * brightness, b * brightness, a);
+        if (!color_set) {
+            if (h > -1.0 && display_mode != DisplayStandardMode) {
+                h = normalizeHue(h);
+            }
+            if (h > -1.0) {
+                HSVtoRGB(&r, &g, &b, h, s, v);
+                glColor4d(r * brightness, g * brightness, b * brightness, a);
+            } else if (velocity_dim > 0.0) {
+                /* Standard mode with velocity dim: recompute color
+                 * each vertex since alpha changes per sample */
+                HSVtoRGB(&r, &g, &b, hue, s, v);
+                glColor4d(r * brightness, g * brightness, b * brightness, a);
+            }
         }
 
         /* Catmull-Rom spline interpolation */

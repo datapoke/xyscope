@@ -321,7 +321,8 @@ int main(int argc, char *argv[])
                 NULL,               /* no frequency magnitudes */
                 0, 0, 0.0,
                 1.0,                /* brightness */
-                0.0);               /* velocity_dim */
+                0.0,                /* velocity_dim */
+                NULL);              /* no spectrum colors */
             glEnd();
 
             glFinish();

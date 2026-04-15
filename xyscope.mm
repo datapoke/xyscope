@@ -1173,12 +1173,12 @@ public:
     timeval mouse_dirty_time;
 
     #define NUM_COLOR_MODES 2
-    #define NUM_DISPLAY_MODES 3
+    #define NUM_DISPLAY_MODES 4
     static const unsigned int DefaultColorMode   = DEFAULT_COLOR_MODE;
     static const unsigned int DefaultDisplayMode  = DEFAULT_DISPLAY_MODE;
     const char *color_mode_names[NUM_COLOR_MODES] = {"Standard", "Delta"};
     const char *display_mode_names[NUM_DISPLAY_MODES] = {
-        "Standard", "Radius", "Frequency"
+        "Standard", "Radius", "Frequency", "Spectrum"
     };
 
     scene()
@@ -1317,12 +1317,31 @@ public:
         signed int distance = 0;
 
         /* FFT stuff */
-        unsigned int window_size  = draw_frames / 100;
-        unsigned int overlap_size = draw_frames / 200;
-        if (window_size < 2) window_size = 2;
-        if (overlap_size >= window_size) overlap_size = window_size / 2;
+        unsigned int window_size, overlap_size;
+        if (prefs.display_mode == DisplaySpectrumMode) {
+            /* Spectrum mode: use a tiny FFT (twice as wide as Frequency
+             * mode's, so draw_frames/50 instead of /100) and just take
+             * the first three bins as R, G, B directly. With ~3kHz bin
+             * width at 96 kHz that puts bin 1 in the low-treble range,
+             * bin 2 in the mid-treble, bin 3 in the high-treble — three
+             * "color channels" that any musical content will modulate
+             * differently. Equal magnitudes across the three bins gives
+             * white. Same overlap ratio as Frequency mode keeps the
+             * per-vertex color variation. Round window_size down to a
+             * power of two so vDSP is happy. */
+            unsigned int target = draw_frames / 25;
+            window_size = 4;
+            while ((window_size << 1) <= target) window_size <<= 1;
+            overlap_size = window_size / 2;
+        } else {
+            window_size  = draw_frames / 100;
+            overlap_size = draw_frames / 200;
+            if (window_size < 2) window_size = 2;
+            if (overlap_size >= window_size) overlap_size = window_size / 2;
+        }
         double max_magnitude = 0.0;
         double* avg_magnitudes = NULL;
+        double* spectrum_colors = NULL;  /* per-window RGB triples for DisplaySpectrumMode */
         double** stft_results;
 #ifndef __APPLE__
         fftw_plan fft_plan;
@@ -1393,12 +1412,14 @@ public:
             glLineWidth((GLfloat) prefs.line_width);
         }
 
-        /* FFT setup for frequency mode (must happen before glBegin) */
-        if (prefs.display_mode == DisplayFrequencyMode) {
-                // Create the STFT array
+        /* FFT setup for frequency / spectrum modes (must happen before glBegin) */
+        if (prefs.display_mode == DisplayFrequencyMode
+            || prefs.display_mode == DisplaySpectrumMode) {
+                // Create the STFT array (zero-initialised so trailing
+                // windows that don't get computed are detectably empty)
                 stft_results = new double*[frames_read / (window_size - overlap_size)];
                 for (unsigned int i = 0; i < frames_read / (window_size - overlap_size); i++) {
-                    stft_results[i] = new double[window_size];
+                    stft_results[i] = new double[window_size]();
                 }
 #ifdef __APPLE__
                 // Set up vDSP FFT once outside loop (performance optimization)
@@ -1468,19 +1489,87 @@ public:
                 delete[] fft_data.imagp;
 #endif
 
-                // Calculate the average magnitude of the STFT array
-                avg_magnitudes = new double[frames_read / (window_size - overlap_size) + 1]();
-                for (unsigned int i = 0; i < frames_read / (window_size - overlap_size); i++) {
-                    double sum = 0.0;
-                    for (unsigned int j = 0; j < window_size; j++) {
-                        double magnitude = stft_results[i][j];
-                        if (magnitude > max_magnitude) {
-                            max_magnitude = magnitude;
+                unsigned int n_windows = frames_read / (window_size - overlap_size);
+
+                if (prefs.display_mode == DisplayFrequencyMode) {
+                    /* Frequency mode: collapse each window's spectrum to a
+                     * single average magnitude, mapped to hue downstream. */
+                    avg_magnitudes = new double[n_windows + 1]();
+                    for (unsigned int i = 0; i < n_windows; i++) {
+                        double sum = 0.0;
+                        for (unsigned int j = 0; j < window_size; j++) {
+                            double magnitude = stft_results[i][j];
+                            if (magnitude > max_magnitude) {
+                                max_magnitude = magnitude;
+                            }
+                            sum += stft_results[i][j];
                         }
-                        sum += stft_results[i][j];
+                        avg_magnitudes[i] = sum / window_size;
+                        delete[] stft_results[i];
                     }
-                    avg_magnitudes[i] = sum / window_size;
-                    delete[] stft_results[i];
+                } else {
+                    /* Spectrum mode:
+                     *   R = min(1, bin0 / max_bin)
+                     *   G = min(1, sum(bin1..bin3) / max_bin)
+                     *   B = min(1, sum(bin4..half_w-1) / max_bin)
+                     * Each bin is first normalized against the loudest
+                     * bin in the frame so values are in 0..1, then the
+                     * sums in each band can exceed 1 if multiple bins
+                     * are bright (and clamp). Single bright bins can
+                     * saturate their channel, multiple bright bins also
+                     * saturate (no double-saturation past 1.0), and
+                     * equal-per-bin energy produces white because all
+                     * three sums clip to the same value. */
+                    unsigned int half_w = window_size / 2;
+                    spectrum_colors = new double[(n_windows + 1) * 3]();
+                    /* Find the loudest bin across the whole frame so we
+                     * have a stable per-frame normalization basis. */
+                    double max_bin = 0.0;
+                    for (unsigned int i = 0; i < n_windows; i++) {
+                        for (unsigned int j = 0; j < half_w; j++) {
+                            if (stft_results[i][j] > max_bin)
+                                max_bin = stft_results[i][j];
+                        }
+                    }
+                    double scale = (max_bin > 0.0) ? 1.0 / max_bin : 0.0;
+                    /* First pass: compute clamped sums and track the max
+                     * (still needed for the trailing-fill check). */
+                    double max_v = 0.0;
+                    for (unsigned int i = 0; i < n_windows; i++) {
+                        double R = stft_results[i][0] * scale;
+                        if (R > 1.0) R = 1.0;
+                        double G = 0.0;
+                        for (unsigned int j = 1; j <= 3 && j < half_w; j++) {
+                            G += stft_results[i][j] * scale;
+                        }
+                        if (G > 1.0) G = 1.0;
+                        double B = 0.0;
+                        for (unsigned int j = 4; j < half_w; j++) {
+                            B += stft_results[i][j] * scale;
+                        }
+                        if (B > 1.0) B = 1.0;
+                        spectrum_colors[i * 3 + 0] = R;
+                        spectrum_colors[i * 3 + 1] = G;
+                        spectrum_colors[i * 3 + 2] = B;
+                        if (R > max_v) max_v = R;
+                        if (G > max_v) max_v = G;
+                        if (B > max_v) max_v = B;
+                        delete[] stft_results[i];
+                    }
+                    /* Second pass: normalize and carry the previous
+                     * valid color forward through trailing zero rows. */
+                    double last_r = 0.0, last_g = 0.0, last_b = 0.0;
+                    for (unsigned int i = 0; i < n_windows; i++) {
+                        double R = (max_v > 0.0) ? spectrum_colors[i*3+0] / max_v : 0.0;
+                        double G = (max_v > 0.0) ? spectrum_colors[i*3+1] / max_v : 0.0;
+                        double B = (max_v > 0.0) ? spectrum_colors[i*3+2] / max_v : 0.0;
+                        if (R + G + B > 0.0) {
+                            last_r = R; last_g = G; last_b = B;
+                        }
+                        spectrum_colors[i * 3 + 0] = last_r;
+                        spectrum_colors[i * 3 + 1] = last_g;
+                        spectrum_colors[i * 3 + 2] = last_b;
+                    }
                 }
                 delete[] stft_results;
         }
@@ -1525,7 +1614,8 @@ public:
             prefs.spline_steps,
             (prefs.display_mode == DisplayFrequencyMode) ? avg_magnitudes : NULL,
             window_size, overlap_size, max_magnitude,
-            prefs.brightness, prefs.velocity_dim);
+            prefs.brightness, prefs.velocity_dim,
+            spectrum_colors);
 
         glEnd();
 
@@ -1536,6 +1626,8 @@ public:
         glPopMatrix();
         if (prefs.display_mode == DisplayFrequencyMode)
             delete[] avg_magnitudes;
+        if (prefs.display_mode == DisplaySpectrumMode)
+            delete[] spectrum_colors;
 
         switch (prefs.color_mode) {
             case ColorStandardMode:

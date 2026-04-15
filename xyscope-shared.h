@@ -109,7 +109,8 @@ typedef enum {
 typedef enum {
     DisplayStandardMode  = 0,
     DisplayRadiusMode    = 1,
-    DisplayFrequencyMode = 2
+    DisplayFrequencyMode = 2,
+    DisplaySpectrumMode  = 3
 } display_mode_e;
 
 /* Default mode macros */
@@ -223,6 +224,29 @@ static inline void HSVtoRGB(double *r, double *g, double *b,
             *r = v; *g = p; *b = q;
             break;
     }
+}
+
+static inline void RGBtoHSV(double r, double g, double b,
+                             double *h, double *s, double *v) {
+    double max_c = fmax(r, fmax(g, b));
+    double min_c = fmin(r, fmin(g, b));
+    double delta = max_c - min_c;
+
+    *v = max_c;
+    *s = (max_c > 0.0) ? (delta / max_c) : 0.0;
+
+    if (delta <= 0.0) {
+        *h = 0.0;
+        return;
+    }
+    if (max_c == r) {
+        *h = 60.0 * fmod((g - b) / delta + 6.0, 6.0);
+    } else if (max_c == g) {
+        *h = 60.0 * (((b - r) / delta) + 2.0);
+    } else {
+        *h = 60.0 * (((r - g) / delta) + 4.0);
+    }
+    if (*h < 0.0) *h += 360.0;
 }
 
 /* ---- Config file (INI format) ---- */
