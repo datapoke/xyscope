@@ -2859,7 +2859,9 @@ int main(int argc, char *argv[])
         if (!font) font = TTF_OpenFont("C:\\Windows\\Fonts\\cour.ttf", 28);
 #else
         font = TTF_OpenFont("/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf", 28);
+        if (!font) font = TTF_OpenFont("/usr/share/fonts/noto/NotoSansMono-Regular.ttf", 28);
         if (!font) font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 28);
+        if (!font) font = TTF_OpenFont("/usr/share/fonts/dejavu/DejaVuSansMono.ttf", 28);
 #endif
         if (!font) {
             fprintf(stderr, "Warning: Could not load font: %s\n", TTF_GetError());
