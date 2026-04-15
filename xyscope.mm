@@ -1570,42 +1570,46 @@ public:
                     }
                 } else {
                     /* Spectrum mode:
-                     *   R = bin0 + bin1                  (~0–2.25 kHz)
-                     *   G = bin2 + bin3                  (~2.25–5.25 kHz)
-                     *   B = sum(bin4..half_w-1)          (~5.25+ kHz)
+                     *   R = bin0                          (~0–750 Hz)
+                     *   G = bin1 + bin2 + bin3            (~750 Hz–5.25 kHz)
+                     *   B = sum(bin4..b_last)             (~5.25–19.5 kHz)
+                     * where b_last is the highest bin whose center
+                     * is at or below 20 kHz. Everything above the
+                     * audible range (including spline-overshoot
+                     * artifacts in the supersonic bins) is excluded
+                     * so pure tones with no real treble don't get
+                     * false blue from accumulated noise or overshoot.
+                     * With only ~10 bins in B (vs the hundreds that
+                     * half_w would give at spline_steps=16), the sum
+                     * no longer dogpiles across noise.
+                     *
                      * Then divide all three by the per-frame max
                      * CHANNEL value so the strongest band in the
                      * frame is exactly 1.0 and the other two are
-                     * proportional ratios less than 1.0. The hue
-                     * accurately reflects which band dominated; no
-                     * clamp-induced (1,1,1) collapse for energetic
-                     * broadband music. Equal energy across the three
-                     * channels still gives white because all three
-                     * scale to the same value.
-                     *
-                     * half_w uses window_size_fft because the FFT was
-                     * run on Catmull-Rom-splined audio with a window
-                     * scaled by spline_steps. Bins 4..half_w-1 now
-                     * include the high-frequency content above the
-                     * original audio Nyquist that the spline overshoot
-                     * generates — that's how transients tint the
-                     * trace toward blue. */
+                     * proportional ratios less than 1.0. */
                     unsigned int half_w = window_size_fft / 2;
+                    /* Bin width = sample_rate / window_size (same as
+                     * for the raw-audio FFT because spline upsampling
+                     * scales both the effective sample rate AND the
+                     * window size proportionally). */
+                    double bin_width_hz = (double)sample_rate / (double)window_size;
+                    unsigned int b_last = (unsigned int)(20000.0 / bin_width_hz);
+                    if (b_last < 4) b_last = 4;
+                    if (b_last >= half_w) b_last = half_w - 1;
                     spectrum_colors = new double[(n_windows + 1) * 3]();
-                    /* First pass: compute raw band sums and track
+                    /* First pass: compute per-band sums and track
                      * the max CHANNEL value across the whole frame. */
                     double max_v = 0.0;
                     for (unsigned int i = 0; i < n_windows; i++) {
                         double R = stft_results[i][0];
-                        if (1 < half_w) R += stft_results[i][1];
                         double G = 0.0;
+                        if (1 < half_w) G += stft_results[i][1];
                         if (2 < half_w) G += stft_results[i][2];
                         if (3 < half_w) G += stft_results[i][3];
                         double B = 0.0;
-                        for (unsigned int j = 4; j < half_w; j++) {
+                        for (unsigned int j = 4; j <= b_last; j++) {
                             B += stft_results[i][j];
                         }
-                        B *= 0.75;
                         spectrum_colors[i * 3 + 0] = R;
                         spectrum_colors[i * 3 + 1] = G;
                         spectrum_colors[i * 3 + 2] = B;

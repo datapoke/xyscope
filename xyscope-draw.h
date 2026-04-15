@@ -122,8 +122,8 @@ static inline unsigned int draw_xy_vertices(
                     /* Pre-computed per-STFT-window RGB triples; the
                      * window->color mapping is the same indexing trick
                      * Frequency mode uses for avg_magnitudes. Lift V
-                     * into the upper 3/4 of its range (V = V*0.75 +
-                     * 0.25) so the trace stays at least 25% bright on
+                     * into the upper half of its range (V = V*0.5 +
+                     * 0.5) so the trace stays at least 50% bright on
                      * quiet windows while loud windows still reach full
                      * brightness. Hue and saturation come straight from
                      * the spectrum bins. */
@@ -133,7 +133,7 @@ static inline unsigned int draw_xy_vertices(
                     double sb = spectrum_colors[w * 3 + 2];
                     double sh, ss, sv;
                     RGBtoHSV(sr, sg, sb, &sh, &ss, &sv);
-                    sv = sv * 0.75 + 0.25;
+                    sv = sv * 0.5 + 0.5;
                     HSVtoRGB(&r, &g, &b, sh, ss, sv);
                     r *= color_range;
                     g *= color_range;
