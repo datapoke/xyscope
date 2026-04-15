@@ -1509,45 +1509,33 @@ public:
                     }
                 } else {
                     /* Spectrum mode:
-                     *   R = min(1, bin0 / max_bin)
-                     *   G = min(1, sum(bin1..bin3) / max_bin)
-                     *   B = min(1, sum(bin4..half_w-1) / max_bin)
-                     * Each bin is first normalized against the loudest
-                     * bin in the frame so values are in 0..1, then the
-                     * sums in each band can exceed 1 if multiple bins
-                     * are bright (and clamp). Single bright bins can
-                     * saturate their channel, multiple bright bins also
-                     * saturate (no double-saturation past 1.0), and
-                     * equal-per-bin energy produces white because all
-                     * three sums clip to the same value. */
+                     *   R = bin0
+                     *   G = sum(bin1..bin3)
+                     *   B = sum(bin4..half_w-1)
+                     * Then divide all three by the per-frame max
+                     * CHANNEL value so the strongest band in the
+                     * frame is exactly 1.0 and the other two are
+                     * proportional ratios less than 1.0. The hue
+                     * accurately reflects which band dominated; no
+                     * clamp-induced (1,1,1) collapse for energetic
+                     * broadband music. Equal energy across the three
+                     * channels still gives white because all three
+                     * scale to the same value. */
                     unsigned int half_w = window_size / 2;
                     spectrum_colors = new double[(n_windows + 1) * 3]();
-                    /* Find the loudest bin across the whole frame so we
-                     * have a stable per-frame normalization basis. */
-                    double max_bin = 0.0;
-                    for (unsigned int i = 0; i < n_windows; i++) {
-                        for (unsigned int j = 0; j < half_w; j++) {
-                            if (stft_results[i][j] > max_bin)
-                                max_bin = stft_results[i][j];
-                        }
-                    }
-                    double scale = (max_bin > 0.0) ? 1.0 / max_bin : 0.0;
-                    /* First pass: compute clamped sums and track the max
-                     * (still needed for the trailing-fill check). */
+                    /* First pass: compute raw band sums and track
+                     * the max CHANNEL value across the whole frame. */
                     double max_v = 0.0;
                     for (unsigned int i = 0; i < n_windows; i++) {
-                        double R = stft_results[i][0] * scale;
-                        if (R > 1.0) R = 1.0;
+                        double R = stft_results[i][0];
                         double G = 0.0;
                         for (unsigned int j = 1; j <= 3 && j < half_w; j++) {
-                            G += stft_results[i][j] * scale;
+                            G += stft_results[i][j];
                         }
-                        if (G > 1.0) G = 1.0;
                         double B = 0.0;
                         for (unsigned int j = 4; j < half_w; j++) {
-                            B += stft_results[i][j] * scale;
+                            B += stft_results[i][j];
                         }
-                        if (B > 1.0) B = 1.0;
                         spectrum_colors[i * 3 + 0] = R;
                         spectrum_colors[i * 3 + 1] = G;
                         spectrum_colors[i * 3 + 2] = B;
