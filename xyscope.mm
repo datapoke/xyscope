@@ -2826,6 +2826,21 @@ int main(int argc, char *argv[])
     if (start_preset >= 0 && start_preset < NUM_PRESETS)
         scn.loadPreset(start_preset);
 
+#if !defined(__APPLE__) && !defined(_WIN32)
+    /* Force SDL onto the Wayland video driver when we're clearly on a
+     * Wayland session. SDL's auto-detect can fall through to the X11
+     * driver depending on parent-process context, and XWayland's X11
+     * reply path deadlocks inside XGetWindowAttributes when xyscope is
+     * launched from the COSMIC app launcher on Pop! OS. Running from a
+     * terminal happens to pick Wayland and works fine. The
+     * wayland_hdr_setup() path already depends on SDL being on Wayland
+     * to extract wl_display from SDL_SysWMinfo, so forcing it here is
+     * consistent with the HDR output pipeline. */
+    if (!getenv("SDL_VIDEODRIVER") && getenv("WAYLAND_DISPLAY")) {
+        setenv("SDL_VIDEODRIVER", "wayland", 0);
+    }
+#endif
+
     // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         fprintf(stderr, "SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
