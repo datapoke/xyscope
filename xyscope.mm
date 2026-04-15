@@ -2785,16 +2785,26 @@ int main(int argc, char *argv[])
         fflush(stderr);
     }
 #elif !defined(__APPLE__)
-    /* COSMIC (and likely other Wayland compositors' app launchers) drain
-     * child stdout but not stderr, so fprintf(stderr, ...) blocks
-     * indefinitely once the stderr pipe fills up during init — the HDR
-     * capability probe alone emits enough output on compositors without
-     * wp_color_management_v1 to deadlock the startup path. Route stderr
-     * through stdout so diagnostic writes can't block. Tradeoff: shell
-     * tricks like `./xyscope 2>errfile` no longer separate the two
-     * streams, but xyscope is a GUI app and the stream separation is
-     * not load-bearing. */
-    dup2(STDOUT_FILENO, STDERR_FILENO);
+    /* GUI app launchers (COSMIC, and likely others) don't drain child
+     * stdio at all — both stdout and stderr can block on full pipes.
+     * dup2 of one onto the other doesn't help. When we're not attached
+     * to a tty, redirect both streams to a log file in the config dir
+     * so diagnostic writes always complete instantly. Matches the
+     * Windows -mwindows approach. Line-buffer the log so partial output
+     * survives crashes. */
+    if (!isatty(STDERR_FILENO)) {
+        const char *home = getenv("HOME");
+        if (!home) home = ".";
+        char logdir[480];
+        char logpath[512];
+        snprintf(logdir, sizeof(logdir), "%s/.config/xyscope", home);
+        mkdir(logdir, 0755);
+        snprintf(logpath, sizeof(logpath), "%s/xyscope.log", logdir);
+        freopen(logpath, "w", stderr);
+        freopen(logpath, "a", stdout);
+        setvbuf(stderr, NULL, _IOLBF, 0);
+        setvbuf(stdout, NULL, _IOLBF, 0);
+    }
 #endif
     // Load preferences
     bool config_loaded = load_config(&scn.prefs, &scn.presets, &scn.app);
