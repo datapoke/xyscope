@@ -1103,7 +1103,7 @@ public:
     bool show_mouse;
 
     #define NUM_TEXT_TIMERS 18
-    #define NUM_AUTO_TEXT_TIMERS 13
+    #define NUM_AUTO_TEXT_TIMERS 14
     typedef struct _text_timer_t {
         bool show;
         timeval time;
@@ -2767,6 +2767,23 @@ int main(int argc, char *argv[])
 #ifdef _WIN32
     SDL_SetMainReady();
     timeBeginPeriod(1);
+
+    /* -mwindows silently discards stdout/stderr. Redirect both to a log file
+     * in the config dir so diagnostic prints (bloom init, HDR setup, errors)
+     * can be read after the fact. */
+    {
+        const char *appdata = getenv("APPDATA");
+        if (!appdata) appdata = ".";
+        char logdir[480];
+        char logpath[512];
+        snprintf(logdir, sizeof(logdir), "%s\\XYScope", appdata);
+        CreateDirectoryA(logdir, NULL);
+        snprintf(logpath, sizeof(logpath), "%s\\xyscope.log", logdir);
+        freopen(logpath, "w", stderr);
+        freopen(logpath, "a", stdout);
+        fprintf(stderr, "=== XYScope log ===\n");
+        fflush(stderr);
+    }
 #endif
     // Load preferences
     bool config_loaded = load_config(&scn.prefs, &scn.presets, &scn.app);
@@ -2959,7 +2976,10 @@ int main(int argc, char *argv[])
     reshape(drawable_w, drawable_h);
     if (!bloom_init(&bloom, drawable_w, drawable_h)) {
         fprintf(stderr, "Bloom init failed or disabled; rendering without bloom.\n");
+    } else {
+        fprintf(stderr, "Bloom init succeeded (%dx%d).\n", bloom.width, bloom.height);
     }
+    fflush(stderr);
 
     if (scn.prefs.is_full_screen) {
         scn.setFullScreen();
