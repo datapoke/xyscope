@@ -2991,10 +2991,16 @@ int main(int argc, char *argv[])
     reshape(drawable_w, drawable_h);
     if (!bloom_init(&bloom, drawable_w, drawable_h)) {
         fprintf(stderr, "Bloom init failed or disabled; rendering without bloom.\n");
-    } else {
+    }
+#ifdef _WIN32
+    /* On Windows the log file is the only way to see diagnostics, and
+     * _mwindows buffers stderr until process exit. Force a flush and emit
+     * an explicit success marker so the log is readable immediately. */
+    else {
         fprintf(stderr, "Bloom init succeeded (%dx%d).\n", bloom.width, bloom.height);
     }
     fflush(stderr);
+#endif
 
     if (scn.prefs.is_full_screen) {
         scn.setFullScreen();
