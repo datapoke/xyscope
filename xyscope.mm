@@ -464,11 +464,25 @@ static void on_param_changed(void *userdata, uint32_t id, const struct spa_pod *
     struct spa_audio_info_raw info;
     if (spa_format_audio_raw_parse(param, &info) >= 0 && info.rate > 0) {
         t_data->negotiated_sample_rate = info.rate;
+        fprintf(stderr, "Pipewire negotiated format: %u Hz, %u channels\n",
+                info.rate, info.channels);
     }
+}
+
+static void on_state_changed(void *userdata, enum pw_stream_state old,
+                             enum pw_stream_state state, const char *error)
+{
+    (void)userdata;
+    fprintf(stderr, "Pipewire stream state: %s -> %s%s%s\n",
+            pw_stream_state_as_string(old),
+            pw_stream_state_as_string(state),
+            error ? " error=" : "",
+            error ? error : "");
 }
 
 static const struct pw_stream_events stream_events = {
     PW_VERSION_STREAM_EVENTS,
+    .state_changed = on_state_changed,
     .param_changed = on_param_changed,
     .process = on_process,
 };
