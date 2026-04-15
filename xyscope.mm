@@ -1124,9 +1124,9 @@ public:
         DelayTimer       = 8,
         BrightnessTimer  = 9,
         VelocityDimTimer = 10,
-        SampleRateTimer  = 11,
-        FrameRateTimer   = 12,
-        BloomTimer       = 13,
+        BloomTimer       = 11,
+        SampleRateTimer  = 12,
+        FrameRateTimer   = 13,
         /* End of text timers automatically included in stats display */
         PresetTimer      = 14,
         PausedTimer      = 15,
