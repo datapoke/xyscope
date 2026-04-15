@@ -28,16 +28,17 @@ ifeq ($(UNAME_S),Darwin)
 else
     # Linux
     CXX = g++
+    BUILD_DIR = build/linux
     PIPEWIRE_CFLAGS = $(shell pkg-config --cflags libpipewire-0.3)
     PIPEWIRE_LIBS = $(shell pkg-config --libs libpipewire-0.3)
     WL_PROTO_DIR = $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)
     CM_XML = $(WL_PROTO_DIR)/staging/color-management/color-management-v1.xml
-    CM_HEADER = $(RELEASE_DIR)/color-management-v1-client-protocol.h
-    CM_CODE = $(RELEASE_DIR)/color-management-v1-protocol.c
-    CM_OBJ = $(RELEASE_DIR)/color-management-v1-protocol.o
+    CM_HEADER = $(BUILD_DIR)/color-management-v1-client-protocol.h
+    CM_CODE = $(BUILD_DIR)/color-management-v1-protocol.c
+    CM_OBJ = $(BUILD_DIR)/color-management-v1-protocol.o
     HAS_CM = $(if $(wildcard $(CM_XML)),yes,)
     ifeq ($(HAS_CM),yes)
-        CM_CFLAGS = -DHAVE_WP_COLOR_MANAGEMENT -I$(RELEASE_DIR)
+        CM_CFLAGS = -DHAVE_WP_COLOR_MANAGEMENT -I$(BUILD_DIR)
         CM_LDLIBS = -lwayland-client -lEGL
     else
         CM_CFLAGS =
@@ -56,9 +57,11 @@ endif
 
 # Wayland color management protocol bindings (Linux only)
 $(CM_HEADER): $(CM_XML)
+	@mkdir -p $(BUILD_DIR)
 	wayland-scanner client-header $< $@
 
 $(CM_CODE): $(CM_XML)
+	@mkdir -p $(BUILD_DIR)
 	wayland-scanner private-code $< $@
 
 $(CM_OBJ): $(CM_CODE)
@@ -111,6 +114,7 @@ clean:
 	@echo "Cleaning build artifacts..."
 	rm -f core *.o
 	rm -rf $(RELEASE_DIR)
+	rm -rf build
 	@echo "✓ Clean complete"
 
 # Full rebuild
