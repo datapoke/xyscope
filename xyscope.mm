@@ -1174,7 +1174,7 @@ public:
 
     #define NUM_COLOR_MODES 2
     #define NUM_DISPLAY_MODES 4
-    static const unsigned int DefaultColorMode   = DEFAULT_COLOR_MODE;
+    static const unsigned int DefaultColorMode    = DEFAULT_COLOR_MODE;
     static const unsigned int DefaultDisplayMode  = DEFAULT_DISPLAY_MODE;
     const char *color_mode_names[NUM_COLOR_MODES] = {"Standard", "Delta"};
     const char *display_mode_names[NUM_DISPLAY_MODES] = {
@@ -2534,9 +2534,9 @@ public:
         prefs.brightness    = detected;
 #endif
         prefs.velocity_dim  = prefs.brightness / 2.0;
-        if (prefs.velocity_dim < 4.0)
-            prefs.velocity_dim = 4.0;
-        prefs.bloom_intensity = 0.0;
+        if (prefs.velocity_dim < 1.0)
+            prefs.velocity_dim = 1.0;
+        prefs.bloom_intensity = DEFAULT_BLOOM;
         max_sample_value = min((prefs.side[0] - prefs.side[1]) / 2.1,
                                (prefs.side[2] - prefs.side[3]) / 2.1);
         refreshStats(TIMED);

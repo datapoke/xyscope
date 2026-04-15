@@ -86,6 +86,7 @@ static inline int clock_gettime(int clk_id, struct timespec *ts) {
 #define DEFAULT_SPLINE_STEPS  16
 #define DEFAULT_COLOR_RANGE   1.0
 #define DEFAULT_COLOR_RATE    0.0
+#define DEFAULT_BLOOM         0.2
 #define SQRT_TWO              1.41421356237309504880
 
 
@@ -115,7 +116,7 @@ typedef enum {
 
 /* Default mode macros */
 #define DEFAULT_COLOR_MODE    ColorDeltaMode
-#define DEFAULT_DISPLAY_MODE  DisplayFrequencyMode
+#define DEFAULT_DISPLAY_MODE  DisplaySpectrumMode
 
 
 /* Preferences struct */
@@ -283,30 +284,30 @@ static inline const char *get_config_path(void) {
 static inline void write_prefs_section(FILE *fp, const char *section,
                                        const preferences_t *p) {
     fprintf(fp, "[%s]\n", section);
-    fprintf(fp, "dim=%d,%d\n",        p->dim[0], p->dim[1]);
-    fprintf(fp, "normal_dim=%d,%d\n",  p->normal_dim[0], p->normal_dim[1]);
-    fprintf(fp, "old_dim=%d,%d\n",     p->old_dim[0], p->old_dim[1]);
-    fprintf(fp, "position=%d,%d\n",    p->position[0], p->position[1]);
+    fprintf(fp, "dim=%d,%d\n",             p->dim[0], p->dim[1]);
+    fprintf(fp, "normal_dim=%d,%d\n",      p->normal_dim[0], p->normal_dim[1]);
+    fprintf(fp, "old_dim=%d,%d\n",         p->old_dim[0], p->old_dim[1]);
+    fprintf(fp, "position=%d,%d\n",        p->position[0], p->position[1]);
     fprintf(fp, "side=%.17g,%.17g,%.17g,%.17g\n",
             p->side[0], p->side[1], p->side[2], p->side[3]);
-    fprintf(fp, "scale_factor=%.17g\n", p->scale_factor);
-    fprintf(fp, "scale_locked=%d\n",    p->scale_locked);
-    fprintf(fp, "is_full_screen=%d\n",  p->is_full_screen);
-    fprintf(fp, "auto_scale=%d\n",      p->auto_scale);
-    fprintf(fp, "spline_steps=%u\n",    p->spline_steps);
-    fprintf(fp, "color_mode=%u\n",      p->color_mode);
-    fprintf(fp, "color_range=%.17g\n",  p->color_range);
-    fprintf(fp, "color_rate=%.17g\n",   p->color_rate);
-    fprintf(fp, "display_mode=%u\n",    p->display_mode);
-    fprintf(fp, "line_width=%u\n",      p->line_width);
-    fprintf(fp, "particles=%d\n",       p->particles);
-    fprintf(fp, "show_stats=%u\n",      p->show_stats);
-    fprintf(fp, "hue=%.17g\n",          p->hue);
-    fprintf(fp, "delay=%.17g\n",        p->delay);
-    fprintf(fp, "audio_delay=%.17g\n",  p->audio_delay);
-    fprintf(fp, "display_delay=%.17g\n",p->display_delay);
-    fprintf(fp, "brightness=%.17g\n",   p->brightness);
-    fprintf(fp, "velocity_dim=%.17g\n", p->velocity_dim);
+    fprintf(fp, "scale_factor=%.17g\n",    p->scale_factor);
+    fprintf(fp, "scale_locked=%d\n",       p->scale_locked);
+    fprintf(fp, "is_full_screen=%d\n",     p->is_full_screen);
+    fprintf(fp, "auto_scale=%d\n",         p->auto_scale);
+    fprintf(fp, "spline_steps=%u\n",       p->spline_steps);
+    fprintf(fp, "color_mode=%u\n",         p->color_mode);
+    fprintf(fp, "color_range=%.17g\n",     p->color_range);
+    fprintf(fp, "color_rate=%.17g\n",      p->color_rate);
+    fprintf(fp, "display_mode=%u\n",       p->display_mode);
+    fprintf(fp, "line_width=%u\n",         p->line_width);
+    fprintf(fp, "particles=%d\n",          p->particles);
+    fprintf(fp, "show_stats=%u\n",         p->show_stats);
+    fprintf(fp, "hue=%.17g\n",             p->hue);
+    fprintf(fp, "delay=%.17g\n",           p->delay);
+    fprintf(fp, "audio_delay=%.17g\n",     p->audio_delay);
+    fprintf(fp, "display_delay=%.17g\n",   p->display_delay);
+    fprintf(fp, "brightness=%.17g\n",      p->brightness);
+    fprintf(fp, "velocity_dim=%.17g\n",    p->velocity_dim);
     fprintf(fp, "bloom_intensity=%.17g\n", p->bloom_intensity);
     fprintf(fp, "\n");
 }
@@ -344,24 +345,24 @@ static inline void parse_prefs_key(preferences_t *p,
     else if (!strcmp(key, "side"))
         sscanf(val, "%lf,%lf,%lf,%lf",
                &p->side[0], &p->side[1], &p->side[2], &p->side[3]);
-    else if (!strcmp(key, "scale_factor"))   p->scale_factor   = atof(val);
-    else if (!strcmp(key, "scale_locked"))   p->scale_locked   = atoi(val);
-    else if (!strcmp(key, "is_full_screen")) p->is_full_screen = atoi(val);
-    else if (!strcmp(key, "auto_scale"))     p->auto_scale     = atoi(val);
-    else if (!strcmp(key, "spline_steps"))   p->spline_steps   = atoi(val);
-    else if (!strcmp(key, "color_mode"))     p->color_mode     = atoi(val);
-    else if (!strcmp(key, "color_range"))    p->color_range    = atof(val);
-    else if (!strcmp(key, "color_rate"))     p->color_rate     = atof(val);
-    else if (!strcmp(key, "display_mode"))   p->display_mode   = atoi(val);
-    else if (!strcmp(key, "line_width"))     p->line_width     = atoi(val);
-    else if (!strcmp(key, "particles"))      p->particles      = atoi(val);
-    else if (!strcmp(key, "show_stats"))     p->show_stats     = atoi(val);
-    else if (!strcmp(key, "hue"))            p->hue            = atof(val);
-    else if (!strcmp(key, "delay"))          p->delay          = atof(val);
-    else if (!strcmp(key, "audio_delay"))    p->audio_delay    = atof(val);
-    else if (!strcmp(key, "display_delay"))  p->display_delay  = atof(val);
-    else if (!strcmp(key, "brightness"))     p->brightness     = atof(val);
-    else if (!strcmp(key, "velocity_dim"))   p->velocity_dim   = atof(val);
+    else if (!strcmp(key, "scale_factor"))    p->scale_factor    = atof(val);
+    else if (!strcmp(key, "scale_locked"))    p->scale_locked    = atoi(val);
+    else if (!strcmp(key, "is_full_screen"))  p->is_full_screen  = atoi(val);
+    else if (!strcmp(key, "auto_scale"))      p->auto_scale      = atoi(val);
+    else if (!strcmp(key, "spline_steps"))    p->spline_steps    = atoi(val);
+    else if (!strcmp(key, "color_mode"))      p->color_mode      = atoi(val);
+    else if (!strcmp(key, "color_range"))     p->color_range     = atof(val);
+    else if (!strcmp(key, "color_rate"))      p->color_rate      = atof(val);
+    else if (!strcmp(key, "display_mode"))    p->display_mode    = atoi(val);
+    else if (!strcmp(key, "line_width"))      p->line_width      = atoi(val);
+    else if (!strcmp(key, "particles"))       p->particles       = atoi(val);
+    else if (!strcmp(key, "show_stats"))      p->show_stats      = atoi(val);
+    else if (!strcmp(key, "hue"))             p->hue             = atof(val);
+    else if (!strcmp(key, "delay"))           p->delay           = atof(val);
+    else if (!strcmp(key, "audio_delay"))     p->audio_delay     = atof(val);
+    else if (!strcmp(key, "display_delay"))   p->display_delay   = atof(val);
+    else if (!strcmp(key, "brightness"))      p->brightness      = atof(val);
+    else if (!strcmp(key, "velocity_dim"))    p->velocity_dim    = atof(val);
     else if (!strcmp(key, "bloom_intensity")) p->bloom_intensity = atof(val);
 }
 
