@@ -1646,7 +1646,7 @@ public:
     {
         double left_offset   =  80.0;
         double right_offset  = 740.0;
-        unsigned int n_items =  25;
+        unsigned int n_items =  26;
 
         char help[][2][64] = {
         { "Escape",            "Quit" },
@@ -1662,12 +1662,13 @@ public:
         { "[ and ]",           "Adjust color range" },
         { "- and +",           "Adjust color rate" },
         { "a",                 "Auto-scale on/off" },
-        { "b and B",           "Adjust splines" },
         { "c and C",           "Color mode" },
         { "d and D",           "Display mode" },
         { "f",                 "Enter/Exit full screen mode" },
         { "h",                 "Show/Hide help" },
+        { "l and L",           "Adjust splines" },
         { "u/i and U/I",       "Adjust brightness" },
+        { "v/b and V/B",       "Adjust bloom intensity" },
         { "j/k and J/K",       "Adjust display delay" },
         { "n/m and N/M",       "Adjust velocity dim" },
         { "r",                 "Recenter" },
@@ -1822,7 +1823,7 @@ public:
     void showSplines(bool t) { showTimedText(SplineTimer, true, t, "Splines: %d", prefs.spline_steps); }
     void showLineWidth(bool t) { showTimedText(LineWidthTimer, true, t, "Line width: %d", prefs.line_width); }
     void showParticles(bool t) { showTimedText(ParticlesTimer, true, t, "Particles: %s", prefs.particles ? "on" : "off"); }
-    void showBloom(bool t) { showTimedText(BloomTimer, true, t, "Bloom: %s", prefs.bloom_enabled ? "on" : "off"); }
+    void showBloomIntensity(bool t) { showTimedText(BloomTimer, true, t, "Bloom intensity: %.2f", prefs.bloom_intensity); }
     void showColorMode(bool t) { showTimedText(ColorModeTimer, true, t, "Color mode: %s", color_mode_names[prefs.color_mode]); }
     void showDisplayMode(bool t) { showTimedText(DisplayModeTimer, true, t, "Display mode: %s", display_mode_names[prefs.display_mode]); }
     void showColorRange(bool t) { showTimedText(ColorRangeTimer, true, t, "Color range: %.2f", prefs.color_range); }
@@ -2330,10 +2331,11 @@ public:
         showParticles(TIMED);
     }
 
-    void toggleBloom(void)
+    void setBloomIntensity(double v)
     {
-        prefs.bloom_enabled = !prefs.bloom_enabled;
-        showBloom(TIMED);
+        prefs.bloom_intensity = v;
+        if (prefs.bloom_intensity < 0.0) prefs.bloom_intensity = 0.0;
+        showBloomIntensity(TIMED);
     }
 
     void savePreset(int n)
@@ -2409,8 +2411,7 @@ public:
         prefs.velocity_dim  = prefs.brightness / 2.0;
         if (prefs.velocity_dim < 4.0)
             prefs.velocity_dim = 4.0;
-        prefs.bloom_enabled   = false;
-        prefs.bloom_intensity = 1.0;
+        prefs.bloom_intensity = 0.0;
         max_sample_value = min((prefs.side[0] - prefs.side[1]) / 2.1,
                                (prefs.side[2] - prefs.side[3]) / 2.1);
         refreshStats(TIMED);
@@ -2430,7 +2431,7 @@ public:
         showDelay(t);
         showBrightness(t);
         showVelocityDim(t);
-        showBloom(t);
+        showBloomIntensity(t);
     }
 };
 static scene scn;
@@ -2441,7 +2442,7 @@ void display()
     glClear(GL_COLOR_BUFFER_BIT);
 
     /* plot the samples on the screen */
-    bool use_bloom = bloom.enabled && scn.prefs.bloom_enabled;
+    bool use_bloom = bloom.enabled && scn.prefs.bloom_intensity > 0.0;
     if (use_bloom) bloom_begin(&bloom);
     scn.drawPlot();
     if (use_bloom) bloom_end(&bloom, (float)scn.prefs.bloom_intensity);
@@ -2608,10 +2609,10 @@ void keyboard(unsigned char key, int xPos, int yPos)
         case 'a':
             scn.toggleAutoScale();
             break;
-        case 'b':
+        case 'l':
             scn.moreSplines();
             break;
-        case 'B':
+        case 'L':
             scn.lessSplines();
             break;
         case 'c':
@@ -2665,8 +2666,17 @@ void keyboard(unsigned char key, int xPos, int yPos)
         case 'p':
             scn.toggleParticles();
             break;
-        case 'g':
-            scn.toggleBloom();
+        case 'v':
+            scn.setBloomIntensity(scn.prefs.bloom_intensity - 0.1);
+            break;
+        case 'V':
+            scn.setBloomIntensity(scn.prefs.bloom_intensity - 0.01);
+            break;
+        case 'b':
+            scn.setBloomIntensity(scn.prefs.bloom_intensity + 0.1);
+            break;
+        case 'B':
+            scn.setBloomIntensity(scn.prefs.bloom_intensity + 0.01);
             break;
         case 'i':
             scn.setBrightness(scn.getBrightness() + 1.0);

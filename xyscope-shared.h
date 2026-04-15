@@ -142,8 +142,7 @@ typedef struct _preferences_t {
     double display_delay;
     double brightness;
     double velocity_dim;
-    bool   bloom_enabled;      /* default false */
-    double bloom_intensity;    /* default 1.0 */
+    double bloom_intensity;    /* 0.0 = off, default off */
 } preferences_t;
 
 #define NUM_PRESETS 10
@@ -284,7 +283,6 @@ static inline void write_prefs_section(FILE *fp, const char *section,
     fprintf(fp, "display_delay=%.17g\n",p->display_delay);
     fprintf(fp, "brightness=%.17g\n",   p->brightness);
     fprintf(fp, "velocity_dim=%.17g\n", p->velocity_dim);
-    fprintf(fp, "bloom_enabled=%d\n",    p->bloom_enabled);
     fprintf(fp, "bloom_intensity=%.17g\n", p->bloom_intensity);
     fprintf(fp, "\n");
 }
@@ -340,7 +338,6 @@ static inline void parse_prefs_key(preferences_t *p,
     else if (!strcmp(key, "display_delay"))  p->display_delay  = atof(val);
     else if (!strcmp(key, "brightness"))     p->brightness     = atof(val);
     else if (!strcmp(key, "velocity_dim"))   p->velocity_dim   = atof(val);
-    else if (!strcmp(key, "bloom_enabled"))   p->bloom_enabled   = atoi(val);
     else if (!strcmp(key, "bloom_intensity")) p->bloom_intensity = atof(val);
 }
 

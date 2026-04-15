@@ -144,12 +144,13 @@ xyscope [-p preset] [-t target]
 | [ ] | Adjust color range |
 | - + | Adjust color rate |
 | a | Toggle auto-scale |
-| b B | Adjust spline steps |
 | c C | Cycle color mode |
 | d D | Cycle display mode |
 | f | Toggle fullscreen |
 | h | Show/hide help overlay |
+| l L | Adjust spline steps |
 | u/i U/I | Adjust brightness |
+| v/b V/B | Adjust bloom intensity |
 | j/k J/K | Adjust display delay |
 | n/m N/M | Adjust velocity dim |
 | p | Toggle particles mode |
