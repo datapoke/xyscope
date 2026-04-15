@@ -1479,6 +1479,14 @@ public:
                 DSPSplitComplex fft_data;
                 fft_data.realp = new float[window_size_fft/2];
                 fft_data.imagp = new float[window_size_fft/2];
+#else
+                /* The shared fft_out is sized at draw_frames; once
+                 * spline_steps > draw_frames/window_size the splined
+                 * FFT window exceeds it and FFTW writes past the end.
+                 * Use a local output buffer sized exactly to the FFT
+                 * window we're actually running. */
+                fftw_complex *fft_out_local =
+                    (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * window_size_fft);
 #endif
                 // Loop over the (possibly splined) FFT input
                 unsigned int w_idx = 0;
@@ -1516,13 +1524,13 @@ public:
                     }
 
                     // Perform an FFT on the temporary array
-                    fft_plan = fftw_plan_dft_1d(window_size_fft, temp_data, fft_out, FFTW_FORWARD, FFTW_ESTIMATE);
+                    fft_plan = fftw_plan_dft_1d(window_size_fft, temp_data, fft_out_local, FFTW_FORWARD, FFTW_ESTIMATE);
                     fftw_execute(fft_plan);
 
                     // Store the FFT results in the STFT array
                     for (unsigned int j = 0; j < window_size_fft; j++) {
-                        double real = fft_out[j][0];
-                        double imag = fft_out[j][1];
+                        double real = fft_out_local[j][0];
+                        double imag = fft_out_local[j][1];
                         stft_results[w_idx][j] = sqrt(real * real + imag * imag);
                     }
 
@@ -1538,6 +1546,8 @@ public:
                 vDSP_destroy_fftsetup(fft_setup_local);
                 delete[] fft_data.realp;
                 delete[] fft_data.imagp;
+#else
+                fftw_free(fft_out_local);
 #endif
 
                 unsigned int n_windows = frames_read / (window_size - overlap_size);
