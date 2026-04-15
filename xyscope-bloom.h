@@ -100,10 +100,24 @@ static GLFRAMEBUFFERTEXTURE2DPROC_   p_glFramebufferTexture2D;
 static GLCHECKFRAMEBUFFERSTATUSPROC_ p_glCheckFramebufferStatus;
 static GLBLITFRAMEBUFFERPROC_        p_glBlitFramebuffer;
 
+/* On Windows the HDR path creates its GL context via wglCreateContext and
+ * wraps the foreign HWND through SDL_CreateWindowFrom. Because SDL never
+ * owned that context, SDL_GL_GetProcAddress cannot load any GL 2.0+ procs
+ * (its internal gl_data is NULL and the opengl32.dll fallback only exports
+ * GL 1.1 core). Use wglGetProcAddress directly — it follows the currently-
+ * bound WGL context and returns the right entry points regardless of which
+ * code path created it. This mirrors how the existing glClampColorARB
+ * loader works in xyscope.mm. */
+#ifdef _WIN32
+#define BLOOM_GET_PROC(name) wglGetProcAddress(name)
+#else
+#define BLOOM_GET_PROC(name) SDL_GL_GetProcAddress(name)
+#endif
+
 static inline bool bloom_load_procs(void)
 {
     #define LOAD(name) do { \
-        p_##name = (decltype(p_##name))SDL_GL_GetProcAddress(#name); \
+        p_##name = (decltype(p_##name))BLOOM_GET_PROC(#name); \
         if (!p_##name) { fprintf(stderr, "bloom: missing GL proc %s\n", #name); return false; } \
     } while (0)
 
