@@ -1570,9 +1570,9 @@ public:
                     }
                 } else {
                     /* Spectrum mode:
-                     *   R = bin0
-                     *   G = sum(bin1..bin3)
-                     *   B = sum(bin4..half_w-1)
+                     *   R = bin0 + bin1                  (~0–2.25 kHz)
+                     *   G = bin2 + bin3                  (~2.25–5.25 kHz)
+                     *   B = sum(bin4..half_w-1)          (~5.25+ kHz)
                      * Then divide all three by the per-frame max
                      * CHANNEL value so the strongest band in the
                      * frame is exactly 1.0 and the other two are
@@ -1597,10 +1597,10 @@ public:
                     double max_v = 0.0;
                     for (unsigned int i = 0; i < n_windows; i++) {
                         double R = stft_results[i][0];
+                        if (1 < half_w) R += stft_results[i][1];
                         double G = 0.0;
-                        for (unsigned int j = 1; j <= 3 && j < half_w; j++) {
-                            G += stft_results[i][j];
-                        }
+                        if (2 < half_w) G += stft_results[i][2];
+                        if (3 < half_w) G += stft_results[i][3];
                         double B = 0.0;
                         for (unsigned int j = 4; j < half_w; j++) {
                             B += stft_results[i][j];
