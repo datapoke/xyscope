@@ -182,7 +182,7 @@ static int default_rb_size;
 
 static void compute_derived_rates() {
     frames_per_buf  = (sample_rate / frame_rate) * DRAW_EACH_FRAME;
-    draw_frames     = frames_per_buf + 1;
+    draw_frames     = frames_per_buf;
     default_rb_size = (int)(sample_rate * BUFFER_SECONDS + frames_per_buf);
 }
 
@@ -1343,10 +1343,18 @@ public:
              * clean multiple of window_size the aggregation adds one
              * "nudged" STFT at frames_read-window_size to cover the
              * trailing samples. */
+            /* Base window scales with sample rate so the same
+             * color_range gives the same bin width at any rate.
+             * At 96 kHz base=32 → color_range 0=32, 1=64, etc.
+             * At 192 kHz base=64 → color_range 0=64, 1=128, etc.
+             * At 48 kHz base=16 → color_range 0=16, 1=32, etc. */
+            unsigned int base = 1;
+            while (base * 2 <= (unsigned int)(32 * sample_rate / 96000))
+                base *= 2;
             int steps = (int)prefs.color_range;
             if (steps < 0)  steps = 0;
             if (steps > 10) steps = 10;
-            window_size = 32;
+            window_size = base;
             for (int i = 0; i < steps; i++) {
                 unsigned int next = window_size * 2;
                 if (next > (unsigned int)draw_frames || next > 2048) break;
@@ -2518,7 +2526,10 @@ public:
              * once the next doubling would overflow draw_frames or
              * the 2048 vDSP cap. */
             int max_steps = 0;
-            unsigned int ws = 32;
+            unsigned int base = 1;
+            while (base * 2 <= (unsigned int)(32 * sample_rate / 96000))
+                base *= 2;
+            unsigned int ws = base;
             while (ws * 2 <= (unsigned int)draw_frames && ws * 2 <= 2048) {
                 ws *= 2;
                 max_steps++;
