@@ -1446,40 +1446,26 @@ public:
                  * blue for music with transients. spline_steps is
                  * always a power of two (more/lessSplines only ever
                  * double or halve), so window_size_fft stays pow2. */
-                unsigned int fft_spline = (prefs.display_mode == DisplaySpectrumMode
-                                           && prefs.spline_steps > 1)
-                                          ? prefs.spline_steps : 1;
-                unsigned int fft_count = frames_read * fft_spline;
-                unsigned int window_size_fft = window_size * fft_spline;
-                unsigned int overlap_size_fft = overlap_size * fft_spline;
+                unsigned int fft_spline = 1;
+                unsigned int fft_count = frames_read;
+                unsigned int window_size_fft = window_size;
+                unsigned int overlap_size_fft = overlap_size;
                 unsigned int stride_fft = window_size_fft - overlap_size_fft;
 
-                /* Build the FFT input buffer. Spectrum mode splines
-                 * (mono averaged L+R); Frequency mode just averages. */
+                /* Build the FFT input buffer. Spectrum mode uses L as
+                 * real; R is read directly from framebuf in the FFT
+                 * lambda to form a complex input (L+iR) — the magnitude
+                 * spectrum sqrt(|FFT(L)|²+|FFT(R)|²) is phase-
+                 * independent and eliminates the 135° diagonal artifact.
+                 * Frequency mode uses mono (L+R)/2 as before. */
                 double *fft_input = new double[fft_count];
-                if (fft_spline == 1) {
+                if (prefs.display_mode == DisplaySpectrumMode) {
                     for (unsigned int i = 0; i < frames_read; i++) {
-                        fft_input[i] = (framebuf[i].left_channel + framebuf[i].right_channel) / 2.0;
+                        fft_input[i] = framebuf[i].left_channel;
                     }
                 } else {
                     for (unsigned int i = 0; i < frames_read; i++) {
-                        unsigned int i_p1 = (i >= 1) ? i - 1 : 0;
-                        unsigned int i_p2 = (i + 1 < frames_read) ? i + 1 : frames_read - 1;
-                        unsigned int i_p3 = (i + 2 < frames_read) ? i + 2 : frames_read - 1;
-                        double P0 = (framebuf[i_p1].left_channel + framebuf[i_p1].right_channel) / 2.0;
-                        double P1 = (framebuf[i].left_channel    + framebuf[i].right_channel)    / 2.0;
-                        double P2 = (framebuf[i_p2].left_channel + framebuf[i_p2].right_channel) / 2.0;
-                        double P3 = (framebuf[i_p3].left_channel + framebuf[i_p3].right_channel) / 2.0;
-                        for (unsigned int s = 0; s < fft_spline; s++) {
-                            double t  = (double)s / (double)fft_spline;
-                            double t2 = t * t;
-                            double t3 = t2 * t;
-                            double v = 0.5 * (2.0*P1
-                                              + (-P0 + P2) * t
-                                              + (2.0*P0 - 5.0*P1 + 4.0*P2 - P3) * t2
-                                              + (-P0 + 3.0*P1 - 3.0*P2 + P3) * t3);
-                            fft_input[i * fft_spline + s] = v;
-                        }
+                        fft_input[i] = (framebuf[i].left_channel + framebuf[i].right_channel) / 2.0;
                     }
                 }
 
@@ -1501,42 +1487,47 @@ public:
                 while (n_win > 1) { n_win >>= 1; log2n_win++; }
                 FFTSetup fft_setup_local = vDSP_create_fftsetup(log2n_win, FFT_RADIX2);
                 DSPSplitComplex fft_data;
-                fft_data.realp = new float[window_size_fft/2];
-                fft_data.imagp = new float[window_size_fft/2];
+                /* Full N for complex FFT (spectrum), N/2 for real FFT (frequency) */
+                unsigned int fft_alloc = (prefs.display_mode == DisplaySpectrumMode)
+                    ? window_size_fft : window_size_fft / 2;
+                fft_data.realp = new float[fft_alloc];
+                fft_data.imagp = new float[fft_alloc];
 #else
-                /* The shared fft_out is sized at draw_frames; once
-                 * spline_steps > draw_frames/window_size the splined
-                 * FFT window exceeds it and FFTW writes past the end.
-                 * Use a local output buffer sized exactly to the FFT
-                 * window we're actually running. */
                 fftw_complex *fft_out_local =
                     (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * window_size_fft);
 #endif
-                /* FFT computation lambda — one body for both the main
-                 * loop and the spectrum-mode nudge. Captures the vDSP
-                 * / FFTW locals by reference. */
+                bool spectrum = (prefs.display_mode == DisplaySpectrumMode);
                 auto compute_fft_at = [&](unsigned int start_i, unsigned int target_slot) {
 #ifdef __APPLE__
-                    float *input_data = new float[window_size_fft];
-                    for (unsigned int j = 0; j < window_size_fft; j++) {
-                        input_data[j] = (float)fft_input[start_i + j];
+                    if (spectrum) {
+                        /* Complex FFT: L=real, R=imag */
+                        for (unsigned int j = 0; j < window_size_fft; j++) {
+                            fft_data.realp[j] = (float)fft_input[start_i + j];
+                            fft_data.imagp[j] = (float)framebuf[start_i + j].right_channel;
+                        }
+                        vDSP_fft_zip(fft_setup_local, &fft_data, 1, log2n_win, FFT_FORWARD);
+                    } else {
+                        /* Real FFT: mono */
+                        float *input_data = new float[window_size_fft];
+                        for (unsigned int j = 0; j < window_size_fft; j++) {
+                            input_data[j] = (float)fft_input[start_i + j];
+                        }
+                        vDSP_ctoz((DSPComplex*)input_data, 2, &fft_data, 1, window_size_fft/2);
+                        vDSP_fft_zrip(fft_setup_local, &fft_data, 1, log2n_win, FFT_FORWARD);
+                        delete[] input_data;
                     }
-                    vDSP_ctoz((DSPComplex*)input_data, 2, &fft_data, 1, window_size_fft/2);
-                    vDSP_fft_zrip(fft_setup_local, &fft_data, 1, log2n_win, FFT_FORWARD);
                     for (unsigned int j = 0; j < window_size_fft/2; j++) {
                         double real = fft_data.realp[j];
                         double imag = fft_data.imagp[j];
                         stft_results[target_slot][j] = sqrt(real * real + imag * imag);
                     }
-                    for (unsigned int j = window_size_fft/2; j < window_size_fft; j++) {
-                        stft_results[target_slot][j] = stft_results[target_slot][window_size_fft - j];
-                    }
-                    delete[] input_data;
 #else
                     double (*temp_data)[2] = new double[window_size_fft][2];
                     for (unsigned int j = 0; j < window_size_fft; j++) {
                         temp_data[j][0] = fft_input[start_i + j];
-                        temp_data[j][1] = 0.0;
+                        temp_data[j][1] = spectrum
+                            ? framebuf[start_i + j].right_channel
+                            : 0.0;
                     }
                     fft_plan = fftw_plan_dft_1d(window_size_fft, temp_data, fft_out_local, FFTW_FORWARD, FFTW_ESTIMATE);
                     fftw_execute(fft_plan);

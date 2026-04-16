@@ -210,17 +210,24 @@ static inline unsigned int draw_xy_vertices(
             double ay3 = -P0y + 3.0*P1y - 3.0*P2y + P3y;
 
             double inv_steps = 1.0 / (double)spline_steps;
-            for (unsigned int step = 0; step < spline_steps; step++) {
+            for (unsigned int step = 0; step <= spline_steps; step++) {
                 double t  = (double)step * inv_steps;
                 double t2 = t * t;
                 double t3 = t2 * t;
-                verts[n*2]     = (float)(0.5 * (ax0 + ax1*t + ax2*t2 + ax3*t3));
-                verts[n*2 + 1] = (float)(0.5 * (ay0 + ay1*t + ay2*t2 + ay3*t3));
+                double x = 0.5 * (ax0 + ax1*t + ax2*t2 + ax3*t3);
+                double y = 0.5 * (ay0 + ay1*t + ay2*t2 + ay3*t3);
+                verts[n*2]     = (float)x;
+                verts[n*2 + 1] = (float)y;
                 colors[n*4]     = cr;
                 colors[n*4 + 1] = cg;
                 colors[n*4 + 2] = cb;
                 colors[n*4 + 3] = ca;
                 n++;
+                /* Write back so the next iteration's P1 (framebuf[i-1])
+                 * picks up where this segment ended — essential for
+                 * continuity between adjacent spline segments. */
+                framebuf[i].left_channel  = x;
+                framebuf[i].right_channel = y;
             }
         } else {
             verts[n*2]     = (float)lc;
