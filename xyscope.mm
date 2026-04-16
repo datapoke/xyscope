@@ -1510,11 +1510,19 @@ public:
                 /* FFT computation lambda — one body for both the main
                  * loop and the spectrum-mode nudge. Captures the vDSP
                  * / FFTW locals by reference. */
+                /* Precompute the Hanning window so the per-FFT
+                 * lambda just multiplies rather than recomputing
+                 * cos() every call. */
+                double *hanning = new double[window_size_fft];
+                for (unsigned int j = 0; j < window_size_fft; j++) {
+                    hanning[j] = 0.5 * (1.0 - cos(2.0 * M_PI * j / window_size_fft));
+                }
+
                 auto compute_fft_at = [&](unsigned int start_i, unsigned int target_slot) {
 #ifdef __APPLE__
                     float *input_data = new float[window_size_fft];
                     for (unsigned int j = 0; j < window_size_fft; j++) {
-                        input_data[j] = (float)fft_input[start_i + j];
+                        input_data[j] = (float)(fft_input[start_i + j] * hanning[j]);
                     }
                     vDSP_ctoz((DSPComplex*)input_data, 2, &fft_data, 1, window_size_fft/2);
                     vDSP_fft_zrip(fft_setup_local, &fft_data, 1, log2n_win, FFT_FORWARD);
@@ -1530,7 +1538,7 @@ public:
 #else
                     double (*temp_data)[2] = new double[window_size_fft][2];
                     for (unsigned int j = 0; j < window_size_fft; j++) {
-                        temp_data[j][0] = fft_input[start_i + j];
+                        temp_data[j][0] = fft_input[start_i + j] * hanning[j];
                         temp_data[j][1] = 0.0;
                     }
                     fft_plan = fftw_plan_dft_1d(window_size_fft, temp_data, fft_out_local, FFTW_FORWARD, FFTW_ESTIMATE);
@@ -1565,6 +1573,7 @@ public:
                     }
                 }
                 delete[] fft_input;
+                delete[] hanning;
 #ifdef __APPLE__
                 // Clean up FFT resources after loop
                 vDSP_destroy_fftsetup(fft_setup_local);
