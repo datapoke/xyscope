@@ -1502,6 +1502,28 @@ public:
                     (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * window_size_fft);
 #endif
                 bool spectrum = (prefs.display_mode == DisplaySpectrumMode);
+
+                /* Precompute band boundaries and Hanning window for
+                 * the conditional re-run: if a window's spectrum has
+                 * S < 25%, re-run the FFT with Hanning to knock down
+                 * the sidelobes that cause the desaturation. */
+                double bin_width_hz = (double)sample_rate / (double)window_size;
+                unsigned int r_last_pre = (unsigned int)(1000.0 / bin_width_hz);
+                unsigned int g_last_pre = (unsigned int)(5000.0 / bin_width_hz);
+                unsigned int b_last_pre = (unsigned int)(20000.0 / bin_width_hz);
+                unsigned int half_w_pre = window_size_fft / 2;
+                if (r_last_pre >= half_w_pre)     r_last_pre = half_w_pre - 3;
+                if (g_last_pre <= r_last_pre)     g_last_pre = r_last_pre + 1;
+                if (b_last_pre <= g_last_pre)     b_last_pre = g_last_pre + 1;
+                if (b_last_pre >= half_w_pre)     b_last_pre = half_w_pre - 1;
+
+                double *hanning = NULL;
+                if (spectrum) {
+                    hanning = new double[window_size_fft];
+                    for (unsigned int j = 0; j < window_size_fft; j++)
+                        hanning[j] = 0.5 * (1.0 - cos(2.0 * M_PI * j / window_size_fft));
+                }
+
                 auto compute_fft_at = [&](unsigned int start_i, unsigned int target_slot) {
 #ifdef __APPLE__
                     if (spectrum) {
@@ -1542,6 +1564,28 @@ public:
                         }
                         stft_results[target_slot][j] = sqrt(mag);
                     }
+                    /* Check saturation; re-run with Hanning if low */
+                    if (spectrum) {
+                        double sR=0, sG=0, sB=0;
+                        for (unsigned int j=0; j<=r_last_pre; j++) sR+=stft_results[target_slot][j];
+                        for (unsigned int j=r_last_pre+1; j<=g_last_pre; j++) sG+=stft_results[target_slot][j];
+                        for (unsigned int j=g_last_pre+1; j<=b_last_pre; j++) sB+=stft_results[target_slot][j];
+                        double mx=fmax(sR,fmax(sG,sB)), mn=fmin(sR,fmin(sG,sB));
+                        double sat = (mx>0) ? (mx-mn)/mx : 0;
+                        if (sat < 0.25) {
+                            for (unsigned int j=0; j<window_size_fft; j++) {
+                                fft_data.realp[j] = (float)(fft_input[start_i+j] * hanning[j]);
+                                fft_data.imagp[j] = (float)(framebuf[start_i+j].right_channel * hanning[j]);
+                            }
+                            vDSP_fft_zip(fft_setup_local, &fft_data, 1, log2n_win, FFT_FORWARD);
+                            for (unsigned int j=0; j<window_size_fft/2; j++) {
+                                double rp2=fft_data.realp[j], ip2=fft_data.imagp[j];
+                                double mag2=rp2*rp2+ip2*ip2;
+                                if (j>0) { unsigned int nj=window_size_fft-j; mag2+=fft_data.realp[nj]*fft_data.realp[nj]+fft_data.imagp[nj]*fft_data.imagp[nj]; }
+                                stft_results[target_slot][j] = sqrt(mag2);
+                            }
+                        }
+                    }
 #else
                     double (*temp_data)[2] = new double[window_size_fft][2];
                     for (unsigned int j = 0; j < window_size_fft; j++) {
@@ -1565,6 +1609,30 @@ public:
                         stft_results[target_slot][j] = sqrt(mag);
                     }
                     fftw_destroy_plan(fft_plan);
+                    /* Check saturation; re-run with Hanning if low */
+                    if (spectrum) {
+                        double sR=0, sG=0, sB=0;
+                        for (unsigned int j=0; j<=r_last_pre; j++) sR+=stft_results[target_slot][j];
+                        for (unsigned int j=r_last_pre+1; j<=g_last_pre; j++) sG+=stft_results[target_slot][j];
+                        for (unsigned int j=g_last_pre+1; j<=b_last_pre; j++) sB+=stft_results[target_slot][j];
+                        double mx=fmax(sR,fmax(sG,sB)), mn=fmin(sR,fmin(sG,sB));
+                        double sat = (mx>0) ? (mx-mn)/mx : 0;
+                        if (sat < 0.25) {
+                            for (unsigned int j=0; j<window_size_fft; j++) {
+                                temp_data[j][0] = fft_input[start_i+j] * hanning[j];
+                                temp_data[j][1] = framebuf[start_i+j].right_channel * hanning[j];
+                            }
+                            fftw_plan hp = fftw_plan_dft_1d(window_size_fft, temp_data, fft_out_local, FFTW_FORWARD, FFTW_ESTIMATE);
+                            fftw_execute(hp);
+                            for (unsigned int j=0; j<window_size_fft/2; j++) {
+                                double rp2=fft_out_local[j][0], ip2=fft_out_local[j][1];
+                                double mag2=rp2*rp2+ip2*ip2;
+                                if (j>0) { unsigned int nj=window_size_fft-j; mag2+=fft_out_local[nj][0]*fft_out_local[nj][0]+fft_out_local[nj][1]*fft_out_local[nj][1]; }
+                                stft_results[target_slot][j] = sqrt(mag2);
+                            }
+                            fftw_destroy_plan(hp);
+                        }
+                    }
                     delete[] temp_data;
 #endif
                 };
@@ -1589,6 +1657,7 @@ public:
                     }
                 }
                 delete[] fft_input;
+                if (hanning) delete[] hanning;
 #ifdef __APPLE__
                 // Clean up FFT resources after loop
                 vDSP_destroy_fftsetup(fft_setup_local);
