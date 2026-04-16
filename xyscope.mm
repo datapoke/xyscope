@@ -1451,7 +1451,6 @@ public:
                  * blue for music with transients. spline_steps is
                  * always a power of two (more/lessSplines only ever
                  * double or halve), so window_size_fft stays pow2. */
-                unsigned int fft_spline = 1;
                 unsigned int fft_count = frames_read;
                 unsigned int window_size_fft = window_size;
                 unsigned int overlap_size_fft = overlap_size;
@@ -1477,7 +1476,7 @@ public:
                 /* Allocate n_windows + 1 STFT slots. The extra slot is
                  * either the "nudged" tail window in spectrum mode or
                  * trailing carry-forward in both modes. n_windows in
-                 * audio units — scales down by fft_spline to match. */
+                 * audio units. */
                 unsigned int stride_audio = window_size - overlap_size;
                 unsigned int n_windows_audio = frames_read / stride_audio;
                 unsigned int n_stft_slots = n_windows_audio + 1;
@@ -2822,7 +2821,8 @@ static const char *SPECTRUM_VS_SRC =
     "    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
     "    vec3 hsv = rgb2hsv(gl_Color.rgb);\n"
     "    hsv.y = min(hsv.y * 1.5, 1.0);\n"
-    "    hsv.z = hsv.z * 0.5 + 0.5;\n"
+    "    float v_floor = min(0.5 / u_brightness, 0.5);\n"
+    "    hsv.z = hsv.z * (1.0 - v_floor) + v_floor;\n"
     "    vec3 rgb = hsv2rgb(hsv);\n"
     "    v_color = vec4(rgb * u_brightness, gl_Color.a);\n"
     "}\n";

@@ -141,7 +141,14 @@ static inline unsigned int draw_xy_vertices(
                         RGBtoHSV(sr, sg, sb, &sh, &ss, &sv);
                         ss *= 1.5;
                         if (ss > 1.0) ss = 1.0;
-                        sv = sv * 0.5 + 0.5;
+                        /* Adaptive V-floor: effective display floor
+                         * is always ~0.5 regardless of brightness.
+                         * At brightness=1: floor=0.5 (same as before).
+                         * At brightness=18: floor=0.028 (channels
+                         * stay below clip for desaturated colors). */
+                        double v_floor = 0.5 / brightness;
+                        if (v_floor > 0.5) v_floor = 0.5;
+                        sv = sv * (1.0 - v_floor) + v_floor;
                         HSVtoRGB(&r, &g, &b, sh, ss, sv);
                     }
                     color_set = true;
