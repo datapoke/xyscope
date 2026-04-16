@@ -1178,12 +1178,12 @@ public:
     timeval mouse_dirty_time;
 
     #define NUM_COLOR_MODES 2
-    #define NUM_DISPLAY_MODES 4
+    #define NUM_DISPLAY_MODES 3
     static const unsigned int DefaultColorMode    = DEFAULT_COLOR_MODE;
     static const unsigned int DefaultDisplayMode  = DEFAULT_DISPLAY_MODE;
     const char *color_mode_names[NUM_COLOR_MODES] = {"Standard", "Delta"};
     const char *display_mode_names[NUM_DISPLAY_MODES] = {
-        "Standard", "Radius", "Frequency", "Spectrum"
+        "Standard", "Radius", "Spectrum"
     };
 
     scene()
@@ -1367,8 +1367,6 @@ public:
             if (window_size < 2) window_size = 2;
             if (overlap_size >= window_size) overlap_size = window_size / 2;
         }
-        double max_magnitude = 0.0;
-        double* avg_magnitudes = NULL;
         double* spectrum_colors = NULL;  /* per-window RGB triples for DisplaySpectrumMode */
         double** stft_results;
 #ifndef __APPLE__
@@ -1441,8 +1439,7 @@ public:
         }
 
         /* FFT setup for frequency / spectrum modes (must happen before glBegin) */
-        if (prefs.display_mode == DisplayFrequencyMode
-            || prefs.display_mode == DisplaySpectrumMode) {
+        if (prefs.display_mode == DisplaySpectrumMode) {
                 /* For spectrum mode, run the FFT on Catmull-Rom-splined
                  * audio rather than the raw samples. The interpolation
                  * doesn't add real frequency content but it does
@@ -1524,10 +1521,26 @@ public:
                         vDSP_fft_zrip(fft_setup_local, &fft_data, 1, log2n_win, FFT_FORWARD);
                         delete[] input_data;
                     }
+                    /* For the complex FFT (spectrum mode), combine
+                     * positive and negative frequency bins so the
+                     * magnitude is rotation-direction-independent.
+                     * Clockwise XY motion puts energy in negative bins
+                     * (N-k), counterclockwise in positive bins (k).
+                     * Summing both makes the spectrum invariant to
+                     * rotation direction. For real FFT (frequency
+                     * mode), negative bins mirror positive so this
+                     * is a harmless 2x scale. */
                     for (unsigned int j = 0; j < window_size_fft/2; j++) {
-                        double real = fft_data.realp[j];
-                        double imag = fft_data.imagp[j];
-                        stft_results[target_slot][j] = sqrt(real * real + imag * imag);
+                        double rp = fft_data.realp[j];
+                        double ip = fft_data.imagp[j];
+                        double mag = rp*rp + ip*ip;
+                        if (spectrum && j > 0 && j < window_size_fft/2) {
+                            unsigned int nj = window_size_fft - j;
+                            double rn = fft_data.realp[nj];
+                            double in_ = fft_data.imagp[nj];
+                            mag += rn*rn + in_*in_;
+                        }
+                        stft_results[target_slot][j] = sqrt(mag);
                     }
 #else
                     double (*temp_data)[2] = new double[window_size_fft][2];
@@ -1539,10 +1552,17 @@ public:
                     }
                     fft_plan = fftw_plan_dft_1d(window_size_fft, temp_data, fft_out_local, FFTW_FORWARD, FFTW_ESTIMATE);
                     fftw_execute(fft_plan);
-                    for (unsigned int j = 0; j < window_size_fft; j++) {
-                        double real = fft_out_local[j][0];
-                        double imag = fft_out_local[j][1];
-                        stft_results[target_slot][j] = sqrt(real * real + imag * imag);
+                    for (unsigned int j = 0; j < window_size_fft/2; j++) {
+                        double rp = fft_out_local[j][0];
+                        double ip = fft_out_local[j][1];
+                        double mag = rp*rp + ip*ip;
+                        if (spectrum && j > 0) {
+                            unsigned int nj = window_size_fft - j;
+                            double rn = fft_out_local[nj][0];
+                            double in_ = fft_out_local[nj][1];
+                            mag += rn*rn + in_*in_;
+                        }
+                        stft_results[target_slot][j] = sqrt(mag);
                     }
                     fftw_destroy_plan(fft_plan);
                     delete[] temp_data;
@@ -1580,27 +1600,7 @@ public:
 
                 unsigned int n_windows = frames_read / (window_size - overlap_size);
 
-                if (prefs.display_mode == DisplayFrequencyMode) {
-                    /* Frequency mode: collapse each window's spectrum to a
-                     * single average magnitude, mapped to hue downstream.
-                     * Iterates to n_windows INCLUSIVE so the +1 padding
-                     * stft slot gets deleted too. The padding slot is
-                     * zero-initialised, so avg_magnitudes[n_windows] ends
-                     * up at 0 — matches the allocation's zero init. */
-                    avg_magnitudes = new double[n_windows + 1]();
-                    for (unsigned int i = 0; i <= n_windows; i++) {
-                        double sum = 0.0;
-                        for (unsigned int j = 0; j < window_size; j++) {
-                            double magnitude = stft_results[i][j];
-                            if (magnitude > max_magnitude) {
-                                max_magnitude = magnitude;
-                            }
-                            sum += stft_results[i][j];
-                        }
-                        avg_magnitudes[i] = sum / window_size;
-                        delete[] stft_results[i];
-                    }
-                } else {
+                {
                     /* Spectrum mode:
                      *   R = sum(bin0..r_last)    (~0–1 kHz, sub-bass+kick)
                      *   G = sum(r_last+1..g_last) (~1–5 kHz, fat mid)
@@ -1730,8 +1730,7 @@ public:
             prefs.display_mode, prefs.color_mode,
             prefs.hue, prefs.color_range, prefs.scale_factor,
             prefs.spline_steps,
-            (prefs.display_mode == DisplayFrequencyMode) ? avg_magnitudes : NULL,
-            window_size, overlap_size, max_magnitude,
+            window_size, overlap_size,
             prefs.brightness, prefs.velocity_dim,
             spectrum_colors,
             prefs.particles,
@@ -1746,8 +1745,6 @@ public:
         if (prefs.velocity_dim > 0.0)
             glDisable(GL_BLEND);
         glPopMatrix();
-        if (prefs.display_mode == DisplayFrequencyMode)
-            delete[] avg_magnitudes;
         if (prefs.display_mode == DisplaySpectrumMode)
             delete[] spectrum_colors;
 
@@ -2627,6 +2624,10 @@ public:
     {
         if (prefs.normal_dim[0] < 1) prefs.normal_dim[0] = 1000;
         if (prefs.normal_dim[1] < 1) prefs.normal_dim[1] = 1000;
+        /* Old config files may have display_mode=3 (was Spectrum when
+         * Frequency was mode 2). Map both 2 and 3 to Spectrum. */
+        if (prefs.display_mode == 3)
+            prefs.display_mode = DisplaySpectrumMode;
         if (prefs.display_mode >= NUM_DISPLAY_MODES)
             prefs.display_mode = DefaultDisplayMode;
         if (prefs.color_mode >= NUM_COLOR_MODES)

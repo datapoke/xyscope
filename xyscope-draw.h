@@ -49,10 +49,8 @@ static inline unsigned int draw_xy_vertices(
     double color_range,
     double scale_factor,
     unsigned int spline_steps,
-    double *avg_magnitudes,   /* NULL unless DisplayFrequencyMode */
     unsigned int window_size,
     unsigned int overlap_size,
-    double max_magnitude,
     double brightness,
     double velocity_dim,
     double *spectrum_colors,  /* NULL unless DisplaySpectrumMode */
@@ -124,14 +122,6 @@ static inline unsigned int draw_xy_vertices(
             case DisplayRadiusMode:
                 h = ((hypot(lc, rc) / SQRT_TWO)
                      * 360.0 * color_range * scale_factor) + hue;
-                break;
-            case DisplayFrequencyMode:
-                if (avg_magnitudes != NULL && max_magnitude > 0) {
-                    h = map_value(
-                        avg_magnitudes[i / stride]
-                            * color_range * window_size / 2,
-                        0, max_magnitude, 0, 360) + hue;
-                }
                 break;
             case DisplaySpectrumMode:
                 if (spectrum_colors != NULL) {

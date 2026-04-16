@@ -110,8 +110,7 @@ typedef enum {
 typedef enum {
     DisplayStandardMode  = 0,
     DisplayRadiusMode    = 1,
-    DisplayFrequencyMode = 2,
-    DisplaySpectrumMode  = 3
+    DisplaySpectrumMode  = 2
 } display_mode_e;
 
 /* Default mode macros */

@@ -318,8 +318,7 @@ int main(int argc, char *argv[])
                 DEFAULT_COLOR_RANGE,
                 1.0,                /* scale_factor */
                 DEFAULT_SPLINE_STEPS,
-                NULL,               /* no frequency magnitudes */
-                0, 0, 0.0,
+                0, 0,
                 1.0,                /* brightness */
                 0.0,                /* velocity_dim */
                 NULL);              /* no spectrum colors */
