@@ -199,7 +199,7 @@ static inline void HSVtoRGB(double *r, double *g, double *b,
         h -= 360.0;
 
     h /= 60;
-    i = (int)floorf(h);
+    i = (int)floor(h);
     f = h - i;
     p = v * (1 - s);
     q = v * (1 - s * f);
