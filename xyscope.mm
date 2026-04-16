@@ -1674,7 +1674,7 @@ public:
                         double R = (max_v > 0.0) ? spectrum_colors[i*3+0] / max_v : 0.0;
                         double G = (max_v > 0.0) ? spectrum_colors[i*3+1] / max_v : 0.0;
                         double B = (max_v > 0.0) ? spectrum_colors[i*3+2] / max_v : 0.0;
-                        if (R + G + B > 0.0) {
+                        if (R + G + B > 0.01) {
                             last_r = R; last_g = G; last_b = B;
                         }
                         spectrum_colors[i * 3 + 0] = last_r;
