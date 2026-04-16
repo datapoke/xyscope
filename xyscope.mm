@@ -1502,27 +1502,6 @@ public:
 #endif
                 bool spectrum = (prefs.display_mode == DisplaySpectrumMode);
 
-                /* Precompute band boundaries and Hanning window for
-                 * the conditional re-run: if a window's spectrum has
-                 * S < 25%, re-run the FFT with Hanning to knock down
-                 * the sidelobes that cause the desaturation. */
-                double bin_width_hz = (double)sample_rate / (double)window_size;
-                unsigned int r_last_pre = (unsigned int)(1000.0 / bin_width_hz);
-                unsigned int g_last_pre = (unsigned int)(5000.0 / bin_width_hz);
-                unsigned int b_last_pre = (unsigned int)(20000.0 / bin_width_hz);
-                unsigned int half_w_pre = window_size_fft / 2;
-                if (r_last_pre >= half_w_pre)     r_last_pre = half_w_pre - 3;
-                if (g_last_pre <= r_last_pre)     g_last_pre = r_last_pre + 1;
-                if (b_last_pre <= g_last_pre)     b_last_pre = g_last_pre + 1;
-                if (b_last_pre >= half_w_pre)     b_last_pre = half_w_pre - 1;
-
-                double *hanning = NULL;
-                if (spectrum) {
-                    hanning = new double[window_size_fft];
-                    for (unsigned int j = 0; j < window_size_fft; j++)
-                        hanning[j] = 0.5 * (1.0 - cos(2.0 * M_PI * j / window_size_fft));
-                }
-
                 auto compute_fft_at = [&](unsigned int start_i, unsigned int target_slot) {
 #ifdef __APPLE__
                     if (spectrum) {
@@ -1586,7 +1565,6 @@ public:
                         stft_results[target_slot][j] = sqrt(mag);
                     }
                     fftw_destroy_plan(fft_plan);
-                    /* Check saturation; re-run with Hanning if low */
                     delete[] temp_data;
 #endif
                 };
@@ -1611,7 +1589,6 @@ public:
                     }
                 }
                 delete[] fft_input;
-                if (hanning) delete[] hanning;
 #ifdef __APPLE__
                 // Clean up FFT resources after loop
                 vDSP_destroy_fftsetup(fft_setup_local);
