@@ -2597,6 +2597,14 @@ public:
         showTimedText(PresetTimer, true, TIMED, "Preset %d saved", n);
     }
 
+    unsigned int default_spline_steps()
+    {
+        unsigned int s = 16 * 96000 / sample_rate;
+        if (s < 2) s = 2;
+        if (s > 128) s = 128;
+        return s;
+    }
+
     void validate_prefs()
     {
         if (prefs.normal_dim[0] < 1) prefs.normal_dim[0] = 1000;
@@ -2606,7 +2614,7 @@ public:
         if (prefs.color_mode >= NUM_COLOR_MODES)
             prefs.color_mode = DefaultColorMode;
         if (prefs.spline_steps < 1 || prefs.spline_steps > 1024)
-            prefs.spline_steps = DEFAULT_SPLINE_STEPS;
+            prefs.spline_steps = default_spline_steps();
         if (prefs.line_width < 1 || prefs.line_width > MAX_LINE_WIDTH)
             prefs.line_width = DEFAULT_LINE_WIDTH;
     }
@@ -2646,7 +2654,7 @@ public:
         prefs.scale_factor  = 1.0;
         prefs.scale_locked  = true;
         prefs.auto_scale    = DEFAULT_AUTO_SCALE;
-        prefs.spline_steps  = DEFAULT_SPLINE_STEPS;
+        prefs.spline_steps  = default_spline_steps();
         prefs.color_mode    = DEFAULT_COLOR_MODE;
         prefs.color_range   = DEFAULT_COLOR_RANGE;
         prefs.color_rate    = DEFAULT_COLOR_RATE;
