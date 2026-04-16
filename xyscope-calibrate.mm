@@ -307,8 +307,8 @@ int main(int argc, char *argv[])
             /* Read one frame's worth of data */
             ringbuffer_read(state.ringbuffer, (char *)framebuf, bytes_per_buf);
 
-            /* Render via GL pipeline */
-            glBegin(GL_LINE_STRIP);
+            /* Render via GL pipeline — draw_xy_vertices handles
+             * vertex arrays and glDrawArrays internally. */
             draw_xy_vertices(
                 framebuf,
                 frames_per_buf,
@@ -323,7 +323,6 @@ int main(int argc, char *argv[])
                 1.0,                /* brightness */
                 0.0,                /* velocity_dim */
                 NULL);              /* no spectrum colors */
-            glEnd();
 
             glFinish();
             SDL_GL_SwapWindow(window);

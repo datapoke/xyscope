@@ -1094,6 +1094,11 @@ extern TTF_Font *font;
 extern SDL_Window *window;
 extern SDL_GLContext gl_context;
 
+/* Spectrum color shader — compiled in main(), used by drawPlot.
+ * Declared before scene so drawPlot can reference them. */
+static GLuint spectrum_shader_prog = 0;
+static GLint  spectrum_brightness_loc = -1;
+
 class scene
 {
 public:
@@ -1716,13 +1721,20 @@ public:
             glClear(GL_DEPTH_BUFFER_BIT);
             glEnable(GL_DEPTH_TEST);
             glDepthFunc(GL_LESS);
-            glBegin(GL_POINTS);
-        }
-        else {
-            glBegin(GL_LINE_STRIP);
         }
 
-        /* display framebuf contents */
+        /* Enable the spectrum shader to offload per-vertex HSV
+         * conversion to the GPU. Falls back to CPU if the shader
+         * didn't compile (e.g. bloom_init failed). */
+        bool gpu_color = (prefs.display_mode == DisplaySpectrumMode
+                          && spectrum_shader_prog != 0);
+        if (gpu_color) {
+            p_glUseProgram(spectrum_shader_prog);
+            p_glUniform1f(spectrum_brightness_loc, (float)prefs.brightness);
+        }
+
+        /* display framebuf contents — draw_xy_vertices handles its
+         * own vertex array setup and glDrawArrays internally. */
         vertex_count = draw_xy_vertices(
             framebuf, frames_read,
             prefs.display_mode, prefs.color_mode,
@@ -1731,9 +1743,13 @@ public:
             (prefs.display_mode == DisplayFrequencyMode) ? avg_magnitudes : NULL,
             window_size, overlap_size, max_magnitude,
             prefs.brightness, prefs.velocity_dim,
-            spectrum_colors);
+            spectrum_colors,
+            prefs.particles,
+            gpu_color);
 
-        glEnd();
+        if (gpu_color) {
+            p_glUseProgram(0);
+        }
 
         if (prefs.particles)
             glDisable(GL_DEPTH_TEST);
@@ -2706,6 +2722,55 @@ public:
 static scene scn;
 static bloom_state_t bloom = {0};
 
+static const char *SPECTRUM_VS_SRC =
+    "#version 120\n"
+    "uniform float u_brightness;\n"
+    "varying vec4 v_color;\n"
+    "\n"
+    "vec3 rgb2hsv(vec3 c) {\n"
+    "    float mx = max(c.r, max(c.g, c.b));\n"
+    "    float mn = min(c.r, min(c.g, c.b));\n"
+    "    float d = mx - mn;\n"
+    "    float h = 0.0, s = 0.0, v = mx;\n"
+    "    if (mx > 0.0) s = d / mx;\n"
+    "    if (d > 0.0) {\n"
+    "        if (mx == c.r) h = mod((c.g - c.b) / d + 6.0, 6.0) / 6.0;\n"
+    "        else if (mx == c.g) h = ((c.b - c.r) / d + 2.0) / 6.0;\n"
+    "        else h = ((c.r - c.g) / d + 4.0) / 6.0;\n"
+    "    }\n"
+    "    return vec3(h, s, v);\n"
+    "}\n"
+    "\n"
+    "vec3 hsv2rgb(vec3 c) {\n"
+    "    float h = c.x * 6.0, s = c.y, v = c.z;\n"
+    "    float i = floor(h), f = h - i;\n"
+    "    float p = v * (1.0 - s);\n"
+    "    float q = v * (1.0 - s * f);\n"
+    "    float t = v * (1.0 - s * (1.0 - f));\n"
+    "    if (i < 1.0) return vec3(v, t, p);\n"
+    "    else if (i < 2.0) return vec3(q, v, p);\n"
+    "    else if (i < 3.0) return vec3(p, v, t);\n"
+    "    else if (i < 4.0) return vec3(p, q, v);\n"
+    "    else if (i < 5.0) return vec3(t, p, v);\n"
+    "    else return vec3(v, p, q);\n"
+    "}\n"
+    "\n"
+    "void main() {\n"
+    "    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
+    "    vec3 hsv = rgb2hsv(gl_Color.rgb);\n"
+    "    hsv.y = min(hsv.y * 1.5, 1.0);\n"
+    "    hsv.z = hsv.z * 0.5 + 0.5;\n"
+    "    vec3 rgb = hsv2rgb(hsv);\n"
+    "    v_color = vec4(rgb * u_brightness, gl_Color.a);\n"
+    "}\n";
+
+static const char *SPECTRUM_FS_SRC =
+    "#version 120\n"
+    "varying vec4 v_color;\n"
+    "void main() {\n"
+    "    gl_FragColor = v_color;\n"
+    "}\n";
+
 void display()
 {
     glClear(GL_COLOR_BUFFER_BIT);
@@ -3317,6 +3382,17 @@ int main(int argc, char *argv[])
     }
     fflush(stderr);
 #endif
+
+    /* Compile the spectrum color shader — does HSV S-boost + V-lift
+     * on the GPU so draw_xy_vertices can skip the per-vertex CPU
+     * conversion. Uses the same GL proc pointers bloom loaded. */
+    if (bloom.enabled) {
+        spectrum_shader_prog = bloom_build_program(SPECTRUM_VS_SRC, SPECTRUM_FS_SRC);
+        if (spectrum_shader_prog) {
+            spectrum_brightness_loc = p_glGetUniformLocation(spectrum_shader_prog, "u_brightness");
+            fprintf(stderr, "Spectrum shader compiled.\n");
+        }
+    }
 
     if (scn.prefs.is_full_screen) {
         scn.setFullScreen();

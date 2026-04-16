@@ -2,9 +2,11 @@
  *  xyscope-draw.h
  *  Core GL vertex drawing loop extracted from xyscope.mm drawPlot().
  *
- *  Emits OpenGL vertices between a caller-provided glBegin/glEnd pair.
- *  Handles per-vertex color for all display modes, color modes,
- *  and Catmull-Rom spline interpolation.
+ *  Pre-computes all vertex positions and colors into flat arrays, then
+ *  draws with a single glDrawArrays call — eliminates the per-vertex
+ *  glVertex2d/glColor4d overhead of legacy immediate mode. The inner
+ *  spline loop is pure polynomial evaluation with no GL calls, which
+ *  lets the compiler auto-vectorize with -O3.
  *
  *  Copyright (c) 2006-2007 by Chris Reaume <chris@flatlan.net>
  *    All rights reserved.
@@ -30,13 +32,13 @@
 #endif
 
 /*
- * draw_xy_vertices -- emit GL_LINE_STRIP vertices with per-vertex color.
+ * draw_xy_vertices -- fill vertex+color arrays and draw with glDrawArrays.
  *
- * The caller is responsible for glBegin(GL_LINE_STRIP) before calling
- * this function and glEnd() after it returns.  Projection setup and
- * glLineWidth are also the caller's responsibility.
+ * Replaces the legacy glBegin/glVertex2d/glColor4d/glEnd path with a
+ * single batched draw call. The caller should NOT wrap this in
+ * glBegin/glEnd — the function manages its own GL state.
  *
- * Returns the number of vertices emitted.
+ * Returns the number of vertices drawn.
  */
 static inline unsigned int draw_xy_vertices(
     frame_t *framebuf,
@@ -53,9 +55,28 @@ static inline unsigned int draw_xy_vertices(
     double max_magnitude,
     double brightness,
     double velocity_dim,
-    double *spectrum_colors)  /* NULL unless DisplaySpectrumMode; 3 doubles per STFT window */
+    double *spectrum_colors,  /* NULL unless DisplaySpectrumMode */
+    bool particles = false,
+    bool gpu_color = false)   /* true = shader handles HSV; pass raw RGB */
 {
-    unsigned int vertex_count = 0;
+    /* Reusable vertex/color buffers — grown as needed, never shrunk.
+     * Avoids per-frame malloc/free churn at high spline counts. */
+    static float *s_verts  = NULL;
+    static float *s_colors = NULL;
+    static unsigned int s_alloc = 0;
+
+    unsigned int max_verts = frames_read * (spline_steps > 1 ? spline_steps + 1 : 1);
+    if (max_verts > s_alloc) {
+        free(s_verts);
+        free(s_colors);
+        s_verts  = (float *)malloc(max_verts * 2 * sizeof(float));
+        s_colors = (float *)malloc(max_verts * 4 * sizeof(float));
+        s_alloc  = max_verts;
+    }
+    float *verts  = s_verts;
+    float *colors = s_colors;
+    unsigned int n = 0;
+
     double h   = -1.0;
     double s   = 1.0;
     double v   = 1.0;
@@ -69,12 +90,13 @@ static inline unsigned int draw_xy_vertices(
     double orc = 0.0;
     double d   = 0.0;
     double dt  = 0.0;
-    (void)dt;  /* accumulated for caller; suppress unused warning */
+    (void)dt;
 
-    /* Set initial color for standard display mode */
+    unsigned int stride = (window_size > overlap_size) ? (window_size - overlap_size) : 1;
+
+    /* Pre-compute initial color for standard display mode */
     if (display_mode == DisplayStandardMode) {
         HSVtoRGB(&r, &g, &b, hue, s, v);
-        glColor4d(r * brightness, g * brightness, b * brightness, a);
     }
 
     for (unsigned int i = 0; i < frames_read; i++) {
@@ -82,9 +104,7 @@ static inline unsigned int draw_xy_vertices(
         rc = framebuf[i].right_channel;
         d  = hypot(lc - olc, rc - orc) / SQRT_TWO;
 
-        /* Velocity dim: fade fast-moving segments like analog
-         * phosphor.  Alpha blending with additive mode lets
-         * slow parts glow bright while fast parts go transparent. */
+        /* Velocity dim */
         if (velocity_dim > 0.0)
             a = 1.0 / (1.0 + d * 10.0 * velocity_dim * scale_factor);
         else
@@ -92,55 +112,48 @@ static inline unsigned int draw_xy_vertices(
 
         /* Color mode accumulation */
         switch (color_mode) {
-            case ColorStandardMode:
-                break;
-            case ColorDeltaMode:
-                dt += d;
-                break;
+            case ColorStandardMode: break;
+            case ColorDeltaMode:    dt += d; break;
         }
 
-        /* Display mode: compute hue (or RGB directly for spectrum mode) */
+        /* Display mode: compute per-vertex color */
         bool color_set = false;
         switch (display_mode) {
             case DisplayStandardMode:
                 break;
             case DisplayRadiusMode:
                 h = ((hypot(lc, rc) / SQRT_TWO)
-                     * 360.0 * color_range
-                     * scale_factor) + hue;
+                     * 360.0 * color_range * scale_factor) + hue;
                 break;
             case DisplayFrequencyMode:
                 if (avg_magnitudes != NULL && max_magnitude > 0) {
                     h = map_value(
-                        avg_magnitudes[i / (window_size - overlap_size)]
+                        avg_magnitudes[i / stride]
                             * color_range * window_size / 2,
                         0, max_magnitude, 0, 360) + hue;
                 }
                 break;
             case DisplaySpectrumMode:
                 if (spectrum_colors != NULL) {
-                    /* Pre-computed per-STFT-window RGB triples; the
-                     * window->color mapping is the same indexing trick
-                     * Frequency mode uses for avg_magnitudes. Lift V
-                     * into the upper half of its range (V = V*0.5 +
-                     * 0.5) so the trace stays at least 50% bright on
-                     * quiet windows while loud windows still reach full
-                     * brightness. Hue and saturation come straight from
-                     * the spectrum bins. */
-                    unsigned int w = i / (window_size - overlap_size);
-                    double sr = spectrum_colors[w * 3 + 0];
-                    double sg = spectrum_colors[w * 3 + 1];
-                    double sb = spectrum_colors[w * 3 + 2];
-                    double sh, ss, sv;
-                    RGBtoHSV(sr, sg, sb, &sh, &ss, &sv);
-                    ss *= 1.5;
-                    if (ss > 1.0) ss = 1.0;
-                    sv = sv * 0.5 + 0.5;
-                    HSVtoRGB(&r, &g, &b, sh, ss, sv);
-                    /* color_range is repurposed for the spectrum FFT
-                     * window size, so don't also use it as a color
-                     * multiplier here. */
-                    glColor4d(r * brightness, g * brightness, b * brightness, a);
+                    unsigned int w = i / stride;
+                    if (gpu_color) {
+                        /* Shader does HSV boost/lift + brightness;
+                         * just pass raw spectrum RGB through. */
+                        r = spectrum_colors[w * 3 + 0];
+                        g = spectrum_colors[w * 3 + 1];
+                        b = spectrum_colors[w * 3 + 2];
+                    } else {
+                        /* CPU fallback */
+                        double sr = spectrum_colors[w * 3 + 0];
+                        double sg = spectrum_colors[w * 3 + 1];
+                        double sb = spectrum_colors[w * 3 + 2];
+                        double sh, ss, sv;
+                        RGBtoHSV(sr, sg, sb, &sh, &ss, &sv);
+                        ss *= 1.5;
+                        if (ss > 1.0) ss = 1.0;
+                        sv = sv * 0.5 + 0.5;
+                        HSVtoRGB(&r, &g, &b, sh, ss, sv);
+                    }
                     color_set = true;
                 }
                 break;
@@ -148,57 +161,91 @@ static inline unsigned int draw_xy_vertices(
                 break;
         }
 
-        /* Normalize and apply color */
         if (!color_set) {
             if (h > -1.0 && display_mode != DisplayStandardMode) {
                 h = normalizeHue(h);
             }
             if (h > -1.0) {
                 HSVtoRGB(&r, &g, &b, h, s, v);
-                glColor4d(r * brightness, g * brightness, b * brightness, a);
             } else if (velocity_dim > 0.0) {
-                /* Standard mode with velocity dim: recompute color
-                 * each vertex since alpha changes per sample */
                 HSVtoRGB(&r, &g, &b, hue, s, v);
-                glColor4d(r * brightness, g * brightness, b * brightness, a);
             }
         }
 
-        /* Catmull-Rom spline interpolation */
-        if (spline_steps > 1 && i > 2 && i < frames_read - 2) {
-            double prev2_lc = framebuf[i-2].left_channel;
-            double prev2_rc = framebuf[i-2].right_channel;
-            double prev_lc  = framebuf[i-1].left_channel;
-            double prev_rc  = framebuf[i-1].right_channel;
-            double next_lc  = framebuf[i+1].left_channel;
-            double next_rc  = framebuf[i+1].right_channel;
-            double next2_lc = framebuf[i+2].left_channel;
-            double next2_rc = framebuf[i+2].right_channel;
+        /* Final color for every vertex emitted from this audio sample.
+         * When gpu_color is active the shader multiplies by brightness,
+         * so we pass raw RGB here to avoid double-applying it. */
+        float cr, cg, cb;
+        if (gpu_color && display_mode == DisplaySpectrumMode) {
+            cr = (float)r;  cg = (float)g;  cb = (float)b;
+        } else {
+            cr = (float)(r * brightness);
+            cg = (float)(g * brightness);
+            cb = (float)(b * brightness);
+        }
+        float ca = (float)a;
 
-            for (double t = 0.0; t <= 1.0; t += 1.0 / (double) spline_steps) {
-                double t2 = t  * t;
+        /* Catmull-Rom spline interpolation into the vertex array.
+         * Coefficients are precomputed per audio sample so the inner
+         * loop is pure polynomial evaluation — no GL calls, no data
+         * dependencies between iterations, auto-vectorizes with -O3. */
+        if (spline_steps > 1 && i > 2 && i < frames_read - 2) {
+            double P0x = framebuf[i-2].left_channel;
+            double P0y = framebuf[i-2].right_channel;
+            double P1x = framebuf[i-1].left_channel;
+            double P1y = framebuf[i-1].right_channel;
+            double P2x = framebuf[i+1].left_channel;
+            double P2y = framebuf[i+1].right_channel;
+            double P3x = framebuf[i+2].left_channel;
+            double P3y = framebuf[i+2].right_channel;
+
+            /* Horner-form coefficients for x(t) and y(t) */
+            double ax0 = 2.0*P1x;
+            double ax1 = -P0x + P2x;
+            double ax2 = 2.0*P0x - 5.0*P1x + 4.0*P2x - P3x;
+            double ax3 = -P0x + 3.0*P1x - 3.0*P2x + P3x;
+            double ay0 = 2.0*P1y;
+            double ay1 = -P0y + P2y;
+            double ay2 = 2.0*P0y - 5.0*P1y + 4.0*P2y - P3y;
+            double ay3 = -P0y + 3.0*P1y - 3.0*P2y + P3y;
+
+            double inv_steps = 1.0 / (double)spline_steps;
+            for (unsigned int step = 0; step < spline_steps; step++) {
+                double t  = (double)step * inv_steps;
+                double t2 = t * t;
                 double t3 = t2 * t;
-                double x = 0.5 * ((2*prev_lc) + (-prev2_lc +   next_lc) * t +
-                                  (2*prev2_lc - 5*prev_lc  + 4*next_lc - next2_lc) * t2 +
-                                  ( -prev2_lc + 3*prev_lc  - 3*next_lc + next2_lc) * t3);
-                double y = 0.5 * ((2*prev_rc) + (-prev2_rc +   next_rc) * t +
-                                  (2*prev2_rc - 5*prev_rc  + 4*next_rc - next2_rc) * t2 +
-                                  ( -prev2_rc + 3*prev_rc  - 3*next_rc + next2_rc) * t3);
-                glVertex2d(x, y);
-                vertex_count++;
-                framebuf[i].left_channel  = x;
-                framebuf[i].right_channel = y;
+                verts[n*2]     = (float)(0.5 * (ax0 + ax1*t + ax2*t2 + ax3*t3));
+                verts[n*2 + 1] = (float)(0.5 * (ay0 + ay1*t + ay2*t2 + ay3*t3));
+                colors[n*4]     = cr;
+                colors[n*4 + 1] = cg;
+                colors[n*4 + 2] = cb;
+                colors[n*4 + 3] = ca;
+                n++;
             }
         } else {
-            glVertex2d(lc, rc);
-            vertex_count++;
+            verts[n*2]     = (float)lc;
+            verts[n*2 + 1] = (float)rc;
+            colors[n*4]     = cr;
+            colors[n*4 + 1] = cg;
+            colors[n*4 + 2] = cb;
+            colors[n*4 + 3] = ca;
+            n++;
         }
 
         olc = lc;
         orc = rc;
     }
 
-    return vertex_count;
+    /* Batch draw — one GL call replaces ~N individual glVertex2d calls */
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glEnableClientState(GL_COLOR_ARRAY);
+    glVertexPointer(2, GL_FLOAT, 0, verts);
+    glColorPointer(4, GL_FLOAT, 0, colors);
+    glDrawArrays(particles ? GL_POINTS : GL_LINE_STRIP, 0, n);
+    glDisableClientState(GL_VERTEX_ARRAY);
+    glDisableClientState(GL_COLOR_ARRAY);
+
+    return n;
 }
 
 #endif /* XYSCOPE_DRAW_H */
