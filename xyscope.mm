@@ -742,11 +742,9 @@ public:
         if (prefs.velocity_dim > 0.0) {
             glEnable(GL_BLEND);
             if (prefs.particles) {
-                glBlendEquation(GL_MAX);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             }
             else {
-                glBlendEquation(GL_FUNC_ADD);
                 glBlendFunc(GL_SRC_ALPHA, GL_ONE);
             }
         }
