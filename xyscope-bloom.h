@@ -369,6 +369,17 @@ static inline void bloom_end(bloom_state_t *b, float intensity, float gamma = 1.
     p_glUniform2f(b->blur_loc_dir, 0.0f, 1.0f / (float)bh);
     bloom_draw_fullscreen_quad();
 
+    /* 3b. Second blur pass — smooths blockiness from gamma < 1. */
+    p_glBindFramebuffer(GL_FRAMEBUFFER, b->blur_fbo[1]);
+    glBindTexture(GL_TEXTURE_2D, b->blur_tex[0]);
+    p_glUniform2f(b->blur_loc_dir, 1.0f / (float)bw, 0.0f);
+    bloom_draw_fullscreen_quad();
+
+    p_glBindFramebuffer(GL_FRAMEBUFFER, b->blur_fbo[0]);
+    glBindTexture(GL_TEXTURE_2D, b->blur_tex[1]);
+    p_glUniform2f(b->blur_loc_dir, 0.0f, 1.0f / (float)bh);
+    bloom_draw_fullscreen_quad();
+
     /* 4. Composite scene + bloom to default framebuffer. */
     p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, b->width, b->height);
