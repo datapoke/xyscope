@@ -741,12 +741,7 @@ public:
 
         if (prefs.velocity_dim > 0.0) {
             glEnable(GL_BLEND);
-            if (prefs.particles) {
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            }
-            else {
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-            }
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE);
         }
 
         /* GPU spline path: upload raw samples as textures, vertex
