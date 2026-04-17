@@ -1442,47 +1442,73 @@ public:
             glLineWidth((GLfloat) prefs.line_width);
         }
 
-        /* FFT setup for frequency / spectrum modes (must happen before glBegin) */
+        /* Spline-interpolate framebuf before FFT so the spectrum
+         * analysis operates on the upsampled signal.  The interpolated
+         * buffer is also passed to draw_xy_vertices (with spline_steps=1)
+         * so the drawing path doesn't redo the work. */
+        frame_t *draw_buf = framebuf;
+        unsigned int draw_frames_count = frames_read;
+        unsigned int draw_spline_steps = prefs.spline_steps;
+        unsigned int spline_window = window_size;
+        unsigned int spline_overlap = overlap_size;
+
+        if (prefs.spline_steps > 1 && frames_read > 4) {
+            unsigned int S = prefs.spline_steps;
+            unsigned int splined_count = (frames_read - 4) * S + 1;
+            frame_t *splined = new frame_t[splined_count];
+            unsigned int n = 0;
+            for (unsigned int i = 2; i < frames_read - 2; i++) {
+                double P0x = framebuf[i-2].left_channel;
+                double P0y = framebuf[i-2].right_channel;
+                double P1x = framebuf[i-1].left_channel;
+                double P1y = framebuf[i-1].right_channel;
+                double P2x = framebuf[i+1].left_channel;
+                double P2y = framebuf[i+1].right_channel;
+                double P3x = framebuf[i+2].left_channel;
+                double P3y = framebuf[i+2].right_channel;
+                double ax0 = 2.0*P1x, ax1 = -P0x + P2x;
+                double ax2 = 2.0*P0x - 5.0*P1x + 4.0*P2x - P3x;
+                double ax3 = -P0x + 3.0*P1x - 3.0*P2x + P3x;
+                double ay0 = 2.0*P1y, ay1 = -P0y + P2y;
+                double ay2 = 2.0*P0y - 5.0*P1y + 4.0*P2y - P3y;
+                double ay3 = -P0y + 3.0*P1y - 3.0*P2y + P3y;
+                double inv = 1.0 / (double)S;
+                unsigned int steps = (i < frames_read - 3) ? S : S + 1;
+                for (unsigned int step = 0; step < steps; step++) {
+                    double t = (double)step * inv;
+                    double t2 = t * t, t3 = t2 * t;
+                    splined[n].left_channel  = (sample_t)(0.5 * (ax0 + ax1*t + ax2*t2 + ax3*t3));
+                    splined[n].right_channel = (sample_t)(0.5 * (ay0 + ay1*t + ay2*t2 + ay3*t3));
+                    n++;
+                }
+            }
+            draw_buf = splined;
+            draw_frames_count = n;
+            draw_spline_steps = 1;
+            spline_window = window_size * S;
+            spline_overlap = overlap_size * S;
+        }
+
+        /* FFT setup for spectrum mode */
         if (prefs.display_mode == DisplaySpectrumMode) {
-                /* For spectrum mode, run the FFT on Catmull-Rom-splined
-                 * audio rather than the raw samples. The interpolation
-                 * doesn't add real frequency content but it does
-                 * introduce overshoot at sharp transitions, which
-                 * shows up as extra energy above the original Nyquist.
-                 * Combined with a proportionally larger FFT window
-                 * (so bin width stays the same), those extra bins
-                 * land in the B band and bias the trace toward more
-                 * blue for music with transients. spline_steps is
-                 * always a power of two (more/lessSplines only ever
-                 * double or halve), so window_size_fft stays pow2. */
-                unsigned int fft_count = frames_read;
-                unsigned int window_size_fft = window_size;
-                unsigned int overlap_size_fft = overlap_size;
+                unsigned int fft_count = draw_frames_count;
+                unsigned int window_size_fft = spline_window;
+                unsigned int overlap_size_fft = spline_overlap;
                 unsigned int stride_fft = window_size_fft - overlap_size_fft;
 
-                /* Build the FFT input buffer. Spectrum mode uses L as
-                 * real; R is read directly from framebuf in the FFT
-                 * lambda to form a complex input (L+iR) — the magnitude
-                 * spectrum sqrt(|FFT(L)|²+|FFT(R)|²) is phase-
-                 * independent and eliminates the 135° diagonal artifact.
-                 * Frequency mode uses mono (L+R)/2 as before. */
+                /* Build FFT input. Complex FFT: L=real, R read from
+                 * draw_buf in the lambda as imaginary (L+iR). */
                 double *fft_input = new double[fft_count];
-                if (prefs.display_mode == DisplaySpectrumMode) {
-                    for (unsigned int i = 0; i < frames_read; i++) {
-                        fft_input[i] = framebuf[i].left_channel;
-                    }
-                } else {
-                    for (unsigned int i = 0; i < frames_read; i++) {
-                        fft_input[i] = (framebuf[i].left_channel + framebuf[i].right_channel) / 2.0;
-                    }
+                for (unsigned int i = 0; i < fft_count; i++) {
+                    fft_input[i] = draw_buf[i].left_channel;
                 }
 
                 /* Allocate n_windows + 1 STFT slots. The extra slot is
                  * either the "nudged" tail window in spectrum mode or
                  * trailing carry-forward in both modes. n_windows in
                  * audio units. */
-                unsigned int stride_audio = window_size - overlap_size;
-                unsigned int n_windows_audio = frames_read / stride_audio;
+                unsigned int stride_audio = spline_window - spline_overlap;
+                unsigned int n_windows_audio = draw_frames_count / stride_audio;
                 unsigned int n_stft_slots = n_windows_audio + 1;
                 stft_results = new double*[n_stft_slots];
                 for (unsigned int i = 0; i < n_stft_slots; i++) {
@@ -1512,7 +1538,7 @@ public:
                         /* Complex FFT: L=real, R=imag */
                         for (unsigned int j = 0; j < window_size_fft; j++) {
                             fft_data.realp[j] = (float)fft_input[start_i + j];
-                            fft_data.imagp[j] = (float)framebuf[start_i + j].right_channel;
+                            fft_data.imagp[j] = (float)draw_buf[start_i + j].right_channel;
                         }
                         vDSP_fft_zip(fft_setup_local, &fft_data, 1, log2n_win, FFT_FORWARD);
                     } else {
@@ -1551,7 +1577,7 @@ public:
                     for (unsigned int j = 0; j < window_size_fft; j++) {
                         temp_data[j][0] = fft_input[start_i + j];
                         temp_data[j][1] = spectrum
-                            ? framebuf[start_i + j].right_channel
+                            ? draw_buf[start_i + j].right_channel
                             : 0.0;
                     }
                     fft_plan = fftw_plan_dft_1d(window_size_fft, temp_data, fft_out_local, FFTW_FORWARD, FFTW_ESTIMATE);
@@ -1602,7 +1628,7 @@ public:
                 fftw_free(fft_out_local);
 #endif
 
-                unsigned int n_windows = frames_read / (window_size - overlap_size);
+                unsigned int n_windows = draw_frames_count / (spline_window - spline_overlap);
 
                 {
                     /* Spectrum mode:
@@ -1692,9 +1718,9 @@ public:
         /* Compute color delta accumulator for ColorDeltaMode */
         if (prefs.color_mode == ColorDeltaMode) {
             double olc = 0.0, orc = 0.0;
-            for (unsigned int i = 0; i < frames_read; i++) {
-                double lc = framebuf[i].left_channel;
-                double rc = framebuf[i].right_channel;
+            for (unsigned int i = 0; i < draw_frames_count; i++) {
+                double lc = draw_buf[i].left_channel;
+                double rc = draw_buf[i].right_channel;
                 dt += hypot(lc - olc, rc - orc) / SQRT_TWO;
                 olc = lc;
                 orc = rc;
@@ -1727,14 +1753,15 @@ public:
             p_glUniform1f(spectrum_brightness_loc, (float)prefs.brightness);
         }
 
-        /* display framebuf contents — draw_xy_vertices handles its
-         * own vertex array setup and glDrawArrays internally. */
+        /* display draw_buf contents — draw_xy_vertices handles its
+         * own vertex array setup and glDrawArrays internally.
+         * When splines were pre-applied, draw_spline_steps=1. */
         vertex_count = draw_xy_vertices(
-            framebuf, frames_read,
+            draw_buf, draw_frames_count,
             prefs.display_mode, prefs.color_mode,
             prefs.hue, prefs.color_range, prefs.scale_factor,
-            prefs.spline_steps,
-            window_size, overlap_size,
+            draw_spline_steps,
+            spline_window, spline_overlap,
             prefs.brightness, prefs.velocity_dim,
             spectrum_colors,
             prefs.particles,
@@ -1751,6 +1778,8 @@ public:
         glPopMatrix();
         if (prefs.display_mode == DisplaySpectrumMode)
             delete[] spectrum_colors;
+        if (draw_buf != framebuf)
+            delete[] draw_buf;
 
         switch (prefs.color_mode) {
             case ColorStandardMode:
@@ -2248,7 +2277,7 @@ public:
 
     void moreSplines(void)
     {
-        if (prefs.spline_steps < 128)
+        if (prefs.spline_steps < 1024)
             prefs.spline_steps *= 2;
         showSplines(TIMED);
     }
