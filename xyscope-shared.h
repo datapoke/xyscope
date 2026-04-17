@@ -88,6 +88,7 @@ static inline int clock_gettime(int clk_id, struct timespec *ts) {
 #define DEFAULT_COLOR_RATE    0.0
 #define DEFAULT_BLOOM         1.0
 #define DEFAULT_BLOOM_GAMMA   1.0
+#define DEFAULT_BLOOM_RADIUS  1.0
 #define SQRT_TWO              1.41421356237309504880
 
 
@@ -146,6 +147,7 @@ typedef struct _preferences_t {
     double velocity_dim;
     double bloom_intensity;    /* 0.0 = off, default off */
     double bloom_gamma;        /* power curve on bloom: <1 soft glow, >1 punchy */
+    double bloom_radius;       /* blur spread multiplier: <1 tight, >1 wide */
 } preferences_t;
 
 #define NUM_PRESETS 10
@@ -311,6 +313,7 @@ static inline void write_prefs_section(FILE *fp, const char *section,
     fprintf(fp, "velocity_dim=%.17g\n",    p->velocity_dim);
     fprintf(fp, "bloom_intensity=%.17g\n", p->bloom_intensity);
     fprintf(fp, "bloom_gamma=%.17g\n",    p->bloom_gamma);
+    fprintf(fp, "bloom_radius=%.17g\n",   p->bloom_radius);
     fprintf(fp, "\n");
 }
 
@@ -367,6 +370,7 @@ static inline void parse_prefs_key(preferences_t *p,
     else if (!strcmp(key, "velocity_dim"))    p->velocity_dim    = atof(val);
     else if (!strcmp(key, "bloom_intensity")) p->bloom_intensity = atof(val);
     else if (!strcmp(key, "bloom_gamma"))     p->bloom_gamma     = atof(val);
+    else if (!strcmp(key, "bloom_radius"))   p->bloom_radius    = atof(val);
 }
 
 static inline bool load_config(preferences_t *prefs, presets_t *presets,

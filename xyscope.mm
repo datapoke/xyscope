@@ -1139,9 +1139,10 @@ public:
     bool show_intro;
     bool show_help;
     bool show_mouse;
+    bool dj_mode;
 
-    #define NUM_TEXT_TIMERS 19
-    #define NUM_AUTO_TEXT_TIMERS 15
+    #define NUM_TEXT_TIMERS 20
+    #define NUM_AUTO_TEXT_TIMERS 16
     typedef struct _text_timer_t {
         bool show;
         timeval time;
@@ -1164,13 +1165,14 @@ public:
         VelocityDimTimer = 10,
         BloomTimer       = 11,
         BloomGammaTimer  = 12,
-        SampleRateTimer  = 13,
-        FrameRateTimer   = 14,
+        BloomRadiusTimer = 13,
+        SampleRateTimer  = 14,
+        FrameRateTimer   = 15,
         /* End of text timers automatically included in stats display */
-        PresetTimer      = 15,
-        PausedTimer      = 16,
-        ScaleTimer       = 17,
-        CounterTimer     = 18
+        PresetTimer      = 16,
+        PausedTimer      = 17,
+        ScaleTimer       = 18,
+        CounterTimer     = 19
     } text_timer_handles;
     text_timer_t text_timer[NUM_TEXT_TIMERS];
     timeval show_intro_time;
@@ -1209,6 +1211,7 @@ public:
         show_intro         = true;
         show_help          = false;
         show_mouse         = true;
+        dj_mode            = false;
         memset(&prefs,   0, sizeof(prefs));
         memset(&presets, 0, sizeof(presets));
         memset(&app,     0, sizeof(app));
@@ -1911,10 +1914,12 @@ public:
         { "d and D",           "Display mode" },
         { "f",                 "Enter/Exit full screen mode" },
         { "h",                 "Show/Hide help" },
+        { "/",                 "DJ mode (hide all text)" },
         { "l and L",           "Adjust splines" },
         { "u/i and U/I",       "Adjust brightness" },
         { "b and B",           "Adjust bloom intensity" },
         { "v and V",           "Adjust bloom gamma" },
+        { "g and G",           "Adjust bloom radius" },
         { "j/k and J/K",       "Adjust display delay" },
         { "n/m and N/M",       "Adjust velocity dim" },
         { "r",                 "Recenter" },
@@ -2071,6 +2076,7 @@ public:
     void showParticles(bool t) { showTimedText(ParticlesTimer, true, t, "Particles: %s", prefs.particles ? "on" : "off"); }
     void showBloomIntensity(bool t) { showTimedText(BloomTimer, true, t, "Bloom intensity: %.1f", prefs.bloom_intensity); }
     void showBloomGamma(bool t) { showTimedText(BloomGammaTimer, true, t, "Bloom gamma: %.1f", prefs.bloom_gamma); }
+    void showBloomRadius(bool t) { showTimedText(BloomRadiusTimer, true, t, "Bloom radius: %.1f", prefs.bloom_radius); }
     void showColorMode(bool t) { showTimedText(ColorModeTimer, true, t, "Color mode: %s", color_mode_names[prefs.color_mode]); }
     void showDisplayMode(bool t) { showTimedText(DisplayModeTimer, true, t, "Display mode: %s", display_mode_names[prefs.display_mode]); }
     void showColorRange(bool t) { showTimedText(ColorRangeTimer, true, t, "Color range: %.2f", prefs.color_range); }
@@ -2615,6 +2621,13 @@ public:
         showBloomGamma(TIMED);
     }
 
+    void setBloomRadius(double v)
+    {
+        prefs.bloom_radius = v;
+        if (prefs.bloom_radius < 0.5) prefs.bloom_radius = 0.5;
+        showBloomRadius(TIMED);
+    }
+
     void savePreset(int n)
     {
         presets.slot[n] = prefs;
@@ -2648,6 +2661,8 @@ public:
             prefs.line_width = DEFAULT_LINE_WIDTH;
         if (prefs.bloom_gamma < 0.1)
             prefs.bloom_gamma = DEFAULT_BLOOM_GAMMA;
+        if (prefs.bloom_radius < 0.5)
+            prefs.bloom_radius = DEFAULT_BLOOM_RADIUS;
     }
 
     void loadPreset(int n)
@@ -2704,6 +2719,7 @@ public:
             prefs.velocity_dim = 1.0;
         prefs.bloom_intensity = DEFAULT_BLOOM;
         prefs.bloom_gamma     = DEFAULT_BLOOM_GAMMA;
+        prefs.bloom_radius    = DEFAULT_BLOOM_RADIUS;
         max_sample_value = min((prefs.side[0] - prefs.side[1]) / 2.1,
                                (prefs.side[2] - prefs.side[3]) / 2.1);
         refreshStats(TIMED);
@@ -2725,6 +2741,7 @@ public:
         showVelocityDim(t);
         showBloomIntensity(t);
         showBloomGamma(t);
+        showBloomRadius(t);
     }
 };
 static scene scn;
@@ -2788,10 +2805,10 @@ void display()
     bool use_bloom = bloom.enabled && scn.prefs.bloom_intensity > 0.0;
     if (use_bloom) bloom_begin(&bloom);
     scn.drawPlot();
-    if (use_bloom) bloom_end(&bloom, (float)scn.prefs.bloom_intensity, (float)scn.prefs.bloom_gamma);
+    if (use_bloom) bloom_end(&bloom, (float)scn.prefs.bloom_intensity, (float)scn.prefs.bloom_gamma, (float)scn.prefs.bloom_radius);
 
     /* draw any text that needs drawing */
-    scn.drawText();
+    if (!scn.dj_mode) scn.drawText();
 
     /* wash, rinse, repeat */
     glFinish();
@@ -2979,6 +2996,9 @@ void keyboard(unsigned char key, int xPos, int yPos)
             else
                 scn.show_help = ! scn.show_help;
             break;
+        case '/':
+            scn.dj_mode = !scn.dj_mode;
+            break;
         case 'j':
             scn.setDelay(scn.getDelay() - 1.0);
             break;
@@ -3020,6 +3040,12 @@ void keyboard(unsigned char key, int xPos, int yPos)
             break;
         case 'V':
             scn.setBloomGamma(scn.prefs.bloom_gamma - 0.1);
+            break;
+        case 'g':
+            scn.setBloomRadius(scn.prefs.bloom_radius + 0.5);
+            break;
+        case 'G':
+            scn.setBloomRadius(scn.prefs.bloom_radius - 0.5);
             break;
         case 'i':
             scn.setBrightness(scn.getBrightness() + 1.0);
@@ -3168,21 +3194,82 @@ int main(int argc, char *argv[])
             scn.app.target[0] = '\0';
         }
 #endif
+        else if (!strcmp(argv[i], "--splines") && i + 1 < argc) {
+            scn.prefs.spline_steps = atoi(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--color-mode") && i + 1 < argc) {
+            scn.prefs.color_mode = atoi(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--color-range") && i + 1 < argc) {
+            scn.prefs.color_range = atof(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--color-rate") && i + 1 < argc) {
+            scn.prefs.color_rate = atof(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--display-mode") && i + 1 < argc) {
+            scn.prefs.display_mode = atoi(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--line-width") && i + 1 < argc) {
+            scn.prefs.line_width = atoi(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--particles") && i + 1 < argc) {
+            scn.prefs.particles = atoi(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--hue") && i + 1 < argc) {
+            scn.prefs.hue = atof(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--brightness") && i + 1 < argc) {
+            scn.prefs.brightness = atof(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--velocity-dim") && i + 1 < argc) {
+            scn.prefs.velocity_dim = atof(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--bloom") && i + 1 < argc) {
+            scn.prefs.bloom_intensity = atof(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--bloom-gamma") && i + 1 < argc) {
+            scn.prefs.bloom_gamma = atof(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--bloom-radius") && i + 1 < argc) {
+            scn.prefs.bloom_radius = atof(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--delay") && i + 1 < argc) {
+            scn.prefs.delay = atof(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--fullscreen")) {
+            scn.prefs.is_full_screen = true;
+        }
+        else if (!strcmp(argv[i], "--windowed")) {
+            scn.prefs.is_full_screen = false;
+        }
+        else if (!strcmp(argv[i], "--dj")) {
+            scn.dj_mode = true;
+        }
         else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
-            printf("Usage: xyscope [-p preset]"
+            printf("Usage: xyscope [options]\n\n");
+            printf("  -p, --preset N       Load preset N (0-9) on startup\n");
 #if !defined(__APPLE__) && !defined(_WIN32)
-                   " [-t target] [-r]"
+            printf("  -t, --target ID      Pipewire target node name or serial\n");
+            printf("  -r, --reset-target   Clear saved Pipewire target\n");
 #endif
-                   "\n");
-            printf("  -p, --preset N     Load preset N (0-9) on startup\n");
-#if !defined(__APPLE__) && !defined(_WIN32)
-            printf("  -t, --target ID    Pipewire target node name or serial\n");
-            printf("                     Default: capture from the default sink monitor\n");
-            printf("                     Discover names with: pw-link -io\n");
-            printf("                     Examples: -t alsa_output.pci-0000_0c_00.4.analog-stereo.monitor\n");
-            printf("                               -t \"Built-in Audio Analog Stereo\"\n");
-            printf("  -r, --reset-target Clear saved Pipewire target (use default source)\n");
-#endif
+            printf("  --splines N          Spline interpolation steps (1-1024)\n");
+            printf("  --display-mode N     0=standard, 1=radius, 2=spectrum\n");
+            printf("  --color-mode N       0=standard, 1=delta\n");
+            printf("  --color-range N      Color range multiplier\n");
+            printf("  --color-rate N       Color rotation rate\n");
+            printf("  --hue N              Starting hue (0-360)\n");
+            printf("  --brightness N       Brightness multiplier\n");
+            printf("  --velocity-dim N     Velocity dimming amount\n");
+            printf("  --bloom N            Bloom intensity (0=off)\n");
+            printf("  --bloom-gamma N      Bloom gamma curve\n");
+            printf("  --bloom-radius N     Bloom blur radius\n");
+            printf("  --line-width N       Line width (1-%d)\n", MAX_LINE_WIDTH);
+            printf("  --particles N        Particles mode (0=lines, 1=points)\n");
+            printf("  --delay N            Display delay in ms\n");
+            printf("  --fullscreen         Start in fullscreen\n");
+            printf("  --windowed           Start in windowed mode\n");
+            printf("  --dj                 DJ mode (hide all text)\n");
+            printf("  -h, --help           Show this help\n");
             return 0;
         }
     }

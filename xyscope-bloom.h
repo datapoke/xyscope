@@ -45,7 +45,9 @@ typedef struct {
     GLint  comp_loc_scene;
     GLint  comp_loc_bloom;
     GLint  comp_loc_intensity;
-    GLint  comp_loc_gamma;
+    GLuint gamma_prog;
+    GLint  gamma_loc_tex;
+    GLint  gamma_loc_gamma;
 } bloom_state_t;
 
 /* GL 2.x/3.x function pointers — loaded via SDL_GL_GetProcAddress in bloom_init. */
@@ -162,18 +164,25 @@ static const char *BLOOM_BLUR_FS_SRC =
     "    gl_FragColor = s;\n"
     "}\n";
 
+static const char *BLOOM_GAMMA_FS_SRC =
+    "#version 120\n"
+    "uniform sampler2D u_tex;\n"
+    "uniform float u_gamma;\n"
+    "varying vec2 v_uv;\n"
+    "void main() {\n"
+    "    vec4 c = texture2D(u_tex, v_uv);\n"
+    "    gl_FragColor = pow(max(c, vec4(0.0)), vec4(u_gamma));\n"
+    "}\n";
+
 static const char *BLOOM_COMP_FS_SRC =
     "#version 120\n"
     "uniform sampler2D u_scene;\n"
     "uniform sampler2D u_bloom;\n"
     "uniform float u_intensity;\n"
-    "uniform float u_gamma;\n"
     "varying vec2 v_uv;\n"
     "void main() {\n"
     "    vec4 s = texture2D(u_scene, v_uv);\n"
     "    vec4 b = texture2D(u_bloom, v_uv);\n"
-    "    float peak = max(b.r, max(b.g, b.b));\n"
-    "    if (peak > 0.0) b = pow(b / peak, vec4(u_gamma)) * peak;\n"
     "    gl_FragColor = max(s, b * u_intensity);\n"
     "}\n";
 
@@ -269,7 +278,11 @@ static inline bool bloom_init(bloom_state_t *b, int w, int h)
     b->comp_loc_scene     = p_glGetUniformLocation(b->composite_prog, "u_scene");
     b->comp_loc_bloom     = p_glGetUniformLocation(b->composite_prog, "u_bloom");
     b->comp_loc_intensity = p_glGetUniformLocation(b->composite_prog, "u_intensity");
-    b->comp_loc_gamma     = p_glGetUniformLocation(b->composite_prog, "u_gamma");
+
+    b->gamma_prog = bloom_build_program(BLOOM_VS_SRC, BLOOM_GAMMA_FS_SRC);
+    if (!b->gamma_prog) goto fail;
+    b->gamma_loc_tex   = p_glGetUniformLocation(b->gamma_prog, "u_tex");
+    b->gamma_loc_gamma = p_glGetUniformLocation(b->gamma_prog, "u_gamma");
 
     b->enabled = true;
     return true;
@@ -289,6 +302,7 @@ static inline void bloom_cleanup(bloom_state_t *b)
     if (b->blur_tex[1])   { glDeleteTextures(1, &b->blur_tex[1]);        b->blur_tex[1] = 0; }
     if (b->blur_prog)     { p_glDeleteProgram(b->blur_prog);             b->blur_prog = 0; }
     if (b->composite_prog){ p_glDeleteProgram(b->composite_prog);        b->composite_prog = 0; }
+    if (b->gamma_prog)    { p_glDeleteProgram(b->gamma_prog);            b->gamma_prog = 0; }
     b->enabled = false;
 }
 
@@ -333,7 +347,7 @@ static inline void bloom_begin(bloom_state_t *b)
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
-static inline void bloom_end(bloom_state_t *b, float intensity, float gamma = 1.0f)
+static inline void bloom_end(bloom_state_t *b, float intensity, float gamma = 1.0f, float radius = 1.0f)
 {
     if (!b->enabled) return;
 
@@ -354,34 +368,49 @@ static inline void bloom_end(bloom_state_t *b, float intensity, float gamma = 1.
     glDisable(GL_DEPTH_TEST);
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
-    /* 2. Horizontal blur: blur_fbo[0] -> blur_fbo[1]. */
+    /* 2. Pre-blur gamma: blur_fbo[0] -> blur_fbo[1].
+     *    Applied before blur so gamma reshapes the high-contrast
+     *    scene (bright vs dark) rather than the already-smooth
+     *    blurred result. gamma > 1 = only bright spots bloom,
+     *    gamma < 1 = everything glows. */
     p_glBindFramebuffer(GL_FRAMEBUFFER, b->blur_fbo[1]);
     glViewport(0, 0, bw, bh);
-    p_glUseProgram(b->blur_prog);
+    p_glUseProgram(b->gamma_prog);
     p_glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, b->blur_tex[0]);
+    p_glUniform1i(b->gamma_loc_tex, 0);
+    p_glUniform1f(b->gamma_loc_gamma, gamma);
+    bloom_draw_fullscreen_quad();
+
+    /* 3. Blur passes — radius controls count (1.0 = 2 passes, 2.0 = 4, etc.).
+     *    Each H+V pair at 1-texel step widens the effective Gaussian.
+     *    Gamma pre-pass left result in blur[1], so first H reads [1]. */
+    float hw = 1.0f / (float)bw;
+    float hh = 1.0f / (float)bh;
+    int passes = (int)(radius * 2.0f);
+    if (passes < 1) passes = 1;
+    int src = 1;
+    p_glUseProgram(b->blur_prog);
     p_glUniform1i(b->blur_loc_tex, 0);
-    p_glUniform2f(b->blur_loc_dir, 1.0f / (float)bw, 0.0f);
-    bloom_draw_fullscreen_quad();
+    for (int p = 0; p < passes; p++) {
+        int dst = 1 - src;
+        /* H blur */
+        p_glBindFramebuffer(GL_FRAMEBUFFER, b->blur_fbo[dst]);
+        glBindTexture(GL_TEXTURE_2D, b->blur_tex[src]);
+        p_glUniform2f(b->blur_loc_dir, hw, 0.0f);
+        bloom_draw_fullscreen_quad();
+        src = dst;
+        dst = 1 - src;
+        /* V blur */
+        p_glBindFramebuffer(GL_FRAMEBUFFER, b->blur_fbo[dst]);
+        glBindTexture(GL_TEXTURE_2D, b->blur_tex[src]);
+        p_glUniform2f(b->blur_loc_dir, 0.0f, hh);
+        bloom_draw_fullscreen_quad();
+        src = dst;
+    }
+    /* Result is in blur[src]. */
 
-    /* 3. Vertical blur: blur_fbo[1] -> blur_fbo[0]. */
-    p_glBindFramebuffer(GL_FRAMEBUFFER, b->blur_fbo[0]);
-    glBindTexture(GL_TEXTURE_2D, b->blur_tex[1]);
-    p_glUniform2f(b->blur_loc_dir, 0.0f, 1.0f / (float)bh);
-    bloom_draw_fullscreen_quad();
-
-    /* 3b. Second blur pass — smooths blockiness from gamma < 1. */
-    p_glBindFramebuffer(GL_FRAMEBUFFER, b->blur_fbo[1]);
-    glBindTexture(GL_TEXTURE_2D, b->blur_tex[0]);
-    p_glUniform2f(b->blur_loc_dir, 1.0f / (float)bw, 0.0f);
-    bloom_draw_fullscreen_quad();
-
-    p_glBindFramebuffer(GL_FRAMEBUFFER, b->blur_fbo[0]);
-    glBindTexture(GL_TEXTURE_2D, b->blur_tex[1]);
-    p_glUniform2f(b->blur_loc_dir, 0.0f, 1.0f / (float)bh);
-    bloom_draw_fullscreen_quad();
-
-    /* 4. Composite scene + bloom to default framebuffer. */
+    /* 6. Composite scene + bloom to default framebuffer. */
     p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, b->width, b->height);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -391,10 +420,9 @@ static inline void bloom_end(bloom_state_t *b, float intensity, float gamma = 1.
     glBindTexture(GL_TEXTURE_2D, b->scene_tex);
     p_glUniform1i(b->comp_loc_scene, 0);
     p_glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, b->blur_tex[0]);
+    glBindTexture(GL_TEXTURE_2D, b->blur_tex[src]);
     p_glUniform1i(b->comp_loc_bloom, 1);
     p_glUniform1f(b->comp_loc_intensity, intensity);
-    p_glUniform1f(b->comp_loc_gamma, gamma);
     bloom_draw_fullscreen_quad();
 
     /* Restore GL state drawText expects. */
