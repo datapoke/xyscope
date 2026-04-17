@@ -144,8 +144,8 @@ static GLint  spline_loc_positions = -1;
 static GLint  spline_loc_colors = -1;
 static GLint  spline_loc_num_samples = -1;
 static GLint  spline_loc_spline_steps = -1;
-static GLuint spline_pos_tex = 0;
-static GLuint spline_col_tex = 0;
+static GLuint spline_pos_tex[2] = {0, 0};
+static GLuint spline_col_tex[2] = {0, 0};
 static GLuint spline_index_vbo = 0;
 static unsigned int spline_index_alloc = 0;
 
@@ -828,28 +828,31 @@ public:
                 olc = lc; orc = rc;
             }
 
-            /* Upload positions to 1D texture (unit 0).
-             * Pre-allocate at max size once, then glTexSubImage1D
-             * to avoid GPU reallocation every frame. */
-            static unsigned int s_tex_alloc = 0;
+            /* Double-buffered texture upload: alternate between
+             * two texture pairs each frame so this frame's upload
+             * doesn't stall waiting for last frame's draw to finish
+             * reading the same texture. */
+            static unsigned int s_tex_alloc[2] = {0, 0};
+            static unsigned int s_frame = 0;
+            unsigned int tex = s_frame & 1;
+            s_frame++;
+
             p_glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_1D, spline_pos_tex);
-            if (frames_read > s_tex_alloc) {
+            glBindTexture(GL_TEXTURE_1D, spline_pos_tex[tex]);
+            if (frames_read > s_tex_alloc[tex]) {
                 glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA16F, frames_read, 0, GL_RGBA, GL_FLOAT, s_pos);
+                glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
                 p_glActiveTexture(GL_TEXTURE1);
-                glBindTexture(GL_TEXTURE_1D, spline_col_tex);
+                glBindTexture(GL_TEXTURE_1D, spline_col_tex[tex]);
                 glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA16F, frames_read, 0, GL_RGBA, GL_FLOAT, s_col);
                 glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
                 glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-                p_glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_1D, spline_pos_tex);
-                glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-                glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-                s_tex_alloc = frames_read;
+                s_tex_alloc[tex] = frames_read;
             } else {
                 glTexSubImage1D(GL_TEXTURE_1D, 0, 0, frames_read, GL_RGBA, GL_FLOAT, s_pos);
                 p_glActiveTexture(GL_TEXTURE1);
-                glBindTexture(GL_TEXTURE_1D, spline_col_tex);
+                glBindTexture(GL_TEXTURE_1D, spline_col_tex[tex]);
                 glTexSubImage1D(GL_TEXTURE_1D, 0, 0, frames_read, GL_RGBA, GL_FLOAT, s_col);
             }
 
@@ -2702,8 +2705,8 @@ int main(int argc, char *argv[])
             spline_loc_num_samples  = p_glGetUniformLocation(spline_shader_prog, "u_num_samples");
             spline_loc_spline_steps = p_glGetUniformLocation(spline_shader_prog, "u_spline_steps");
             /* Create 1D textures for sample data */
-            glGenTextures(1, &spline_pos_tex);
-            glGenTextures(1, &spline_col_tex);
+            glGenTextures(2, spline_pos_tex);
+            glGenTextures(2, spline_col_tex);
             fprintf(stderr, "GPU spline shader compiled.\n");
         }
     }
