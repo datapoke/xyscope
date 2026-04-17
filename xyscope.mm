@@ -1099,6 +1099,17 @@ extern SDL_GLContext gl_context;
 static GLuint spectrum_shader_prog = 0;
 static GLint  spectrum_brightness_loc = -1;
 
+/* GPU spline shader — compiled in main(), used by drawPlot. */
+static GLuint spline_shader_prog = 0;
+static GLint  spline_loc_positions = -1;
+static GLint  spline_loc_colors = -1;
+static GLint  spline_loc_num_samples = -1;
+static GLint  spline_loc_spline_steps = -1;
+static GLuint spline_pos_tex = 0;
+static GLuint spline_col_tex = 0;
+static GLuint spline_index_vbo = 0;
+static unsigned int spline_index_alloc = 0;
+
 class scene
 {
 public:
@@ -1697,32 +1708,161 @@ public:
             glDepthFunc(GL_LESS);
         }
 
-        /* Enable the spectrum shader to offload per-vertex HSV
-         * conversion to the GPU. Falls back to CPU if the shader
-         * didn't compile (e.g. bloom_init failed). */
-        bool gpu_color = (prefs.display_mode == DisplaySpectrumMode
-                          && spectrum_shader_prog != 0);
-        if (gpu_color) {
-            p_glUseProgram(spectrum_shader_prog);
-            p_glUniform1f(spectrum_brightness_loc, (float)prefs.brightness);
-        }
+        /* GPU spline path: upload raw samples as textures, vertex
+         * shader does Catmull-Rom.  Falls back to CPU if shader
+         * didn't compile or spline_steps <= 1. */
+        bool use_gpu_spline = (spline_shader_prog != 0
+                               && prefs.spline_steps > 1
+                               && frames_read > 4
+                               && p_glBindBuffer_ && p_glBufferData_);
 
-        /* draw_xy_vertices does its own spline interpolation so
-         * color is computed per audio sample, not per spline step.
-         * Pass original framebuf with full spline_steps. */
-        vertex_count = draw_xy_vertices(
-            framebuf, frames_read,
-            prefs.display_mode, prefs.color_mode,
-            prefs.hue, prefs.color_range, prefs.scale_factor,
-            prefs.spline_steps,
-            window_size, overlap_size,
-            prefs.brightness, prefs.velocity_dim,
-            spectrum_colors,
-            prefs.particles,
-            gpu_color);
+        if (use_gpu_spline) {
+            /* Compute per-sample colors on CPU (~1600 iterations) */
+            static float *s_pos = NULL;
+            static float *s_col = NULL;
+            static unsigned int s_samp_alloc = 0;
+            if (frames_read > s_samp_alloc) {
+                free(s_pos); free(s_col);
+                s_pos = (float *)malloc(frames_read * 4 * sizeof(float));
+                s_col = (float *)malloc(frames_read * 4 * sizeof(float));
+                s_samp_alloc = frames_read;
+            }
 
-        if (gpu_color) {
+            unsigned int spl_stride = (window_size > overlap_size) ? (window_size - overlap_size) : 1;
+            double h = -1.0, s = 1.0, v = 1.0, a = 1.0;
+            double r = 1.0, g = 1.0, b = 1.0;
+            double olc = 0.0, orc = 0.0;
+            if (prefs.display_mode == DisplayStandardMode)
+                HSVtoRGB(&r, &g, &b, prefs.hue, s, v);
+
+            for (unsigned int i = 0; i < frames_read; i++) {
+                double lc = framebuf[i].left_channel;
+                double rc = framebuf[i].right_channel;
+                double d = hypot(lc - olc, rc - orc) / SQRT_TWO;
+                if (prefs.velocity_dim > 0.0)
+                    a = 1.0 / (1.0 + d * 10.0 * prefs.velocity_dim * prefs.scale_factor);
+                else
+                    a = 1.0;
+
+                bool color_set = false;
+                switch (prefs.display_mode) {
+                    case DisplayStandardMode: break;
+                    case DisplayRadiusMode:
+                        h = ((hypot(lc, rc) / SQRT_TWO) * 360.0 * prefs.color_range * prefs.scale_factor) + prefs.hue;
+                        break;
+                    case DisplaySpectrumMode:
+                        if (spectrum_colors) {
+                            unsigned int w = i / spl_stride;
+                            double sr = spectrum_colors[w * 3 + 0];
+                            double sg = spectrum_colors[w * 3 + 1];
+                            double sb = spectrum_colors[w * 3 + 2];
+                            double sh, ss, sv;
+                            RGBtoHSV(sr, sg, sb, &sh, &ss, &sv);
+                            ss *= 1.5; if (ss > 1.0) ss = 1.0;
+                            double v_floor = 0.5 / prefs.brightness;
+                            if (v_floor > 0.5) v_floor = 0.5;
+                            sv = sv * (1.0 - v_floor) + v_floor;
+                            HSVtoRGB(&r, &g, &b, sh, ss, sv);
+                            color_set = true;
+                        }
+                        break;
+                }
+                if (!color_set) {
+                    if (h > -1.0 && prefs.display_mode != DisplayStandardMode)
+                        h = normalizeHue(h);
+                    if (h > -1.0)
+                        HSVtoRGB(&r, &g, &b, h, s, v);
+                    else if (prefs.velocity_dim > 0.0)
+                        HSVtoRGB(&r, &g, &b, prefs.hue, s, v);
+                }
+
+                s_pos[i * 4 + 0] = (float)lc;
+                s_pos[i * 4 + 1] = (float)rc;
+                s_pos[i * 4 + 2] = 0.0f;
+                s_pos[i * 4 + 3] = 0.0f;
+                s_col[i * 4 + 0] = (float)(r * prefs.brightness);
+                s_col[i * 4 + 1] = (float)(g * prefs.brightness);
+                s_col[i * 4 + 2] = (float)(b * prefs.brightness);
+                s_col[i * 4 + 3] = (float)a;
+                olc = lc; orc = rc;
+            }
+
+            /* Upload positions to 1D texture (unit 0) */
+            p_glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_1D, spline_pos_tex);
+            glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA16F, frames_read, 0, GL_RGBA, GL_FLOAT, s_pos);
+            glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+            /* Upload colors to 1D texture (unit 1) */
+            p_glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_1D, spline_col_tex);
+            glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA16F, frames_read, 0, GL_RGBA, GL_FLOAT, s_col);
+            glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+            /* Ensure index VBO is large enough.  Standard Catmull-Rom:
+             * (frames_read - 3) usable segments, spline_steps verts each,
+             * plus 1 for the final endpoint. */
+            unsigned int n_spline_verts = (frames_read - 3) * prefs.spline_steps + 1;
+            if (n_spline_verts > spline_index_alloc) {
+                float *indices = (float *)malloc(n_spline_verts * 2 * sizeof(float));
+                for (unsigned int i = 0; i < n_spline_verts; i++) {
+                    indices[i * 2]     = (float)i;
+                    indices[i * 2 + 1] = 0.0f;
+                }
+                if (!spline_index_vbo)
+                    p_glGenBuffers_(1, &spline_index_vbo);
+                p_glBindBuffer_(GL_ARRAY_BUFFER, spline_index_vbo);
+                p_glBufferData_(GL_ARRAY_BUFFER, n_spline_verts * 2 * sizeof(float), indices, GL_STREAM_DRAW);
+                p_glBindBuffer_(GL_ARRAY_BUFFER, 0);
+                free(indices);
+                spline_index_alloc = n_spline_verts;
+            }
+
+            /* Draw with spline shader */
+            p_glUseProgram(spline_shader_prog);
+            p_glUniform1i(spline_loc_positions, 0);
+            p_glUniform1i(spline_loc_colors, 1);
+            p_glUniform1f(spline_loc_num_samples, (float)frames_read);
+            p_glUniform1f(spline_loc_spline_steps, (float)prefs.spline_steps);
+
+            glEnableClientState(GL_VERTEX_ARRAY);
+            p_glBindBuffer_(GL_ARRAY_BUFFER, spline_index_vbo);
+            glVertexPointer(2, GL_FLOAT, 0, 0);
+            glDrawArrays(prefs.particles ? GL_POINTS : GL_LINE_STRIP, 0, n_spline_verts);
+            p_glBindBuffer_(GL_ARRAY_BUFFER, 0);
+            glDisableClientState(GL_VERTEX_ARRAY);
+
             p_glUseProgram(0);
+            p_glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_1D, 0);
+            p_glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_1D, 0);
+
+            vertex_count = n_spline_verts;
+        } else {
+            /* CPU fallback */
+            bool gpu_color = (prefs.display_mode == DisplaySpectrumMode
+                              && spectrum_shader_prog != 0);
+            if (gpu_color) {
+                p_glUseProgram(spectrum_shader_prog);
+                p_glUniform1f(spectrum_brightness_loc, (float)prefs.brightness);
+            }
+
+            vertex_count = draw_xy_vertices(
+                framebuf, frames_read,
+                prefs.display_mode, prefs.color_mode,
+                prefs.hue, prefs.color_range, prefs.scale_factor,
+                prefs.spline_steps,
+                window_size, overlap_size,
+                prefs.brightness, prefs.velocity_dim,
+                spectrum_colors,
+                prefs.particles,
+                gpu_color);
+
+            if (gpu_color)
+                p_glUseProgram(0);
         }
 
         if (prefs.particles)
@@ -2778,6 +2918,44 @@ static const char *SPECTRUM_FS_SRC =
     "    gl_FragColor = v_color;\n"
     "}\n";
 
+/* ---- GPU spline shader ---- */
+
+#ifndef GL_RGBA32F
+#define GL_RGBA32F 0x8814
+#endif
+#ifndef GL_TEXTURE_1D
+#define GL_TEXTURE_1D 0x0DE0
+#endif
+
+static const char *SPLINE_VS_SRC =
+    "#version 120\n"
+    "uniform sampler1D u_positions;\n"
+    "uniform sampler1D u_colors;\n"
+    "uniform float u_num_samples;\n"
+    "uniform float u_spline_steps;\n"
+    "void main() {\n"
+    "    float idx = gl_Vertex.x;\n"
+    "    float seg = floor(idx / u_spline_steps);\n"
+    "    float t = idx / u_spline_steps - seg;\n"
+    "    seg += 1.0;\n"  /* +1 for Catmull-Rom margin */
+    "    float inv_n = 1.0 / u_num_samples;\n"
+    "    vec4 s0 = texture1DLod(u_positions, (seg - 1.0 + 0.5) * inv_n, 0.0);\n"
+    "    vec4 s1 = texture1DLod(u_positions, (seg + 0.5) * inv_n, 0.0);\n"
+    "    vec4 s2 = texture1DLod(u_positions, (seg + 1.0 + 0.5) * inv_n, 0.0);\n"
+    "    vec4 s3 = texture1DLod(u_positions, (seg + 2.0 + 0.5) * inv_n, 0.0);\n"
+    "    float t2 = t * t, t3 = t2 * t;\n"
+    "    float x = 0.5 * (2.0*s1.r + (-s0.r+s2.r)*t + (2.0*s0.r-5.0*s1.r+4.0*s2.r-s3.r)*t2 + (-s0.r+3.0*s1.r-3.0*s2.r+s3.r)*t3);\n"
+    "    float y = 0.5 * (2.0*s1.g + (-s0.g+s2.g)*t + (2.0*s0.g-5.0*s1.g+4.0*s2.g-s3.g)*t2 + (-s0.g+3.0*s1.g-3.0*s2.g+s3.g)*t3);\n"
+    "    gl_Position = gl_ModelViewProjectionMatrix * vec4(x, y, 0.0, 1.0);\n"
+    "    gl_FrontColor = texture1DLod(u_colors, (seg + 0.5) * inv_n, 0.0);\n"
+    "}\n";
+
+static const char *SPLINE_FS_SRC =
+    "#version 120\n"
+    "void main() {\n"
+    "    gl_FragColor = gl_Color;\n"
+    "}\n";
+
 void display()
 {
     glClear(GL_COLOR_BUFFER_BIT);
@@ -3468,6 +3646,22 @@ int main(int argc, char *argv[])
         if (spectrum_shader_prog) {
             spectrum_brightness_loc = p_glGetUniformLocation(spectrum_shader_prog, "u_brightness");
             fprintf(stderr, "Spectrum shader compiled.\n");
+        }
+    }
+
+    /* Compile the GPU spline shader — moves Catmull-Rom interpolation
+     * to the vertex shader, uploading only raw samples as textures. */
+    if (bloom.enabled) {
+        spline_shader_prog = bloom_build_program(SPLINE_VS_SRC, SPLINE_FS_SRC);
+        if (spline_shader_prog) {
+            spline_loc_positions    = p_glGetUniformLocation(spline_shader_prog, "u_positions");
+            spline_loc_colors       = p_glGetUniformLocation(spline_shader_prog, "u_colors");
+            spline_loc_num_samples  = p_glGetUniformLocation(spline_shader_prog, "u_num_samples");
+            spline_loc_spline_steps = p_glGetUniformLocation(spline_shader_prog, "u_spline_steps");
+            /* Create 1D textures for sample data */
+            glGenTextures(1, &spline_pos_tex);
+            glGenTextures(1, &spline_col_tex);
+            fprintf(stderr, "GPU spline shader compiled.\n");
         }
     }
 
