@@ -144,6 +144,8 @@ static GLint  spline_loc_positions = -1;
 static GLint  spline_loc_colors = -1;
 static GLint  spline_loc_num_samples = -1;
 static GLint  spline_loc_spline_steps = -1;
+static GLint  spline_loc_viewport_half = -1;
+static GLint  spline_loc_cluster_cull = -1;
 static GLuint spline_pos_tex[2] = {0, 0};
 static GLuint spline_col_tex[2] = {0, 0};
 static GLuint spline_index_vbo = 0;
@@ -881,6 +883,8 @@ public:
             p_glUniform1i(spline_loc_colors, 1);
             p_glUniform1f(spline_loc_num_samples, (float)frames_read);
             p_glUniform1f(spline_loc_spline_steps, (float)prefs.spline_steps);
+            p_glUniform2f(spline_loc_viewport_half, (float)prefs.dim[0] * 0.5f, (float)prefs.dim[1] * 0.5f);
+            p_glUniform1f(spline_loc_cluster_cull, prefs.particles ? 1.0f : 0.0f);
 
             glEnableClientState(GL_VERTEX_ARRAY);
             p_glBindBuffer_(GL_ARRAY_BUFFER, spline_index_vbo);
@@ -1979,11 +1983,13 @@ static const char *SPLINE_VS_SRC =
     "uniform sampler1D u_colors;\n"
     "uniform float u_num_samples;\n"
     "uniform float u_spline_steps;\n"
-    "void main() {\n"
-    "    float idx = gl_Vertex.x;\n"
+    "uniform vec2 u_viewport_half;\n"
+    "uniform float u_cluster_cull;\n"
+    "\n"
+    "vec2 splinePos(float idx) {\n"
     "    float seg = floor(idx / u_spline_steps);\n"
     "    float t = idx / u_spline_steps - seg;\n"
-    "    seg += 1.0;\n"  /* +1 for Catmull-Rom margin */
+    "    seg += 1.0;\n"
     "    float inv_n = 1.0 / u_num_samples;\n"
     "    vec4 s0 = texture1DLod(u_positions, (seg - 1.0 + 0.5) * inv_n, 0.0);\n"
     "    vec4 s1 = texture1DLod(u_positions, (seg + 0.5) * inv_n, 0.0);\n"
@@ -1992,8 +1998,23 @@ static const char *SPLINE_VS_SRC =
     "    float t2 = t * t, t3 = t2 * t;\n"
     "    float x = 0.5 * (2.0*s1.r + (-s0.r+s2.r)*t + (2.0*s0.r-5.0*s1.r+4.0*s2.r-s3.r)*t2 + (-s0.r+3.0*s1.r-3.0*s2.r+s3.r)*t3);\n"
     "    float y = 0.5 * (2.0*s1.g + (-s0.g+s2.g)*t + (2.0*s0.g-5.0*s1.g+4.0*s2.g-s3.g)*t2 + (-s0.g+3.0*s1.g-3.0*s2.g+s3.g)*t3);\n"
-    "    gl_Position = gl_ModelViewProjectionMatrix * vec4(x, y, 0.0, 1.0);\n"
-    "    gl_FrontColor = texture1DLod(u_colors, (seg + 0.5) * inv_n, 0.0);\n"
+    "    return vec2(x, y);\n"
+    "}\n"
+    "\n"
+    "void main() {\n"
+    "    float idx = gl_Vertex.x;\n"
+    "    vec2 pos = splinePos(idx);\n"
+    "    gl_Position = gl_ModelViewProjectionMatrix * vec4(pos, 0.0, 1.0);\n"
+    "    if (u_cluster_cull > 0.5 && idx > 0.0) {\n"
+    "        vec2 prev = splinePos(idx - 1.0);\n"
+    "        vec4 prev_clip = gl_ModelViewProjectionMatrix * vec4(prev, 0.0, 1.0);\n"
+    "        vec2 delta_pixels = abs(gl_Position.xy - prev_clip.xy) * u_viewport_half;\n"
+    "        if (delta_pixels.x < 1.0 && delta_pixels.y < 1.0) {\n"
+    "            gl_Position.z = 2.0 * gl_Position.w;\n"
+    "        }\n"
+    "    }\n"
+    "    float seg = floor(idx / u_spline_steps) + 1.0;\n"
+    "    gl_FrontColor = texture1DLod(u_colors, (seg + 0.5) / u_num_samples, 0.0);\n"
     "}\n";
 
 static const char *SPLINE_FS_SRC =
@@ -2704,6 +2725,8 @@ int main(int argc, char *argv[])
             spline_loc_colors       = p_glGetUniformLocation(spline_shader_prog, "u_colors");
             spline_loc_num_samples  = p_glGetUniformLocation(spline_shader_prog, "u_num_samples");
             spline_loc_spline_steps = p_glGetUniformLocation(spline_shader_prog, "u_spline_steps");
+            spline_loc_viewport_half = p_glGetUniformLocation(spline_shader_prog, "u_viewport_half");
+            spline_loc_cluster_cull  = p_glGetUniformLocation(spline_shader_prog, "u_cluster_cull");
             /* Create 1D textures for sample data */
             glGenTextures(2, spline_pos_tex);
             glGenTextures(2, spline_col_tex);
