@@ -1094,6 +1094,10 @@ extern TTF_Font *font;
 extern SDL_Window *window;
 extern SDL_GLContext gl_context;
 
+#ifndef GL_RGBA32F
+#define GL_RGBA32F 0x8814
+#endif
+
 /* Spectrum color shader — compiled in main(), used by drawPlot.
  * Declared before scene so drawPlot can reference them. */
 static GLuint spectrum_shader_prog = 0;
@@ -1787,19 +1791,30 @@ public:
                 olc = lc; orc = rc;
             }
 
-            /* Upload positions to 1D texture (unit 0) */
+            /* Upload positions to 1D texture (unit 0).
+             * Pre-allocate at max size once, then glTexSubImage1D
+             * to avoid GPU reallocation every frame. */
+            static unsigned int s_tex_alloc = 0;
             p_glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_1D, spline_pos_tex);
-            glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA16F, frames_read, 0, GL_RGBA, GL_FLOAT, s_pos);
-            glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-            /* Upload colors to 1D texture (unit 1) */
-            p_glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_1D, spline_col_tex);
-            glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA16F, frames_read, 0, GL_RGBA, GL_FLOAT, s_col);
-            glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            if (frames_read > s_tex_alloc) {
+                glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA32F, frames_read, 0, GL_RGBA, GL_FLOAT, s_pos);
+                p_glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_1D, spline_col_tex);
+                glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA32F, frames_read, 0, GL_RGBA, GL_FLOAT, s_col);
+                glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                p_glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_1D, spline_pos_tex);
+                glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                s_tex_alloc = frames_read;
+            } else {
+                glTexSubImage1D(GL_TEXTURE_1D, 0, 0, frames_read, GL_RGBA, GL_FLOAT, s_pos);
+                p_glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_1D, spline_col_tex);
+                glTexSubImage1D(GL_TEXTURE_1D, 0, 0, frames_read, GL_RGBA, GL_FLOAT, s_col);
+            }
 
             /* Ensure index VBO is large enough.  Standard Catmull-Rom:
              * (frames_read - 3) usable segments, spline_steps verts each,
@@ -1814,7 +1829,7 @@ public:
                 if (!spline_index_vbo)
                     p_glGenBuffers_(1, &spline_index_vbo);
                 p_glBindBuffer_(GL_ARRAY_BUFFER, spline_index_vbo);
-                p_glBufferData_(GL_ARRAY_BUFFER, n_spline_verts * 2 * sizeof(float), indices, GL_STREAM_DRAW);
+                p_glBufferData_(GL_ARRAY_BUFFER, n_spline_verts * 2 * sizeof(float), indices, 0x88E4 /* GL_STATIC_DRAW */);
                 p_glBindBuffer_(GL_ARRAY_BUFFER, 0);
                 free(indices);
                 spline_index_alloc = n_spline_verts;
@@ -2920,12 +2935,6 @@ static const char *SPECTRUM_FS_SRC =
 
 /* ---- GPU spline shader ---- */
 
-#ifndef GL_RGBA32F
-#define GL_RGBA32F 0x8814
-#endif
-#ifndef GL_TEXTURE_1D
-#define GL_TEXTURE_1D 0x0DE0
-#endif
 
 static const char *SPLINE_VS_SRC =
     "#version 120\n"
