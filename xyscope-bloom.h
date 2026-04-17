@@ -173,7 +173,7 @@ static const char *BLOOM_COMP_FS_SRC =
     "    vec4 s = texture2D(u_scene, v_uv);\n"
     "    vec4 b = texture2D(u_bloom, v_uv);\n"
     "    float peak = max(b.r, max(b.g, b.b));\n"
-    "    if (peak > 0.0) b = (b / peak) * pow(peak, u_gamma);\n"
+    "    if (peak > 0.0) b = pow(b / peak, vec4(u_gamma)) * peak;\n"
     "    gl_FragColor = max(s, b * u_intensity);\n"
     "}\n";
 
