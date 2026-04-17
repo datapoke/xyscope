@@ -46,11 +46,17 @@
   #endif
 #endif
 
-/* VBO function pointers — loaded by bloom_load_procs(), used here if available */
+/* VBO function pointers — loaded by bloom_load_procs(), used here if available.
+ * GLsizeiptr is ptrdiff_t (8 bytes on 64-bit), not long (4 bytes on Win64). */
+#ifndef _WIN32
+typedef long GLsizeiptr_;
+#else
+typedef long long GLsizeiptr_;
+#endif
 static void   (APIENTRYP p_glGenBuffers_)(GLsizei, GLuint *);
 static void   (APIENTRYP p_glDeleteBuffers_)(GLsizei, const GLuint *);
 static void   (APIENTRYP p_glBindBuffer_)(GLenum, GLuint);
-static void   (APIENTRYP p_glBufferData_)(GLenum, long, const void *, GLenum);
+static void   (APIENTRYP p_glBufferData_)(GLenum, GLsizeiptr_, const void *, GLenum);
 
 /*
  * draw_xy_vertices -- fill vertex+color arrays and draw with glDrawArrays.
