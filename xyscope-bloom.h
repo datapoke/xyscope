@@ -45,6 +45,7 @@ typedef struct {
     GLint  comp_loc_scene;
     GLint  comp_loc_bloom;
     GLint  comp_loc_intensity;
+    GLint  comp_loc_gamma;
 } bloom_state_t;
 
 /* GL 2.x/3.x function pointers — loaded via SDL_GL_GetProcAddress in bloom_init. */
@@ -166,10 +167,12 @@ static const char *BLOOM_COMP_FS_SRC =
     "uniform sampler2D u_scene;\n"
     "uniform sampler2D u_bloom;\n"
     "uniform float u_intensity;\n"
+    "uniform float u_gamma;\n"
     "varying vec2 v_uv;\n"
     "void main() {\n"
     "    vec4 s = texture2D(u_scene, v_uv);\n"
     "    vec4 b = texture2D(u_bloom, v_uv);\n"
+    "    b = pow(b, vec4(u_gamma));\n"
     "    gl_FragColor = max(s, b * u_intensity);\n"
     "}\n";
 
@@ -265,6 +268,7 @@ static inline bool bloom_init(bloom_state_t *b, int w, int h)
     b->comp_loc_scene     = p_glGetUniformLocation(b->composite_prog, "u_scene");
     b->comp_loc_bloom     = p_glGetUniformLocation(b->composite_prog, "u_bloom");
     b->comp_loc_intensity = p_glGetUniformLocation(b->composite_prog, "u_intensity");
+    b->comp_loc_gamma     = p_glGetUniformLocation(b->composite_prog, "u_gamma");
 
     b->enabled = true;
     return true;
@@ -328,7 +332,7 @@ static inline void bloom_begin(bloom_state_t *b)
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
-static inline void bloom_end(bloom_state_t *b, float intensity)
+static inline void bloom_end(bloom_state_t *b, float intensity, float gamma = 1.0f)
 {
     if (!b->enabled) return;
 
@@ -378,6 +382,7 @@ static inline void bloom_end(bloom_state_t *b, float intensity)
     glBindTexture(GL_TEXTURE_2D, b->blur_tex[0]);
     p_glUniform1i(b->comp_loc_bloom, 1);
     p_glUniform1f(b->comp_loc_intensity, intensity);
+    p_glUniform1f(b->comp_loc_gamma, gamma);
     bloom_draw_fullscreen_quad();
 
     /* Restore GL state drawText expects. */
