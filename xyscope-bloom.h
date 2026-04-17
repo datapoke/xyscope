@@ -70,6 +70,7 @@ typedef void   (APIENTRYP GLUNIFORM1FPROC_)(GLint, GLfloat);
 typedef void   (APIENTRYP GLUNIFORM2FPROC_)(GLint, GLfloat, GLfloat);
 typedef void   (APIENTRYP GLACTIVETEXTUREPROC_)(GLenum);
 
+
 typedef void   (APIENTRYP GLGENFRAMEBUFFERSPROC_)(GLsizei, GLuint *);
 typedef void   (APIENTRYP GLDELETEFRAMEBUFFERSPROC_)(GLsizei, const GLuint *);
 typedef void   (APIENTRYP GLBINDFRAMEBUFFERPROC_)(GLenum, GLuint);
@@ -95,6 +96,7 @@ static GLUNIFORM1IPROC_              p_glUniform1i;
 static GLUNIFORM1FPROC_              p_glUniform1f;
 static GLUNIFORM2FPROC_              p_glUniform2f;
 static GLACTIVETEXTUREPROC_          p_glActiveTexture;
+
 
 static GLGENFRAMEBUFFERSPROC_        p_glGenFramebuffers;
 static GLDELETEFRAMEBUFFERSPROC_     p_glDeleteFramebuffers;
@@ -135,6 +137,13 @@ static inline bool bloom_load_procs(void)
     LOAD(glFramebufferTexture2D); LOAD(glCheckFramebufferStatus);
     LOAD(glBlitFramebuffer);
     #undef LOAD
+
+    /* VBO procs for xyscope-draw.h — optional, not fatal if missing */
+    p_glGenBuffers_    = (decltype(p_glGenBuffers_))BLOOM_GET_PROC("glGenBuffers");
+    p_glDeleteBuffers_ = (decltype(p_glDeleteBuffers_))BLOOM_GET_PROC("glDeleteBuffers");
+    p_glBindBuffer_    = (decltype(p_glBindBuffer_))BLOOM_GET_PROC("glBindBuffer");
+    p_glBufferData_    = (decltype(p_glBufferData_))BLOOM_GET_PROC("glBufferData");
+
     return true;
 }
 

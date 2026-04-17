@@ -31,6 +31,27 @@
 #include <GL/gl.h>
 #endif
 
+#ifndef GL_ARRAY_BUFFER
+#define GL_ARRAY_BUFFER 0x8892
+#endif
+#ifndef GL_STREAM_DRAW
+#define GL_STREAM_DRAW 0x88E0
+#endif
+
+#ifndef APIENTRYP
+  #ifdef APIENTRY
+    #define APIENTRYP APIENTRY *
+  #else
+    #define APIENTRYP *
+  #endif
+#endif
+
+/* VBO function pointers — loaded by bloom_load_procs(), used here if available */
+static void   (APIENTRYP p_glGenBuffers_)(GLsizei, GLuint *);
+static void   (APIENTRYP p_glDeleteBuffers_)(GLsizei, const GLuint *);
+static void   (APIENTRYP p_glBindBuffer_)(GLenum, GLuint);
+static void   (APIENTRYP p_glBufferData_)(GLenum, long, const void *, GLenum);
+
 /*
  * draw_xy_vertices -- fill vertex+color arrays and draw with glDrawArrays.
  *
@@ -240,11 +261,28 @@ static inline unsigned int draw_xy_vertices(
         orc = rc;
     }
 
-    /* Batch draw — one GL call replaces ~N individual glVertex2d calls */
+    /* Batch draw — VBO path if available, client arrays otherwise */
+    static GLuint s_vbo[2] = {0, 0};
+    static bool s_vbo_init = false;
+    if (!s_vbo_init && p_glGenBuffers_ && p_glBindBuffer_ && p_glBufferData_) {
+        p_glGenBuffers_(2, s_vbo);
+        s_vbo_init = true;
+    }
+
     glEnableClientState(GL_VERTEX_ARRAY);
     glEnableClientState(GL_COLOR_ARRAY);
-    glVertexPointer(2, GL_FLOAT, 0, verts);
-    glColorPointer(4, GL_FLOAT, 0, colors);
+    if (s_vbo[0]) {
+        p_glBindBuffer_(GL_ARRAY_BUFFER, s_vbo[0]);
+        p_glBufferData_(GL_ARRAY_BUFFER, n * 2 * sizeof(float), verts, GL_STREAM_DRAW);
+        glVertexPointer(2, GL_FLOAT, 0, 0);
+        p_glBindBuffer_(GL_ARRAY_BUFFER, s_vbo[1]);
+        p_glBufferData_(GL_ARRAY_BUFFER, n * 4 * sizeof(float), colors, GL_STREAM_DRAW);
+        glColorPointer(4, GL_FLOAT, 0, 0);
+        p_glBindBuffer_(GL_ARRAY_BUFFER, 0);
+    } else {
+        glVertexPointer(2, GL_FLOAT, 0, verts);
+        glColorPointer(4, GL_FLOAT, 0, colors);
+    }
     glDrawArrays(particles ? GL_POINTS : GL_LINE_STRIP, 0, n);
     glDisableClientState(GL_VERTEX_ARRAY);
     glDisableClientState(GL_COLOR_ARRAY);
