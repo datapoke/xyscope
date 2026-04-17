@@ -2646,6 +2646,8 @@ public:
             prefs.spline_steps = default_spline_steps();
         if (prefs.line_width < 1 || prefs.line_width > MAX_LINE_WIDTH)
             prefs.line_width = DEFAULT_LINE_WIDTH;
+        if (prefs.bloom_gamma < 0.1)
+            prefs.bloom_gamma = DEFAULT_BLOOM_GAMMA;
     }
 
     void loadPreset(int n)
