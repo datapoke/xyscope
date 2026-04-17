@@ -1094,8 +1094,8 @@ extern TTF_Font *font;
 extern SDL_Window *window;
 extern SDL_GLContext gl_context;
 
-#ifndef GL_RGBA32F
-#define GL_RGBA32F 0x8814
+#ifndef GL_RGBA16F
+#define GL_RGBA16F 0x8814
 #endif
 
 /* Spectrum color shader — compiled in main(), used by drawPlot.
@@ -1798,10 +1798,10 @@ public:
             p_glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_1D, spline_pos_tex);
             if (frames_read > s_tex_alloc) {
-                glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA32F, frames_read, 0, GL_RGBA, GL_FLOAT, s_pos);
+                glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA16F, frames_read, 0, GL_RGBA, GL_FLOAT, s_pos);
                 p_glActiveTexture(GL_TEXTURE1);
                 glBindTexture(GL_TEXTURE_1D, spline_col_tex);
-                glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA32F, frames_read, 0, GL_RGBA, GL_FLOAT, s_col);
+                glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA16F, frames_read, 0, GL_RGBA, GL_FLOAT, s_col);
                 glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
                 glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
                 p_glActiveTexture(GL_TEXTURE0);
