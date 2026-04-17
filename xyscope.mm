@@ -749,12 +749,6 @@ public:
             }
         }
 
-        if (prefs.particles) {
-            glClear(GL_DEPTH_BUFFER_BIT);
-            glEnable(GL_DEPTH_TEST);
-            glDepthFunc(GL_LESS);
-        }
-
         /* GPU spline path: upload raw samples as textures, vertex
          * shader does Catmull-Rom.  Falls back to CPU if shader
          * didn't compile or spline_steps <= 1. */
@@ -923,8 +917,6 @@ public:
                 p_glUseProgram(0);
         }
 
-        if (prefs.particles)
-            glDisable(GL_DEPTH_TEST);
         if (prefs.velocity_dim > 0.0)
             glDisable(GL_BLEND);
         glPopMatrix();
