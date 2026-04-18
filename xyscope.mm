@@ -739,27 +739,29 @@ public:
             }
         }
 
-        /* Particles: depth test rejects overlapping fragments, and
-         * premultiplied alpha blend gives soft "over" compositing
-         * without accumulation (each pixel only gets one write).
-         * Lines: additive premultiplied blend for glowy accumulation. */
+        /* Particles: depth test rejects overlapping fragments before
+         * they reach the ROP — Hi-Z early rejection.  Alpha blend
+         * gives soft edges for the one fragment that survives.
+         * Lines: additive blending for glowy accumulation. */
         if (prefs.particles) {
             glClear(GL_DEPTH_BUFFER_BIT);
             glEnable(GL_DEPTH_TEST);
             glDepthFunc(GL_LESS);
             glEnable(GL_BLEND);
-            glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         }
         else if (prefs.velocity_dim > 0.0) {
             glEnable(GL_BLEND);
-            glBlendFunc(GL_ONE, GL_ONE);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE);
         }
 
         /* GPU spline path: upload raw samples as textures, vertex
-         * shader does Catmull-Rom.  Falls back to CPU if shader
-         * didn't compile or spline_steps <= 1. */
+         * shader does Catmull-Rom.  At spline_steps=1 the shader
+         * evaluates at t=0 per vertex, which degenerates to the raw
+         * sample positions — unifies the code path so brightness
+         * is consistent across all spline counts.  Falls back to CPU
+         * only if the shader didn't compile. */
         bool use_gpu_spline = (spline_shader_prog != 0
-                               && prefs.spline_steps > 1
                                && frames_read > 4
                                && p_glBindBuffer_ && p_glBufferData_);
 
@@ -1820,7 +1822,7 @@ public:
 
     unsigned int default_spline_steps()
     {
-        unsigned int s = 16 * 96000 / sample_rate;
+        unsigned int s = 64 * 96000 / sample_rate;
         if (s < 2) s = 2;
         if (s > 128) s = 128;
         return s;
@@ -1898,7 +1900,7 @@ public:
 #else
         prefs.brightness    = detected;
 #endif
-        prefs.velocity_dim  = prefs.brightness / 2.0;
+        prefs.velocity_dim  = prefs.brightness;
         if (prefs.velocity_dim < 1.0)
             prefs.velocity_dim = 1.0;
         prefs.bloom_intensity = DEFAULT_BLOOM;
@@ -2010,12 +2012,7 @@ static const char *SPLINE_VS_SRC =
 static const char *SPLINE_FS_SRC =
     "#version 120\n"
     "void main() {\n"
-    /* Premultiply alpha into RGB so particles can render without blending
-     * (depth test + no blend allows early-Z rejection of overlapping
-     * fragments) while preserving velocity_dim brightness. Lines use
-     * GL_ONE, GL_ONE blend which matches GL_SRC_ALPHA, GL_ONE behavior
-     * when alpha is already baked into RGB. */
-    "    gl_FragColor = vec4(gl_Color.rgb * gl_Color.a, 1.0);\n"
+    "    gl_FragColor = gl_Color;\n"
     "}\n";
 
 void display()
