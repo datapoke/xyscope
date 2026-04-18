@@ -1257,7 +1257,7 @@ public:
     void showSplines(bool t) { showTimedText(SplineTimer, true, t, "Splines: %d", prefs.spline_steps); }
     void showLineWidth(bool t) { showTimedText(LineWidthTimer, true, t, "Line width: %d", prefs.line_width); }
     void showParticles(bool t) { showTimedText(ParticlesTimer, true, t, "Particles: %s", prefs.particles ? "on" : "off"); }
-    void showBloomIntensity(bool t) { showTimedText(BloomTimer, true, t, "Bloom intensity: %.3f", prefs.bloom_intensity); }
+    void showBloomIntensity(bool t) { showTimedText(BloomTimer, true, t, "Bloom intensity: %.4f", prefs.bloom_intensity); }
     void showBloomGamma(bool t) { showTimedText(BloomGammaTimer, true, t, "Bloom gamma: %.1f", prefs.bloom_gamma); }
     void showBloomRadius(bool t) { showTimedText(BloomRadiusTimer, true, t, "Bloom radius: %.1f", prefs.bloom_radius); }
     void showColorMode(bool t) { showTimedText(ColorModeTimer, true, t, "Color mode: %s", color_mode_names[prefs.color_mode]); }
@@ -1792,8 +1792,8 @@ public:
 
     void setBloomIntensity(double v)
     {
+        if (v < 0.0001) v = 0.0;
         prefs.bloom_intensity = v;
-        if (prefs.bloom_intensity < 0.001) prefs.bloom_intensity = 0.001;
         showBloomIntensity(TIMED);
     }
 
@@ -2252,13 +2252,25 @@ void keyboard(unsigned char key, int xPos, int yPos)
             break;
         case 'b': {
             double v = scn.prefs.bloom_intensity;
-            double step = (v < 0.0995) ? ((v < 0.00995) ? 0.001 : 0.01) : 0.1;
-            scn.setBloomIntensity(v + step);
+            if (v == 0.0) v = 0.0001;
+            else {
+                double step = (v < 0.0995)
+                              ? ((v < 0.00995)
+                                 ? ((v < 0.000995) ? 0.0001 : 0.001)
+                                 : 0.01)
+                              : 0.1;
+                v += step;
+            }
+            scn.setBloomIntensity(v);
             break;
         }
         case 'B': {
             double v = scn.prefs.bloom_intensity;
-            double step = (v <= 0.1005) ? ((v <= 0.01005) ? 0.001 : 0.01) : 0.1;
+            double step = (v <= 0.1005)
+                          ? ((v <= 0.01005)
+                             ? ((v <= 0.001005) ? 0.0001 : 0.001)
+                             : 0.01)
+                          : 0.1;
             scn.setBloomIntensity(v - step);
             break;
         }
