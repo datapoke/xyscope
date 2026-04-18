@@ -1894,7 +1894,6 @@ public:
         prefs.particles     = DEFAULT_PARTICLES;
         prefs.hue           = 0.0;
         double detected     = detect_hdr_brightness();
-        bool   hdr_active   = detected > 1.0;
         if (detected < 1.0) detected = 1.0;
 #ifdef __APPLE__
         prefs.brightness    = (detected > 2.0) ? 2.0 : detected;
@@ -1903,6 +1902,7 @@ public:
 #endif
         if (prefs.brightness < 2.0)
             prefs.brightness = 2.0;
+        bool hdr_active     = prefs.brightness > 2.0;
         prefs.velocity_dim  = prefs.brightness;
         if (prefs.velocity_dim < 4.0)
             prefs.velocity_dim = 4.0;
