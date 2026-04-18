@@ -1257,7 +1257,7 @@ public:
     void showSplines(bool t) { showTimedText(SplineTimer, true, t, "Splines: %d", prefs.spline_steps); }
     void showLineWidth(bool t) { showTimedText(LineWidthTimer, true, t, "Line width: %d", prefs.line_width); }
     void showParticles(bool t) { showTimedText(ParticlesTimer, true, t, "Particles: %s", prefs.particles ? "on" : "off"); }
-    void showBloomIntensity(bool t) { showTimedText(BloomTimer, true, t, "Bloom intensity: %.1f", prefs.bloom_intensity); }
+    void showBloomIntensity(bool t) { showTimedText(BloomTimer, true, t, "Bloom intensity: %.3f", prefs.bloom_intensity); }
     void showBloomGamma(bool t) { showTimedText(BloomGammaTimer, true, t, "Bloom gamma: %.1f", prefs.bloom_gamma); }
     void showBloomRadius(bool t) { showTimedText(BloomRadiusTimer, true, t, "Bloom radius: %.1f", prefs.bloom_radius); }
     void showColorMode(bool t) { showTimedText(ColorModeTimer, true, t, "Color mode: %s", color_mode_names[prefs.color_mode]); }
@@ -1793,7 +1793,7 @@ public:
     void setBloomIntensity(double v)
     {
         prefs.bloom_intensity = v;
-        if (prefs.bloom_intensity < 0.0) prefs.bloom_intensity = 0.0;
+        if (prefs.bloom_intensity < 0.001) prefs.bloom_intensity = 0.001;
         showBloomIntensity(TIMED);
     }
 
@@ -1892,6 +1892,7 @@ public:
         prefs.particles     = DEFAULT_PARTICLES;
         prefs.hue           = 0.0;
         double detected     = detect_hdr_brightness();
+        if (detected < 1.0) detected = 1.0;
 #ifdef __APPLE__
         prefs.brightness    = (detected > 2.0) ? 2.0 : detected;
 #else
@@ -2249,12 +2250,18 @@ void keyboard(unsigned char key, int xPos, int yPos)
         case 'p':
             scn.toggleParticles();
             break;
-        case 'b':
-            scn.setBloomIntensity(scn.prefs.bloom_intensity + 0.1);
+        case 'b': {
+            double v = scn.prefs.bloom_intensity;
+            double step = (v < 0.0995) ? ((v < 0.00995) ? 0.001 : 0.01) : 0.1;
+            scn.setBloomIntensity(v + step);
             break;
-        case 'B':
-            scn.setBloomIntensity(scn.prefs.bloom_intensity - 0.1);
+        }
+        case 'B': {
+            double v = scn.prefs.bloom_intensity;
+            double step = (v <= 0.1005) ? ((v <= 0.01005) ? 0.001 : 0.01) : 0.1;
+            scn.setBloomIntensity(v - step);
             break;
+        }
         case 'v':
             scn.setBloomGamma(scn.prefs.bloom_gamma + 0.1);
             break;
