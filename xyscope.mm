@@ -805,7 +805,7 @@ public:
                             double sb = spectrum_colors[w * 3 + 2];
                             double sh, ss, sv;
                             RGBtoHSV(sr, sg, sb, &sh, &ss, &sv);
-                            ss *= 1.5; if (ss > 1.0) ss = 1.0;
+                            ss *= 1.25; if (ss > 1.0) ss = 1.0;
                             double v_floor = 0.5 / prefs.brightness;
                             if (v_floor > 0.5) v_floor = 0.5;
                             sv = sv * (1.0 - v_floor) + v_floor;
@@ -1966,7 +1966,7 @@ static const char *SPECTRUM_VS_SRC =
     "void main() {\n"
     "    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
     "    vec3 hsv = rgb2hsv(gl_Color.rgb);\n"
-    "    hsv.y = min(hsv.y * 1.5, 1.0);\n"
+    "    hsv.y = min(hsv.y * 1.25, 1.0);\n"
     "    float v_floor = min(0.5 / u_brightness, 0.5);\n"
     "    hsv.z = hsv.z * (1.0 - v_floor) + v_floor;\n"
     "    vec3 rgb = hsv2rgb(hsv);\n"

@@ -166,7 +166,7 @@ static inline unsigned int draw_xy_vertices(
                         double sb = spectrum_colors[w * 3 + 2];
                         double sh, ss, sv;
                         RGBtoHSV(sr, sg, sb, &sh, &ss, &sv);
-                        ss *= 1.5;
+                        ss *= 1.25;
                         if (ss > 1.0) ss = 1.0;
                         /* Adaptive V-floor: effective display floor
                          * is always ~0.5 regardless of brightness.
