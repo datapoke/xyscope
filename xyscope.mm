@@ -739,16 +739,16 @@ public:
             }
         }
 
-        /* Particles: depth test with no blending — early-Z rejects
-         * overlapping fragments before they reach the ROP.  The FS
-         * premultiplies alpha so velocity_dim still affects brightness.
-         * Lines: additive blending (FS premultiply + GL_ONE = same as
-         * previous GL_SRC_ALPHA + GL_ONE). */
+        /* Particles: depth test rejects overlapping fragments, and
+         * premultiplied alpha blend gives soft "over" compositing
+         * without accumulation (each pixel only gets one write).
+         * Lines: additive premultiplied blend for glowy accumulation. */
         if (prefs.particles) {
             glClear(GL_DEPTH_BUFFER_BIT);
             glEnable(GL_DEPTH_TEST);
             glDepthFunc(GL_LESS);
-            glDisable(GL_BLEND);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         }
         else if (prefs.velocity_dim > 0.0) {
             glEnable(GL_BLEND);
@@ -926,8 +926,10 @@ public:
                 p_glUseProgram(0);
         }
 
-        if (prefs.particles)
+        if (prefs.particles) {
             glDisable(GL_DEPTH_TEST);
+            glDisable(GL_BLEND);
+        }
         else if (prefs.velocity_dim > 0.0)
             glDisable(GL_BLEND);
         glPopMatrix();
