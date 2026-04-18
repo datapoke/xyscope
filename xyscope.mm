@@ -144,8 +144,6 @@ static GLint  spline_loc_positions = -1;
 static GLint  spline_loc_colors = -1;
 static GLint  spline_loc_num_samples = -1;
 static GLint  spline_loc_spline_steps = -1;
-static GLint  spline_loc_viewport_half = -1;
-static GLint  spline_loc_cluster_cull = -1;
 static GLuint spline_pos_tex[2] = {0, 0};
 static GLuint spline_col_tex[2] = {0, 0};
 static GLuint spline_index_vbo = 0;
@@ -889,8 +887,6 @@ public:
             p_glUniform1i(spline_loc_colors, 1);
             p_glUniform1f(spline_loc_num_samples, (float)frames_read);
             p_glUniform1f(spline_loc_spline_steps, (float)prefs.spline_steps);
-            p_glUniform2f(spline_loc_viewport_half, (float)prefs.dim[0] * 0.5f, (float)prefs.dim[1] * 0.5f);
-            p_glUniform1f(spline_loc_cluster_cull, prefs.particles ? 1.0f : 0.0f);
 
             glEnableClientState(GL_VERTEX_ARRAY);
             p_glBindBuffer_(GL_ARRAY_BUFFER, spline_index_vbo);
@@ -2721,8 +2717,6 @@ int main(int argc, char *argv[])
             spline_loc_colors       = p_glGetUniformLocation(spline_shader_prog, "u_colors");
             spline_loc_num_samples  = p_glGetUniformLocation(spline_shader_prog, "u_num_samples");
             spline_loc_spline_steps = p_glGetUniformLocation(spline_shader_prog, "u_spline_steps");
-            spline_loc_viewport_half = p_glGetUniformLocation(spline_shader_prog, "u_viewport_half");
-            spline_loc_cluster_cull  = p_glGetUniformLocation(spline_shader_prog, "u_cluster_cull");
             /* Create 1D textures for sample data */
             glGenTextures(2, spline_pos_tex);
             glGenTextures(2, spline_col_tex);
