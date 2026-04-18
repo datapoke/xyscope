@@ -36,6 +36,7 @@ typedef struct {
     /* GL objects — filled in by bloom_init, zeroed otherwise */
     GLuint scene_fbo;
     GLuint scene_tex;
+    GLuint scene_depth_rbo;    /* depth renderbuffer for depth test / Hi-Z */
     GLuint blur_fbo[2];
     GLuint blur_tex[2];
     GLuint blur_prog;
@@ -77,6 +78,11 @@ typedef void   (APIENTRYP GLBINDFRAMEBUFFERPROC_)(GLenum, GLuint);
 typedef void   (APIENTRYP GLFRAMEBUFFERTEXTURE2DPROC_)(GLenum, GLenum, GLenum, GLuint, GLint);
 typedef GLenum (APIENTRYP GLCHECKFRAMEBUFFERSTATUSPROC_)(GLenum);
 typedef void   (APIENTRYP GLBLITFRAMEBUFFERPROC_)(GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum);
+typedef void   (APIENTRYP GLGENRENDERBUFFERSPROC_)(GLsizei, GLuint *);
+typedef void   (APIENTRYP GLDELETERENDERBUFFERSPROC_)(GLsizei, const GLuint *);
+typedef void   (APIENTRYP GLBINDRENDERBUFFERPROC_)(GLenum, GLuint);
+typedef void   (APIENTRYP GLRENDERBUFFERSTORAGEPROC_)(GLenum, GLenum, GLsizei, GLsizei);
+typedef void   (APIENTRYP GLFRAMEBUFFERRENDERBUFFERPROC_)(GLenum, GLenum, GLenum, GLuint);
 
 static GLCREATESHADERPROC_           p_glCreateShader;
 static GLSHADERSOURCEPROC_           p_glShaderSource;
@@ -104,6 +110,11 @@ static GLBINDFRAMEBUFFERPROC_        p_glBindFramebuffer;
 static GLFRAMEBUFFERTEXTURE2DPROC_   p_glFramebufferTexture2D;
 static GLCHECKFRAMEBUFFERSTATUSPROC_ p_glCheckFramebufferStatus;
 static GLBLITFRAMEBUFFERPROC_        p_glBlitFramebuffer;
+static GLGENRENDERBUFFERSPROC_       p_glGenRenderbuffers;
+static GLDELETERENDERBUFFERSPROC_    p_glDeleteRenderbuffers;
+static GLBINDRENDERBUFFERPROC_       p_glBindRenderbuffer;
+static GLRENDERBUFFERSTORAGEPROC_    p_glRenderbufferStorage;
+static GLFRAMEBUFFERRENDERBUFFERPROC_ p_glFramebufferRenderbuffer;
 
 /* On Windows the HDR path creates its GL context via wglCreateContext and
  * wraps the foreign HWND through SDL_CreateWindowFrom. Because SDL never
@@ -136,6 +147,8 @@ static inline bool bloom_load_procs(void)
     LOAD(glGenFramebuffers); LOAD(glDeleteFramebuffers); LOAD(glBindFramebuffer);
     LOAD(glFramebufferTexture2D); LOAD(glCheckFramebufferStatus);
     LOAD(glBlitFramebuffer);
+    LOAD(glGenRenderbuffers); LOAD(glDeleteRenderbuffers); LOAD(glBindRenderbuffer);
+    LOAD(glRenderbufferStorage); LOAD(glFramebufferRenderbuffer);
     #undef LOAD
 
     /* VBO procs for xyscope-draw.h — optional, not fatal if missing */
@@ -277,6 +290,17 @@ static inline bool bloom_init(bloom_state_t *b, int w, int h)
     if (!bloom_make_fbo(&b->blur_fbo[0], &b->blur_tex[0], bw, bh))  goto fail;
     if (!bloom_make_fbo(&b->blur_fbo[1], &b->blur_tex[1], bw, bh))  goto fail;
 
+    /* Attach a depth renderbuffer to scene_fbo so depth test works.
+     * Lets particle mode use early-Z rejection to skip overlapping
+     * fragments before they reach the ROP. */
+    p_glGenRenderbuffers(1, &b->scene_depth_rbo);
+    p_glBindRenderbuffer(GL_RENDERBUFFER, b->scene_depth_rbo);
+    p_glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
+    p_glBindFramebuffer(GL_FRAMEBUFFER, b->scene_fbo);
+    p_glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, b->scene_depth_rbo);
+    p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    p_glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
     b->blur_prog = bloom_build_program(BLOOM_VS_SRC, BLOOM_BLUR_FS_SRC);
     if (!b->blur_prog) goto fail;
     b->blur_loc_tex = p_glGetUniformLocation(b->blur_prog, "u_tex");
@@ -303,6 +327,7 @@ fail:
 
 static inline void bloom_cleanup(bloom_state_t *b)
 {
+    if (b->scene_depth_rbo) { p_glDeleteRenderbuffers(1, &b->scene_depth_rbo); b->scene_depth_rbo = 0; }
     if (b->scene_fbo)     { p_glDeleteFramebuffers(1, &b->scene_fbo);    b->scene_fbo = 0; }
     if (b->blur_fbo[0])   { p_glDeleteFramebuffers(1, &b->blur_fbo[0]);  b->blur_fbo[0] = 0; }
     if (b->blur_fbo[1])   { p_glDeleteFramebuffers(1, &b->blur_fbo[1]);  b->blur_fbo[1] = 0; }
@@ -333,6 +358,12 @@ static inline void bloom_resize(bloom_state_t *b, int w, int h)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, bw, bh, 0, GL_RGBA, GL_FLOAT, NULL);
 
     glBindTexture(GL_TEXTURE_2D, 0);
+
+    if (b->scene_depth_rbo) {
+        p_glBindRenderbuffer(GL_RENDERBUFFER, b->scene_depth_rbo);
+        p_glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
+        p_glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    }
 }
 
 static inline void bloom_draw_fullscreen_quad(void)

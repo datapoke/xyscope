@@ -741,14 +741,20 @@ public:
             }
         }
 
-        if (prefs.velocity_dim > 0.0) {
+        /* Particles: depth test with no blending — early-Z rejects
+         * overlapping fragments before they reach the ROP.  The FS
+         * premultiplies alpha so velocity_dim still affects brightness.
+         * Lines: additive blending (FS premultiply + GL_ONE = same as
+         * previous GL_SRC_ALPHA + GL_ONE). */
+        if (prefs.particles) {
+            glClear(GL_DEPTH_BUFFER_BIT);
+            glEnable(GL_DEPTH_TEST);
+            glDepthFunc(GL_LESS);
+            glDisable(GL_BLEND);
+        }
+        else if (prefs.velocity_dim > 0.0) {
             glEnable(GL_BLEND);
-            if (prefs.particles) {
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            }
-            else {
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-            }
+            glBlendFunc(GL_ONE, GL_ONE);
         }
 
         /* GPU spline path: upload raw samples as textures, vertex
@@ -924,7 +930,9 @@ public:
                 p_glUseProgram(0);
         }
 
-        if (prefs.velocity_dim > 0.0)
+        if (prefs.particles)
+            glDisable(GL_DEPTH_TEST);
+        else if (prefs.velocity_dim > 0.0)
             glDisable(GL_BLEND);
         glPopMatrix();
         if (prefs.display_mode == DisplaySpectrumMode)
@@ -1983,10 +1991,8 @@ static const char *SPLINE_VS_SRC =
     "uniform sampler1D u_colors;\n"
     "uniform float u_num_samples;\n"
     "uniform float u_spline_steps;\n"
-    "uniform vec2 u_viewport_half;\n"
-    "uniform float u_cluster_cull;\n"
-    "\n"
-    "vec2 splinePos(float idx) {\n"
+    "void main() {\n"
+    "    float idx = gl_Vertex.x;\n"
     "    float seg = floor(idx / u_spline_steps);\n"
     "    float t = idx / u_spline_steps - seg;\n"
     "    seg += 1.0;\n"
@@ -1998,29 +2004,19 @@ static const char *SPLINE_VS_SRC =
     "    float t2 = t * t, t3 = t2 * t;\n"
     "    float x = 0.5 * (2.0*s1.r + (-s0.r+s2.r)*t + (2.0*s0.r-5.0*s1.r+4.0*s2.r-s3.r)*t2 + (-s0.r+3.0*s1.r-3.0*s2.r+s3.r)*t3);\n"
     "    float y = 0.5 * (2.0*s1.g + (-s0.g+s2.g)*t + (2.0*s0.g-5.0*s1.g+4.0*s2.g-s3.g)*t2 + (-s0.g+3.0*s1.g-3.0*s2.g+s3.g)*t3);\n"
-    "    return vec2(x, y);\n"
-    "}\n"
-    "\n"
-    "void main() {\n"
-    "    float idx = gl_Vertex.x;\n"
-    "    vec2 pos = splinePos(idx);\n"
-    "    gl_Position = gl_ModelViewProjectionMatrix * vec4(pos, 0.0, 1.0);\n"
-    "    if (u_cluster_cull > 0.5 && idx > 0.0) {\n"
-    "        vec2 prev = splinePos(idx - 1.0);\n"
-    "        vec4 prev_clip = gl_ModelViewProjectionMatrix * vec4(prev, 0.0, 1.0);\n"
-    "        vec2 delta_pixels = abs(gl_Position.xy - prev_clip.xy) * u_viewport_half;\n"
-    "        if (delta_pixels.x < 1.0 && delta_pixels.y < 1.0) {\n"
-    "            gl_Position.z = 2.0 * gl_Position.w;\n"
-    "        }\n"
-    "    }\n"
-    "    float seg = floor(idx / u_spline_steps) + 1.0;\n"
-    "    gl_FrontColor = texture1DLod(u_colors, (seg + 0.5) / u_num_samples, 0.0);\n"
+    "    gl_Position = gl_ModelViewProjectionMatrix * vec4(x, y, 0.0, 1.0);\n"
+    "    gl_FrontColor = texture1DLod(u_colors, (seg + 0.5) * inv_n, 0.0);\n"
     "}\n";
 
 static const char *SPLINE_FS_SRC =
     "#version 120\n"
     "void main() {\n"
-    "    gl_FragColor = gl_Color;\n"
+    /* Premultiply alpha into RGB so particles can render without blending
+     * (depth test + no blend allows early-Z rejection of overlapping
+     * fragments) while preserving velocity_dim brightness. Lines use
+     * GL_ONE, GL_ONE blend which matches GL_SRC_ALPHA, GL_ONE behavior
+     * when alpha is already baked into RGB. */
+    "    gl_FragColor = vec4(gl_Color.rgb * gl_Color.a, 1.0);\n"
     "}\n";
 
 void display()
