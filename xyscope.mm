@@ -1845,7 +1845,7 @@ public:
         if (prefs.line_width < 1 || prefs.line_width > MAX_LINE_WIDTH)
             prefs.line_width = DEFAULT_LINE_WIDTH;
         if (prefs.bloom_gamma < 0.1)
-            prefs.bloom_gamma = DEFAULT_BLOOM_GAMMA;
+            prefs.bloom_gamma = DEFAULT_BLOOM_GAMMA_HDR;
         if (prefs.bloom_radius < 0.5)
             prefs.bloom_radius = DEFAULT_BLOOM_RADIUS;
     }
@@ -1894,17 +1894,20 @@ public:
         prefs.particles     = DEFAULT_PARTICLES;
         prefs.hue           = 0.0;
         double detected     = detect_hdr_brightness();
+        bool   hdr_active   = detected > 1.0;
         if (detected < 1.0) detected = 1.0;
 #ifdef __APPLE__
         prefs.brightness    = (detected > 2.0) ? 2.0 : detected;
 #else
         prefs.brightness    = detected;
 #endif
+        if (prefs.brightness < 2.0)
+            prefs.brightness = 2.0;
         prefs.velocity_dim  = prefs.brightness;
-        if (prefs.velocity_dim < 1.0)
-            prefs.velocity_dim = 1.0;
-        prefs.bloom_intensity = DEFAULT_BLOOM;
-        prefs.bloom_gamma     = DEFAULT_BLOOM_GAMMA;
+        if (prefs.velocity_dim < 4.0)
+            prefs.velocity_dim = 4.0;
+        prefs.bloom_intensity = hdr_active ? DEFAULT_BLOOM_HDR : DEFAULT_BLOOM_SDR;
+        prefs.bloom_gamma     = hdr_active ? DEFAULT_BLOOM_GAMMA_HDR : DEFAULT_BLOOM_GAMMA_SDR;
         prefs.bloom_radius    = DEFAULT_BLOOM_RADIUS;
         max_sample_value = min((prefs.side[0] - prefs.side[1]) / 2.1,
                                (prefs.side[2] - prefs.side[3]) / 2.1);
