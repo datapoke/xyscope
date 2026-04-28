@@ -1845,7 +1845,7 @@ public:
         if (prefs.line_width < 1 || prefs.line_width > MAX_LINE_WIDTH)
             prefs.line_width = DEFAULT_LINE_WIDTH;
         if (prefs.bloom_gamma < 0.1)
-            prefs.bloom_gamma = DEFAULT_BLOOM_GAMMA_HDR;
+            prefs.bloom_gamma = DEFAULT_BLOOM_GAMMA;
         if (prefs.bloom_radius < 0.5)
             prefs.bloom_radius = DEFAULT_BLOOM_RADIUS;
     }
@@ -1902,12 +1902,11 @@ public:
 #endif
         if (prefs.brightness < 2.0)
             prefs.brightness = 2.0;
-        bool hdr_active     = prefs.brightness > 2.0;
         prefs.velocity_dim  = prefs.brightness;
         if (prefs.velocity_dim < 4.0)
             prefs.velocity_dim = 4.0;
-        prefs.bloom_intensity = hdr_active ? DEFAULT_BLOOM_HDR : DEFAULT_BLOOM_SDR;
-        prefs.bloom_gamma     = hdr_active ? DEFAULT_BLOOM_GAMMA_HDR : DEFAULT_BLOOM_GAMMA_SDR;
+        prefs.bloom_intensity = DEFAULT_BLOOM_INTENSITY;
+        prefs.bloom_gamma     = DEFAULT_BLOOM_GAMMA;
         prefs.bloom_radius    = DEFAULT_BLOOM_RADIUS;
         max_sample_value = min((prefs.side[0] - prefs.side[1]) / 2.1,
                                (prefs.side[2] - prefs.side[3]) / 2.1);
