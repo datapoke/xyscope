@@ -53,6 +53,7 @@ typedef struct _thread_data {
     void *audio_client;       /* IAudioClient* */
     void *capture_client;     /* IAudioCaptureClient* */
     unsigned int wasapi_channels;
+    unsigned int wasapi_channel_mask;
 #else
     struct pw_thread_loop *loop;
     struct pw_stream *stream;
@@ -72,6 +73,66 @@ typedef struct _thread_data {
 } thread_data_t;
 
 extern thread_data_t Thread_Data;
+
+/* Downmix an interleaved multi-channel frame to stereo using ITU-style
+ * coefficients: center at -3 dB, surrounds at -3 dB into the matching
+ * side, LFE dropped (it would dominate the X position). When `mask` is
+ * non-zero it is interpreted as a Windows WAVEFORMATEXTENSIBLE channel
+ * mask (SPEAKER_FRONT_LEFT bit, etc.) and channels are taken in mask-
+ * bit order. When `mask` is 0 we assume the standard layout for the
+ * channel count (quad / 5.1 / 7.1).
+ *
+ * Without this, an 8-channel stream from Windows speaker-fill / Atmos
+ * upmixing leaves only the dry stereo on FL/FR — the trace looks
+ * "skeletal" because most of the music is on the surround / center
+ * channels.  See the WASAPI capture loop and the Pipewire on_process
+ * callback for callers. */
+static inline void downmix_stereo(const float *frame, unsigned int ch,
+                                  unsigned int mask,
+                                  sample_t *out_l, sample_t *out_r)
+{
+    if (ch == 1) { *out_l = *out_r = frame[0]; return; }
+    if (ch == 2) { *out_l = frame[0]; *out_r = frame[1]; return; }
+
+    /* Fall back to assumed layouts when the source didn't provide one. */
+    if (mask == 0) {
+        switch (ch) {
+            case 4: mask = 0x033; break;  /* quad: FL FR BL BR        */
+            case 6: mask = 0x03F; break;  /* 5.1:  FL FR FC LFE BL BR */
+            case 8: mask = 0x63F; break;  /* 7.1:  + SL SR            */
+            default:
+                *out_l = frame[0];
+                *out_r = frame[1];
+                return;
+        }
+    }
+
+    static const struct { unsigned int bit; float gl, gr; } map[] = {
+        { 0x001, 1.000f, 0.000f },  /* FL  */
+        { 0x002, 0.000f, 1.000f },  /* FR  */
+        { 0x004, 0.707f, 0.707f },  /* FC  */
+        { 0x008, 0.000f, 0.000f },  /* LFE — dropped */
+        { 0x010, 0.707f, 0.000f },  /* BL  */
+        { 0x020, 0.000f, 0.707f },  /* BR  */
+        { 0x040, 0.866f, 0.500f },  /* FLC */
+        { 0x080, 0.500f, 0.866f },  /* FRC */
+        { 0x100, 0.500f, 0.500f },  /* BC  */
+        { 0x200, 0.707f, 0.000f },  /* SL  */
+        { 0x400, 0.000f, 0.707f },  /* SR  */
+    };
+
+    float L = 0.0f, R = 0.0f;
+    unsigned int idx = 0;
+    for (unsigned int m = 0; m < sizeof(map)/sizeof(map[0]) && idx < ch; m++) {
+        if (mask & map[m].bit) {
+            L += frame[idx] * map[m].gl;
+            R += frame[idx] * map[m].gr;
+            idx++;
+        }
+    }
+    *out_l = (sample_t)L;
+    *out_r = (sample_t)R;
+}
 
 /* Signal reader thread that data is ready */
 static inline void signal_data_ready(thread_data_t *t_data)
@@ -155,9 +216,19 @@ static bool initWasapiLoopback(thread_data_t *t_data, bool verbose)
     }
 
     t_data->wasapi_channels = mix_format->nChannels;
+    /* Pull the channel mask out of WAVEFORMATEXTENSIBLE so the downmixer
+     * knows which speaker each interleaved sample belongs to. Falls back
+     * to 0 (count-based assumption) for plain WAVEFORMATEX. */
+    t_data->wasapi_channel_mask = 0;
+    if (mix_format->wFormatTag == WAVE_FORMAT_EXTENSIBLE
+        && mix_format->cbSize >= 22) {
+        WAVEFORMATEXTENSIBLE *ext = (WAVEFORMATEXTENSIBLE *)mix_format;
+        t_data->wasapi_channel_mask = ext->dwChannelMask;
+    }
     if (verbose)
-        printf("WASAPI: %lu Hz, %u channels, %u bits\n",
-               mix_format->nSamplesPerSec, mix_format->nChannels, mix_format->wBitsPerSample);
+        printf("WASAPI: %lu Hz, %u channels, %u bits, channel mask 0x%x\n",
+               mix_format->nSamplesPerSec, mix_format->nChannels,
+               mix_format->wBitsPerSample, t_data->wasapi_channel_mask);
 
     hr = audioClient->Initialize(
         AUDCLNT_SHAREMODE_SHARED,
@@ -299,9 +370,13 @@ static void on_process(void *userdata)
     samples = (float *)buf->datas[0].data;
     n_frames = buf->datas[0].chunk->size / (sizeof(float) * t_data->channels);
 
+    /* mask=0 → downmix_stereo uses count-based standard layout
+     * (quad / 5.1 / 7.1).  Pipewire usually negotiates to stereo so
+     * this is rare, but covers the case where the session manager
+     * hands us a multichannel monitor source. */
     for (uint32_t i = 0; i < n_frames; i++) {
-        frame.left_channel = samples[i * t_data->channels];
-        frame.right_channel = samples[i * t_data->channels + 1];
+        downmix_stereo(samples + i * t_data->channels, t_data->channels, 0,
+                       &frame.left_channel, &frame.right_channel);
         ringbuffer_write(t_data->ringbuffer,
                         (const char *)&frame,
                         t_data->frame_size);
@@ -640,10 +715,12 @@ public:
                     } else {
                         float *samples = (float *)data;
                         unsigned int ch = t_data->wasapi_channels;
+                        unsigned int mask = t_data->wasapi_channel_mask;
                         for (UINT32 i = 0; i < num_frames; i++) {
                             frame_t frame;
-                            frame.left_channel = samples[i * ch];
-                            frame.right_channel = (ch > 1) ? samples[i * ch + 1] : samples[i * ch];
+                            downmix_stereo(samples + i * ch, ch, mask,
+                                           &frame.left_channel,
+                                           &frame.right_channel);
                             ringbuffer_write(t_data->ringbuffer,
                                             (const char *)&frame, t_data->frame_size);
                         }
