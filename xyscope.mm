@@ -683,15 +683,16 @@ public:
                     if (b_last <= g_last)            b_last = g_last + 1;
                     if (b_last >= half_w)            b_last = half_w - 1;
                     spectrum_colors = new double[(n_windows + 1) * 3]();
-                    /* First pass: compute per-band sums and track
-                     * the max CHANNEL value across the whole frame.
-                     * Iterates to n_windows INCLUSIVE: the extra slot
-                     * holds either the nudged tail FFT (if there was
-                     * a tail gap) or zero (which triggers the trailing
-                     * carry-forward in the second pass). Either way
-                     * the padding slot participates in aggregation so
-                     * vertex indexing beyond the last regular window
-                     * gets a sensible color. */
+                    /* First pass: take the max bin in each band and
+                     * track the max CHANNEL value across the whole
+                     * frame. Iterates to n_windows INCLUSIVE: the
+                     * extra slot holds either the nudged tail FFT
+                     * (if there was a tail gap) or zero (which
+                     * triggers the carry-forward in the second
+                     * pass). Either way the padding slot
+                     * participates in aggregation so vertex indexing
+                     * beyond the last regular window gets a sensible
+                     * color. */
                     double max_v = 0.0;
                     for (unsigned int i = 0; i <= n_windows; i++) {
                         double R = 0.0;
@@ -714,8 +715,10 @@ public:
                         if (B > max_v) max_v = B;
                         delete[] stft_results[i];
                     }
-                    /* Second pass: normalize and carry the previous
-                     * valid color forward through trailing zero rows. */
+                    /* Second pass: normalize each window by the
+                     * frame max, and carry the previous valid color
+                     * forward into the unfilled nudge slot when the
+                     * frame divided evenly (R=G=B=0 in that slot). */
                     double last_r = 0.0, last_g = 0.0, last_b = 0.0;
                     for (unsigned int i = 0; i <= n_windows; i++) {
                         double R = (max_v > 0.0) ? spectrum_colors[i*3+0] / max_v : 0.0;
@@ -1945,42 +1948,9 @@ static const char *SPECTRUM_VS_SRC =
     "uniform float u_brightness;\n"
     "varying vec4 v_color;\n"
     "\n"
-    "vec3 rgb2hsv(vec3 c) {\n"
-    "    float mx = max(c.r, max(c.g, c.b));\n"
-    "    float mn = min(c.r, min(c.g, c.b));\n"
-    "    float d = mx - mn;\n"
-    "    float h = 0.0, s = 0.0, v = mx;\n"
-    "    if (mx > 0.0) s = d / mx;\n"
-    "    if (d > 0.0) {\n"
-    "        if (mx == c.r) h = mod((c.g - c.b) / d + 6.0, 6.0) / 6.0;\n"
-    "        else if (mx == c.g) h = ((c.b - c.r) / d + 2.0) / 6.0;\n"
-    "        else h = ((c.r - c.g) / d + 4.0) / 6.0;\n"
-    "    }\n"
-    "    return vec3(h, s, v);\n"
-    "}\n"
-    "\n"
-    "vec3 hsv2rgb(vec3 c) {\n"
-    "    float h = c.x * 6.0, s = c.y, v = c.z;\n"
-    "    float i = floor(h), f = h - i;\n"
-    "    float p = v * (1.0 - s);\n"
-    "    float q = v * (1.0 - s * f);\n"
-    "    float t = v * (1.0 - s * (1.0 - f));\n"
-    "    if (i < 1.0) return vec3(v, t, p);\n"
-    "    else if (i < 2.0) return vec3(q, v, p);\n"
-    "    else if (i < 3.0) return vec3(p, v, t);\n"
-    "    else if (i < 4.0) return vec3(p, q, v);\n"
-    "    else if (i < 5.0) return vec3(t, p, v);\n"
-    "    else return vec3(v, p, q);\n"
-    "}\n"
-    "\n"
     "void main() {\n"
     "    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
-    "    vec3 hsv = rgb2hsv(gl_Color.rgb);\n"
-    "    hsv.y = min(hsv.y * 1.25, 1.0);\n"
-    "    float v_floor = min(0.5 / u_brightness, 0.5);\n"
-    "    hsv.z = hsv.z * (1.0 - v_floor) + v_floor;\n"
-    "    vec3 rgb = hsv2rgb(hsv);\n"
-    "    v_color = vec4(rgb * u_brightness, gl_Color.a);\n"
+    "    v_color = vec4(gl_Color.rgb * u_brightness, gl_Color.a);\n"
     "}\n";
 
 static const char *SPECTRUM_FS_SRC =
@@ -2722,9 +2692,9 @@ int main(int argc, char *argv[])
     fflush(stderr);
 #endif
 
-    /* Compile the spectrum color shader — does HSV S-boost + V-lift
-     * on the GPU so draw_xy_vertices can skip the per-vertex CPU
-     * conversion. Uses the same GL proc pointers bloom loaded. */
+    /* Compile the spectrum color shader — applies u_brightness on
+     * the GPU so draw_xy_vertices can skip the per-vertex CPU
+     * multiply. Uses the same GL proc pointers bloom loaded. */
     if (bloom.enabled) {
         spectrum_shader_prog = bloom_build_program(SPECTRUM_VS_SRC, SPECTRUM_FS_SRC);
         if (spectrum_shader_prog) {
