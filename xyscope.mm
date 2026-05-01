@@ -181,10 +181,6 @@ public:
     double vertical_increment;
     double color_delta;
     double color_threshold;
-    double spectrum_peak;
-    double spectrum_last_r;
-    double spectrum_last_g;
-    double spectrum_last_b;
     unsigned int frame_count;
     unsigned int vertex_count;
     bool window_is_dirty;
@@ -262,10 +258,6 @@ public:
         vertical_increment = -60.0;
         color_delta        = 0.0;
         color_threshold    = 0.0;
-        spectrum_peak      = 0.0;
-        spectrum_last_r    = 0.0;
-        spectrum_last_g    = 0.0;
-        spectrum_last_b    = 0.0;
         show_intro         = true;
         show_help          = false;
         show_mouse         = true;
@@ -676,8 +668,13 @@ public:
                      * scales both the effective sample rate AND the
                      * window size proportionally). */
                     double bin_width_hz = (double)sample_rate / (double)window_size;
-                    unsigned int r_last = (unsigned int)(1000.0 / bin_width_hz);
-                    unsigned int g_last = (unsigned int)(5000.0 / bin_width_hz);
+                    /* Log-spaced boundaries (×10 each) so each band
+                     * spans one decade — perceptually closer to how
+                     * humans hear pitch (octaves), and white noise
+                     * with max-per-band aggregation comes out
+                     * actually white instead of B-skewed. */
+                    unsigned int r_last = (unsigned int)(200.0 / bin_width_hz);
+                    unsigned int g_last = (unsigned int)(2000.0 / bin_width_hz);
                     unsigned int b_last = (unsigned int)(20000.0 / bin_width_hz);
                     /* Enforce r_last < g_last < b_last < half_w,
                      * leaving at least one bin per band. */
@@ -695,32 +692,20 @@ public:
                      * the padding slot participates in aggregation so
                      * vertex indexing beyond the last regular window
                      * gets a sensible color. */
-                    /* Average instead of sum so unequal band widths
-                     * don't bias the result. With color_range=0 the
-                     * R band has 1 bin and B has 5; summing makes
-                     * B's small leakage tail compete with R's main
-                     * lobe as the tone climbs toward 1 kHz. Per-bin
-                     * density is the perceptually correct quantity. */
-                    double r_count = (double)(r_last + 1);
-                    double g_count = (double)(g_last - r_last);
-                    double b_count = (double)(b_last - g_last);
                     double max_v = 0.0;
                     for (unsigned int i = 0; i <= n_windows; i++) {
                         double R = 0.0;
                         for (unsigned int j = 0; j <= r_last; j++) {
-                            R += stft_results[i][j];
+                            if (stft_results[i][j] > R) R = stft_results[i][j];
                         }
                         double G = 0.0;
                         for (unsigned int j = r_last + 1; j <= g_last; j++) {
-                            G += stft_results[i][j];
+                            if (stft_results[i][j] > G) G = stft_results[i][j];
                         }
                         double B = 0.0;
                         for (unsigned int j = g_last + 1; j <= b_last; j++) {
-                            B += stft_results[i][j];
+                            if (stft_results[i][j] > B) B = stft_results[i][j];
                         }
-                        R /= r_count;
-                        G /= g_count;
-                        B /= b_count;
                         spectrum_colors[i * 3 + 0] = R;
                         spectrum_colors[i * 3 + 1] = G;
                         spectrum_colors[i * 3 + 2] = B;
@@ -729,39 +714,19 @@ public:
                         if (B > max_v) max_v = B;
                         delete[] stft_results[i];
                     }
-                    /* Track recent peak across frames: instant on rise,
-                     * slow decay on fall (same shape as latency tracker).
-                     * Floor is a fraction of this — quiet windows fall
-                     * below it and carry the last significant color
-                     * forward instead of normalizing leakage up to a
-                     * faux color. Floor is high (50% of recent peak)
-                     * because rectangular FFT leakage at small windows
-                     * leaves zero-crossing windows with substantial
-                     * raw magnitude that's still mostly noise; only
-                     * windows actually carrying signal energy clear
-                     * the bar. Real loud balanced content still
-                     * passes (raw R, G, B all near peak → max(R,G,B)
-                     * stays well above 50%). */
-                    if (max_v > spectrum_peak)
-                        spectrum_peak = max_v;
-                    else
-                        smooth(&spectrum_peak, max_v, 0.2);
-                    double floor_v = spectrum_peak * 0.5;
+                    /* Second pass: normalize and carry the previous
+                     * valid color forward through trailing zero rows. */
+                    double last_r = 0.0, last_g = 0.0, last_b = 0.0;
                     for (unsigned int i = 0; i <= n_windows; i++) {
-                        double rR = spectrum_colors[i*3+0];
-                        double rG = spectrum_colors[i*3+1];
-                        double rB = spectrum_colors[i*3+2];
-                        double w_max = rR;
-                        if (rG > w_max) w_max = rG;
-                        if (rB > w_max) w_max = rB;
-                        if (w_max > floor_v && max_v > 0.0) {
-                            spectrum_last_r = rR / max_v;
-                            spectrum_last_g = rG / max_v;
-                            spectrum_last_b = rB / max_v;
+                        double R = (max_v > 0.0) ? spectrum_colors[i*3+0] / max_v : 0.0;
+                        double G = (max_v > 0.0) ? spectrum_colors[i*3+1] / max_v : 0.0;
+                        double B = (max_v > 0.0) ? spectrum_colors[i*3+2] / max_v : 0.0;
+                        if (R + G + B > 0.01) {
+                            last_r = R; last_g = G; last_b = B;
                         }
-                        spectrum_colors[i * 3 + 0] = spectrum_last_r;
-                        spectrum_colors[i * 3 + 1] = spectrum_last_g;
-                        spectrum_colors[i * 3 + 2] = spectrum_last_b;
+                        spectrum_colors[i * 3 + 0] = last_r;
+                        spectrum_colors[i * 3 + 1] = last_g;
+                        spectrum_colors[i * 3 + 2] = last_b;
                     }
                 }
                 delete[] stft_results;
