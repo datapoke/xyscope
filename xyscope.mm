@@ -181,6 +181,10 @@ public:
     double vertical_increment;
     double color_delta;
     double color_threshold;
+    double spectrum_peak;
+    double spectrum_last_r;
+    double spectrum_last_g;
+    double spectrum_last_b;
     unsigned int frame_count;
     unsigned int vertex_count;
     bool window_is_dirty;
@@ -258,6 +262,10 @@ public:
         vertical_increment = -60.0;
         color_delta        = 0.0;
         color_threshold    = 0.0;
+        spectrum_peak      = 0.0;
+        spectrum_last_r    = 0.0;
+        spectrum_last_g    = 0.0;
+        spectrum_last_b    = 0.0;
         show_intro         = true;
         show_help          = false;
         show_mouse         = true;
@@ -709,19 +717,35 @@ public:
                         if (B > max_v) max_v = B;
                         delete[] stft_results[i];
                     }
-                    /* Second pass: normalize and carry the previous
-                     * valid color forward through trailing zero rows. */
-                    double last_r = 0.0, last_g = 0.0, last_b = 0.0;
+                    /* Track recent peak across frames: instant on rise,
+                     * slow decay on fall (same shape as latency tracker).
+                     * Floor is a fraction of this — quiet windows fall
+                     * below it and carry the last significant color
+                     * forward instead of normalizing pure noise up. */
+                    if (max_v > spectrum_peak)
+                        spectrum_peak = max_v;
+                    else
+                        smooth(&spectrum_peak, max_v, 0.01);
+                    double floor_v = spectrum_peak * 0.05;
+                    /* Second pass: significance test on raw magnitude
+                     * (pre-normalization) so loud-balanced windows still
+                     * normalize to white; quiet windows reuse the last
+                     * significant color from this frame or prior frames. */
                     for (unsigned int i = 0; i <= n_windows; i++) {
-                        double R = (max_v > 0.0) ? spectrum_colors[i*3+0] / max_v : 0.0;
-                        double G = (max_v > 0.0) ? spectrum_colors[i*3+1] / max_v : 0.0;
-                        double B = (max_v > 0.0) ? spectrum_colors[i*3+2] / max_v : 0.0;
-                        if (R + G + B > 0.01) {
-                            last_r = R; last_g = G; last_b = B;
+                        double rR = spectrum_colors[i*3+0];
+                        double rG = spectrum_colors[i*3+1];
+                        double rB = spectrum_colors[i*3+2];
+                        double w_max = rR;
+                        if (rG > w_max) w_max = rG;
+                        if (rB > w_max) w_max = rB;
+                        if (w_max > floor_v && max_v > 0.0) {
+                            spectrum_last_r = rR / max_v;
+                            spectrum_last_g = rG / max_v;
+                            spectrum_last_b = rB / max_v;
                         }
-                        spectrum_colors[i * 3 + 0] = last_r;
-                        spectrum_colors[i * 3 + 1] = last_g;
-                        spectrum_colors[i * 3 + 2] = last_b;
+                        spectrum_colors[i * 3 + 0] = spectrum_last_r;
+                        spectrum_colors[i * 3 + 1] = spectrum_last_g;
+                        spectrum_colors[i * 3 + 2] = spectrum_last_b;
                     }
                 }
                 delete[] stft_results;
