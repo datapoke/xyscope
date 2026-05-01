@@ -1822,7 +1822,7 @@ public:
 
     unsigned int default_spline_steps()
     {
-        unsigned int s = 64 * 96000 / sample_rate;
+        unsigned int s = DEFAULT_SPLINE_STEPS * 96000 / sample_rate;
         if (s < 2) s = 2;
         if (s > 128) s = 128;
         return s;
