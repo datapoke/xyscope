@@ -552,31 +552,6 @@ public:
 #endif
                 bool spectrum = (prefs.display_mode == DisplaySpectrumMode);
 
-                /* Precompute band boundaries and Hanning window for
-                 * the conditional re-run: if a window's spectrum has
-                 * S < 25%, re-run the FFT with Hanning to knock down
-                 * the rectangular-window sidelobes that desaturate
-                 * pure tones at zero crossings. Real music's bass
-                 * stays in bin 0 (high saturation) so it skips the
-                 * re-run and avoids Hanning's main-lobe smear into
-                 * the green band. */
-                double bin_width_hz_pre = (double)sample_rate / (double)window_size;
-                unsigned int r_last_pre = (unsigned int)(1000.0 / bin_width_hz_pre);
-                unsigned int g_last_pre = (unsigned int)(5000.0 / bin_width_hz_pre);
-                unsigned int b_last_pre = (unsigned int)(20000.0 / bin_width_hz_pre);
-                unsigned int half_w_pre = window_size_fft / 2;
-                if (r_last_pre >= half_w_pre)     r_last_pre = half_w_pre - 3;
-                if (g_last_pre <= r_last_pre)     g_last_pre = r_last_pre + 1;
-                if (b_last_pre <= g_last_pre)     b_last_pre = g_last_pre + 1;
-                if (b_last_pre >= half_w_pre)     b_last_pre = half_w_pre - 1;
-
-                double *hanning = NULL;
-                if (spectrum) {
-                    hanning = new double[window_size_fft];
-                    for (unsigned int j = 0; j < window_size_fft; j++)
-                        hanning[j] = 0.5 * (1.0 - cos(2.0 * M_PI * j / window_size_fft));
-                }
-
                 auto compute_fft_at = [&](unsigned int start_i, unsigned int target_slot) {
 #ifdef __APPLE__
                     if (spectrum) {
@@ -617,37 +592,6 @@ public:
                         }
                         stft_results[target_slot][j] = sqrt(mag);
                     }
-                    if (spectrum) {
-                        double sR = 0, sG = 0, sB = 0;
-                        for (unsigned int j = 0; j <= r_last_pre; j++)
-                            sR += stft_results[target_slot][j];
-                        for (unsigned int j = r_last_pre + 1; j <= g_last_pre; j++)
-                            sG += stft_results[target_slot][j];
-                        for (unsigned int j = g_last_pre + 1; j <= b_last_pre; j++)
-                            sB += stft_results[target_slot][j];
-                        double mx = fmax(sR, fmax(sG, sB));
-                        double mn = fmin(sR, fmin(sG, sB));
-                        double sat = (mx > 0) ? (mx - mn) / mx : 0;
-                        if (sat < 0.25) {
-                            for (unsigned int j = 0; j < window_size_fft; j++) {
-                                fft_data.realp[j] = (float)(fft_input[start_i + j] * hanning[j]);
-                                fft_data.imagp[j] = (float)(framebuf[start_i + j].right_channel * hanning[j]);
-                            }
-                            vDSP_fft_zip(fft_setup_local, &fft_data, 1, log2n_win, FFT_FORWARD);
-                            for (unsigned int j = 0; j < window_size_fft/2; j++) {
-                                double rp2 = fft_data.realp[j];
-                                double ip2 = fft_data.imagp[j];
-                                double mag2 = rp2*rp2 + ip2*ip2;
-                                if (j > 0) {
-                                    unsigned int nj = window_size_fft - j;
-                                    double rn2 = fft_data.realp[nj];
-                                    double in2 = fft_data.imagp[nj];
-                                    mag2 += rn2*rn2 + in2*in2;
-                                }
-                                stft_results[target_slot][j] = sqrt(mag2);
-                            }
-                        }
-                    }
 #else
                     double (*temp_data)[2] = new double[window_size_fft][2];
                     for (unsigned int j = 0; j < window_size_fft; j++) {
@@ -671,39 +615,6 @@ public:
                         stft_results[target_slot][j] = sqrt(mag);
                     }
                     fftw_destroy_plan(fft_plan);
-                    if (spectrum) {
-                        double sR = 0, sG = 0, sB = 0;
-                        for (unsigned int j = 0; j <= r_last_pre; j++)
-                            sR += stft_results[target_slot][j];
-                        for (unsigned int j = r_last_pre + 1; j <= g_last_pre; j++)
-                            sG += stft_results[target_slot][j];
-                        for (unsigned int j = g_last_pre + 1; j <= b_last_pre; j++)
-                            sB += stft_results[target_slot][j];
-                        double mx = fmax(sR, fmax(sG, sB));
-                        double mn = fmin(sR, fmin(sG, sB));
-                        double sat = (mx > 0) ? (mx - mn) / mx : 0;
-                        if (sat < 0.25) {
-                            for (unsigned int j = 0; j < window_size_fft; j++) {
-                                temp_data[j][0] = fft_input[start_i + j] * hanning[j];
-                                temp_data[j][1] = framebuf[start_i + j].right_channel * hanning[j];
-                            }
-                            fftw_plan hp = fftw_plan_dft_1d(window_size_fft, temp_data, fft_out_local, FFTW_FORWARD, FFTW_ESTIMATE);
-                            fftw_execute(hp);
-                            for (unsigned int j = 0; j < window_size_fft/2; j++) {
-                                double rp2 = fft_out_local[j][0];
-                                double ip2 = fft_out_local[j][1];
-                                double mag2 = rp2*rp2 + ip2*ip2;
-                                if (j > 0) {
-                                    unsigned int nj = window_size_fft - j;
-                                    double rn2 = fft_out_local[nj][0];
-                                    double in2 = fft_out_local[nj][1];
-                                    mag2 += rn2*rn2 + in2*in2;
-                                }
-                                stft_results[target_slot][j] = sqrt(mag2);
-                            }
-                            fftw_destroy_plan(hp);
-                        }
-                    }
                     delete[] temp_data;
 #endif
                 };
@@ -728,7 +639,6 @@ public:
                     }
                 }
                 delete[] fft_input;
-                if (hanning) delete[] hanning;
 #ifdef __APPLE__
                 // Clean up FFT resources after loop
                 vDSP_destroy_fftsetup(fft_setup_local);
@@ -811,16 +721,20 @@ public:
                      * slow decay on fall (same shape as latency tracker).
                      * Floor is a fraction of this — quiet windows fall
                      * below it and carry the last significant color
-                     * forward instead of normalizing pure noise up. */
+                     * forward instead of normalizing leakage up to a
+                     * faux color. Floor is high (50% of recent peak)
+                     * because rectangular FFT leakage at small windows
+                     * leaves zero-crossing windows with substantial
+                     * raw magnitude that's still mostly noise; only
+                     * windows actually carrying signal energy clear
+                     * the bar. Real loud balanced content still
+                     * passes (raw R, G, B all near peak → max(R,G,B)
+                     * stays well above 50%). */
                     if (max_v > spectrum_peak)
                         spectrum_peak = max_v;
                     else
-                        smooth(&spectrum_peak, max_v, 0.01);
-                    double floor_v = spectrum_peak * 0.05;
-                    /* Second pass: significance test on raw magnitude
-                     * (pre-normalization) so loud-balanced windows still
-                     * normalize to white; quiet windows reuse the last
-                     * significant color from this frame or prior frames. */
+                        smooth(&spectrum_peak, max_v, 0.2);
+                    double floor_v = spectrum_peak * 0.5;
                     for (unsigned int i = 0; i <= n_windows; i++) {
                         double rR = spectrum_colors[i*3+0];
                         double rG = spectrum_colors[i*3+1];
