@@ -695,6 +695,15 @@ public:
                      * the padding slot participates in aggregation so
                      * vertex indexing beyond the last regular window
                      * gets a sensible color. */
+                    /* Average instead of sum so unequal band widths
+                     * don't bias the result. With color_range=0 the
+                     * R band has 1 bin and B has 5; summing makes
+                     * B's small leakage tail compete with R's main
+                     * lobe as the tone climbs toward 1 kHz. Per-bin
+                     * density is the perceptually correct quantity. */
+                    double r_count = (double)(r_last + 1);
+                    double g_count = (double)(g_last - r_last);
+                    double b_count = (double)(b_last - g_last);
                     double max_v = 0.0;
                     for (unsigned int i = 0; i <= n_windows; i++) {
                         double R = 0.0;
@@ -709,6 +718,9 @@ public:
                         for (unsigned int j = g_last + 1; j <= b_last; j++) {
                             B += stft_results[i][j];
                         }
+                        R /= r_count;
+                        G /= g_count;
+                        B /= b_count;
                         spectrum_colors[i * 3 + 0] = R;
                         spectrum_colors[i * 3 + 1] = G;
                         spectrum_colors[i * 3 + 2] = B;
