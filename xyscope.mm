@@ -643,61 +643,66 @@ public:
                 unsigned int n_windows = frames_read / (window_size - overlap_size);
 
                 {
-                    /* Spectrum mode: soft band weights instead of
-                     * hard band boundaries. Each bin contributes to
-                     * R, G, AND B based on its log-frequency
-                     * position, so a bin at 800 Hz produces a
-                     * different hue than 1500 Hz (both "green" in
-                     * the old scheme). Anchors at 50/500/5000/50000
-                     * Hz, one decade apart, with hue wrapping past
-                     * 5000 Hz back toward R (so 15 kHz reads as
-                     * magenta/violet = B+R).
+                    /* Spectrum mode: per-bin HSV hue mapping with
+                     * 1/f weighting. Each bin gets a saturated hue
+                     * based on its log-frequency position, then
+                     * contributes its (amp/f)-weighted RGB to the
+                     * window total. Hue formula:
                      *
-                     * Position x = log10(f / 50) ∈ [0, 3]:
-                     *   x ∈ [0,1]: R → G       (red → yellow → green)
-                     *   x ∈ [1,2]: G → B       (green → cyan → blue)
-                     *   x ∈ [2,3]: B → R wrap  (blue → magenta → red)
-                     * Weights at each x always sum to 1, so total
-                     * energy is preserved across the channels and
-                     * pastel signals naturally produce pastel mixes.
+                     *   hue_deg = 125 × log10(f / 50)   (mod 360)
                      *
-                     * Bins below 20 Hz and above 20 kHz are skipped
-                     * (DC + supersonic) so pure tones don't get
-                     * false color from noise outside the audible
-                     * range. */
+                     * Anchor reference points:
+                     *   50 Hz   →   0°  (red)
+                     *   500 Hz  → 125°  (just past green)
+                     *   5000 Hz → 250°  (just past blue)
+                     *   15000 Hz → 305° (magenta = B + R)
+                     *
+                     * Hue wraps past 5 kHz so very high content
+                     * reads magenta/violet. The 1/f weighting makes
+                     * each octave contribute equally regardless of
+                     * how many linear-spaced FFT bins fall in it,
+                     * so white noise integrates to grey rather than
+                     * skewing toward whatever hue lives at high f
+                     * (where most bins are).
+                     *
+                     * Bins below 20 Hz (sub-audible) and above 20
+                     * kHz (supersonic) are skipped. */
                     unsigned int half_w = window_size_fft / 2;
                     double bin_width_hz = (double)sample_rate / (double)window_size;
                     unsigned int b_last = (unsigned int)(20000.0 / bin_width_hz);
                     if (b_last >= half_w) b_last = half_w - 1;
                     if (b_last < 1)        b_last = 1;
                     spectrum_colors = new double[(n_windows + 1) * 3]();
-                    /* First pass: accumulate weighted RGB per
-                     * window. Iterates to n_windows INCLUSIVE: the
-                     * extra slot holds either the nudged tail FFT
-                     * (if there was a tail gap) or zero (which
-                     * triggers the carry-forward in the second
-                     * pass). */
+                    /* First pass: accumulate per-bin RGB
+                     * contributions. Iterates to n_windows
+                     * INCLUSIVE: the extra slot holds either the
+                     * nudged tail FFT or zero (which triggers
+                     * carry-forward in the second pass). */
                     double max_v = 0.0;
                     for (unsigned int i = 0; i <= n_windows; i++) {
                         double R = 0.0, G = 0.0, B = 0.0;
                         for (unsigned int j = 1; j <= b_last; j++) {
                             double f = j * bin_width_hz;
                             if (f < 20.0) continue;
-                            double x = log10(f / 50.0);
-                            if (x < 0.0) x = 0.0;
-                            if (x > 3.0) x = 3.0;
-                            double rw, gw, bw;
-                            if (x < 1.0) {
-                                rw = 1.0 - x;  gw = x;        bw = 0.0;
-                            } else if (x < 2.0) {
-                                rw = 0.0;      gw = 2.0 - x;  bw = x - 1.0;
-                            } else {
-                                rw = x - 2.0;  gw = 0.0;      bw = 3.0 - x;
+                            double hue_deg = 125.0 * log10(f / 50.0);
+                            hue_deg = fmod(hue_deg, 360.0);
+                            if (hue_deg < 0.0) hue_deg += 360.0;
+                            double h6 = hue_deg / 60.0;
+                            int seg = (int)h6;
+                            double frac = h6 - seg;
+                            double r, g, b;
+                            switch (seg) {
+                                case 0:  r=1.0;      g=frac;     b=0.0;      break;
+                                case 1:  r=1.0-frac; g=1.0;      b=0.0;      break;
+                                case 2:  r=0.0;      g=1.0;      b=frac;     break;
+                                case 3:  r=0.0;      g=1.0-frac; b=1.0;      break;
+                                case 4:  r=frac;     g=0.0;      b=1.0;      break;
+                                default: r=1.0;      g=0.0;      b=1.0-frac; break;
                             }
-                            double amp = stft_results[i][j];
-                            R += amp * rw;
-                            G += amp * gw;
-                            B += amp * bw;
+                            double w = stft_results[i][j] / f;
+                            R += w * r;
+                            G += w * g;
+                            B += w * b;
                         }
                         spectrum_colors[i * 3 + 0] = R;
                         spectrum_colors[i * 3 + 1] = G;
