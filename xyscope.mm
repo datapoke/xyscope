@@ -393,8 +393,8 @@ public:
              *   color_range  0  1  2  3  4  5
              *   window_size  32 64 128 256 512 1024
              *
-             * Default color_range=1 gives window_size=64, bin_width
-             * 1500 Hz. Cranks above that give progressively finer
+             * Default color_range=2 gives window_size=128, bin_width
+             * 750 Hz. Cranks above that give progressively finer
              * frequency resolution at the cost of fewer STFT windows
              * per frame.
              *
