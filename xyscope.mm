@@ -644,9 +644,9 @@ public:
 
                 {
                     /* Spectrum mode:
-                     *   R = RMS(bin0..r_last)     (~sub-bass+kick)
-                     *   G = RMS(r_last+1..g_last) (~fat mid)
-                     *   B = RMS(g_last+1..b_last) (~audible treble)
+                     *   R = sum_sq(bin0..r_last) / sqrt(N_r)     (~sub-bass+kick)
+                     *   G = sum_sq(r_last+1..g_last) / sqrt(N_g) (~fat mid)
+                     *   B = sum_sq(g_last+1..b_last) / sqrt(N_b) (~audible treble)
                      * Boundaries are computed dynamically from bin_width
                      * so they adapt to whatever FFT window color_range
                      * picked — at default (window_size=128, bin_width
@@ -683,36 +683,37 @@ public:
                     if (b_last <= g_last)            b_last = g_last + 1;
                     if (b_last >= half_w)            b_last = half_w - 1;
                     spectrum_colors = new double[(n_windows + 1) * 3]();
-                    /* First pass: RMS energy per band — sqrt(mean
-                     * of squares). Captures multi-harmonic richness
-                     * (4 harmonics ≈ 2× brighter than 1) without
-                     * the bin-count skew of plain summing (white
-                     * noise comes out white because the per-bin
-                     * average power is equal across bands).
+                    /* First pass: sum-of-squares per band, divided
+                     * by sqrt(bin_count). Sits between plain sum
+                     * (full bin-count skew, harmonic-rich) and RMS
+                     * (no bin-count skew, more diluted). White noise
+                     * still skews toward B but less than plain sum
+                     * (sqrt(24) ≈ 5× vs 24×). Multi-harmonic content
+                     * scales linearly with harmonic count.
                      * Iterates to n_windows INCLUSIVE: the extra
                      * slot holds either the nudged tail FFT (if
                      * there was a tail gap) or zero (which triggers
                      * the carry-forward in the second pass). */
-                    unsigned int n_r = r_last + 1;
-                    unsigned int n_g = g_last - r_last;
-                    unsigned int n_b = b_last - g_last;
+                    double sqrt_n_r = sqrt((double)(r_last + 1));
+                    double sqrt_n_g = sqrt((double)(g_last - r_last));
+                    double sqrt_n_b = sqrt((double)(b_last - g_last));
                     double max_v = 0.0;
                     for (unsigned int i = 0; i <= n_windows; i++) {
                         double R = 0.0;
                         for (unsigned int j = 0; j <= r_last; j++) {
                             R += stft_results[i][j] * stft_results[i][j];
                         }
-                        R = sqrt(R / n_r);
+                        R /= sqrt_n_r;
                         double G = 0.0;
                         for (unsigned int j = r_last + 1; j <= g_last; j++) {
                             G += stft_results[i][j] * stft_results[i][j];
                         }
-                        G = sqrt(G / n_g);
+                        G /= sqrt_n_g;
                         double B = 0.0;
                         for (unsigned int j = g_last + 1; j <= b_last; j++) {
                             B += stft_results[i][j] * stft_results[i][j];
                         }
-                        B = sqrt(B / n_b);
+                        B /= sqrt_n_b;
                         spectrum_colors[i * 3 + 0] = R;
                         spectrum_colors[i * 3 + 1] = G;
                         spectrum_colors[i * 3 + 2] = B;
