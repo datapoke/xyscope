@@ -643,69 +643,61 @@ public:
                 unsigned int n_windows = frames_read / (window_size - overlap_size);
 
                 {
-                    /* Spectrum mode:
-                     *   R = sum(bin0..r_last)    (~0–1 kHz, sub-bass+kick)
-                     *   G = sum(r_last+1..g_last) (~1–5 kHz, fat mid)
-                     *   B = sum(g_last+1..b_last) (~5–20 kHz, audible treble)
-                     * Boundaries are computed dynamically from bin_width
-                     * so they adapt to whatever FFT window color_range
-                     * picked — at baseline (window_size=64, bin_width
-                     * 1500 Hz) this gives R=bin0, G=bins 1..3, B=bins
-                     * 4..13. At larger windows each band gets many more
-                     * bins and finer frequency resolution.
+                    /* Spectrum mode: soft band weights instead of
+                     * hard band boundaries. Each bin contributes to
+                     * R, G, AND B based on its log-frequency
+                     * position, so a bin at 800 Hz produces a
+                     * different hue than 1500 Hz (both "green" in
+                     * the old scheme). Anchors at 50/500/5000/50000
+                     * Hz, one decade apart, with hue wrapping past
+                     * 5000 Hz back toward R (so 15 kHz reads as
+                     * magenta/violet = B+R).
                      *
-                     * Supersonic bins (>20 kHz) are excluded so pure
-                     * tones with no real treble don't get false blue
-                     * from accumulated noise or spline overshoot.
+                     * Position x = log10(f / 50) ∈ [0, 3]:
+                     *   x ∈ [0,1]: R → G       (red → yellow → green)
+                     *   x ∈ [1,2]: G → B       (green → cyan → blue)
+                     *   x ∈ [2,3]: B → R wrap  (blue → magenta → red)
+                     * Weights at each x always sum to 1, so total
+                     * energy is preserved across the channels and
+                     * pastel signals naturally produce pastel mixes.
                      *
-                     * Then divide all three by the per-frame max
-                     * CHANNEL value so the strongest band in the
-                     * frame is exactly 1.0 and the other two are
-                     * proportional ratios less than 1.0. */
+                     * Bins below 20 Hz and above 20 kHz are skipped
+                     * (DC + supersonic) so pure tones don't get
+                     * false color from noise outside the audible
+                     * range. */
                     unsigned int half_w = window_size_fft / 2;
-                    /* Bin width = sample_rate / window_size (same as
-                     * for the raw-audio FFT because spline upsampling
-                     * scales both the effective sample rate AND the
-                     * window size proportionally). */
                     double bin_width_hz = (double)sample_rate / (double)window_size;
-                    /* Log-spaced boundaries (×10 each) so each band
-                     * spans one decade — perceptually closer to how
-                     * humans hear pitch (octaves), and white noise
-                     * with max-per-band aggregation comes out
-                     * actually white instead of B-skewed. */
-                    unsigned int r_last = (unsigned int)(200.0 / bin_width_hz);
-                    unsigned int g_last = (unsigned int)(2000.0 / bin_width_hz);
                     unsigned int b_last = (unsigned int)(20000.0 / bin_width_hz);
-                    /* Enforce r_last < g_last < b_last < half_w,
-                     * leaving at least one bin per band. */
-                    if (r_last >= half_w)            r_last = half_w - 3;
-                    if (g_last <= r_last)            g_last = r_last + 1;
-                    if (b_last <= g_last)            b_last = g_last + 1;
-                    if (b_last >= half_w)            b_last = half_w - 1;
+                    if (b_last >= half_w) b_last = half_w - 1;
+                    if (b_last < 1)        b_last = 1;
                     spectrum_colors = new double[(n_windows + 1) * 3]();
-                    /* First pass: take the max bin in each band and
-                     * track the max CHANNEL value across the whole
-                     * frame. Iterates to n_windows INCLUSIVE: the
+                    /* First pass: accumulate weighted RGB per
+                     * window. Iterates to n_windows INCLUSIVE: the
                      * extra slot holds either the nudged tail FFT
                      * (if there was a tail gap) or zero (which
                      * triggers the carry-forward in the second
-                     * pass). Either way the padding slot
-                     * participates in aggregation so vertex indexing
-                     * beyond the last regular window gets a sensible
-                     * color. */
+                     * pass). */
                     double max_v = 0.0;
                     for (unsigned int i = 0; i <= n_windows; i++) {
-                        double R = 0.0;
-                        for (unsigned int j = 0; j <= r_last; j++) {
-                            if (stft_results[i][j] > R) R = stft_results[i][j];
-                        }
-                        double G = 0.0;
-                        for (unsigned int j = r_last + 1; j <= g_last; j++) {
-                            if (stft_results[i][j] > G) G = stft_results[i][j];
-                        }
-                        double B = 0.0;
-                        for (unsigned int j = g_last + 1; j <= b_last; j++) {
-                            if (stft_results[i][j] > B) B = stft_results[i][j];
+                        double R = 0.0, G = 0.0, B = 0.0;
+                        for (unsigned int j = 1; j <= b_last; j++) {
+                            double f = j * bin_width_hz;
+                            if (f < 20.0) continue;
+                            double x = log10(f / 50.0);
+                            if (x < 0.0) x = 0.0;
+                            if (x > 3.0) x = 3.0;
+                            double rw, gw, bw;
+                            if (x < 1.0) {
+                                rw = 1.0 - x;  gw = x;        bw = 0.0;
+                            } else if (x < 2.0) {
+                                rw = 0.0;      gw = 2.0 - x;  bw = x - 1.0;
+                            } else {
+                                rw = x - 2.0;  gw = 0.0;      bw = 3.0 - x;
+                            }
+                            double amp = stft_results[i][j];
+                            R += amp * rw;
+                            G += amp * gw;
+                            B += amp * bw;
                         }
                         spectrum_colors[i * 3 + 0] = R;
                         spectrum_colors[i * 3 + 1] = G;
@@ -716,19 +708,14 @@ public:
                         delete[] stft_results[i];
                     }
                     /* Second pass: normalize each window by the
-                     * frame max, apply gamma 0.6 to lift weak
-                     * channels (so mid-heavy music doesn't collapse
-                     * to monochrome green — pure tones at 0.0/1.0
-                     * stay pure, only blended values brighten),
-                     * and carry the previous valid color forward
-                     * into the unfilled nudge slot when the frame
-                     * divided evenly (R=G=B=0 in that slot). */
-                    const double gamma = 0.6;
+                     * frame max and carry the previous valid color
+                     * forward into the unfilled nudge slot when the
+                     * frame divided evenly (R=G=B=0 in that slot). */
                     double last_r = 0.0, last_g = 0.0, last_b = 0.0;
                     for (unsigned int i = 0; i <= n_windows; i++) {
-                        double R = (max_v > 0.0) ? pow(spectrum_colors[i*3+0] / max_v, gamma) : 0.0;
-                        double G = (max_v > 0.0) ? pow(spectrum_colors[i*3+1] / max_v, gamma) : 0.0;
-                        double B = (max_v > 0.0) ? pow(spectrum_colors[i*3+2] / max_v, gamma) : 0.0;
+                        double R = (max_v > 0.0) ? spectrum_colors[i*3+0] / max_v : 0.0;
+                        double G = (max_v > 0.0) ? spectrum_colors[i*3+1] / max_v : 0.0;
+                        double B = (max_v > 0.0) ? spectrum_colors[i*3+2] / max_v : 0.0;
                         if (R + G + B > 0.01) {
                             last_r = R; last_g = G; last_b = B;
                         }
