@@ -644,14 +644,14 @@ public:
 
                 {
                     /* Spectrum mode:
-                     *   R = sum(bin0..r_last)    (~0–1 kHz, sub-bass+kick)
-                     *   G = sum(r_last+1..g_last) (~1–5 kHz, fat mid)
-                     *   B = sum(g_last+1..b_last) (~5–20 kHz, audible treble)
+                     *   R = RMS(bin0..r_last)     (~sub-bass+kick)
+                     *   G = RMS(r_last+1..g_last) (~fat mid)
+                     *   B = RMS(g_last+1..b_last) (~audible treble)
                      * Boundaries are computed dynamically from bin_width
                      * so they adapt to whatever FFT window color_range
-                     * picked — at baseline (window_size=64, bin_width
-                     * 1500 Hz) this gives R=bin0, G=bins 1..3, B=bins
-                     * 4..13. At larger windows each band gets many more
+                     * picked — at default (window_size=128, bin_width
+                     * 750 Hz) this gives R=bin0, G=bins 1..2, B=bins
+                     * 3..26. At larger windows each band gets many more
                      * bins and finer frequency resolution.
                      *
                      * Supersonic bins (>20 kHz) are excluded so pure
@@ -683,30 +683,36 @@ public:
                     if (b_last <= g_last)            b_last = g_last + 1;
                     if (b_last >= half_w)            b_last = half_w - 1;
                     spectrum_colors = new double[(n_windows + 1) * 3]();
-                    /* First pass: take the max bin in each band and
-                     * track the max CHANNEL value across the whole
-                     * frame. Iterates to n_windows INCLUSIVE: the
-                     * extra slot holds either the nudged tail FFT
-                     * (if there was a tail gap) or zero (which
-                     * triggers the carry-forward in the second
-                     * pass). Either way the padding slot
-                     * participates in aggregation so vertex indexing
-                     * beyond the last regular window gets a sensible
-                     * color. */
+                    /* First pass: RMS energy per band — sqrt(mean
+                     * of squares). Captures multi-harmonic richness
+                     * (4 harmonics ≈ 2× brighter than 1) without
+                     * the bin-count skew of plain summing (white
+                     * noise comes out white because the per-bin
+                     * average power is equal across bands).
+                     * Iterates to n_windows INCLUSIVE: the extra
+                     * slot holds either the nudged tail FFT (if
+                     * there was a tail gap) or zero (which triggers
+                     * the carry-forward in the second pass). */
+                    unsigned int n_r = r_last + 1;
+                    unsigned int n_g = g_last - r_last;
+                    unsigned int n_b = b_last - g_last;
                     double max_v = 0.0;
                     for (unsigned int i = 0; i <= n_windows; i++) {
                         double R = 0.0;
                         for (unsigned int j = 0; j <= r_last; j++) {
-                            if (stft_results[i][j] > R) R = stft_results[i][j];
+                            R += stft_results[i][j] * stft_results[i][j];
                         }
+                        R = sqrt(R / n_r);
                         double G = 0.0;
                         for (unsigned int j = r_last + 1; j <= g_last; j++) {
-                            if (stft_results[i][j] > G) G = stft_results[i][j];
+                            G += stft_results[i][j] * stft_results[i][j];
                         }
+                        G = sqrt(G / n_g);
                         double B = 0.0;
                         for (unsigned int j = g_last + 1; j <= b_last; j++) {
-                            if (stft_results[i][j] > B) B = stft_results[i][j];
+                            B += stft_results[i][j] * stft_results[i][j];
                         }
+                        B = sqrt(B / n_b);
                         spectrum_colors[i * 3 + 0] = R;
                         spectrum_colors[i * 3 + 1] = G;
                         spectrum_colors[i * 3 + 2] = B;
