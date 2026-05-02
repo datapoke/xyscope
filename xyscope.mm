@@ -716,14 +716,19 @@ public:
                         delete[] stft_results[i];
                     }
                     /* Second pass: normalize each window by the
-                     * frame max, and carry the previous valid color
-                     * forward into the unfilled nudge slot when the
-                     * frame divided evenly (R=G=B=0 in that slot). */
+                     * frame max, apply gamma 0.6 to lift weak
+                     * channels (so mid-heavy music doesn't collapse
+                     * to monochrome green — pure tones at 0.0/1.0
+                     * stay pure, only blended values brighten),
+                     * and carry the previous valid color forward
+                     * into the unfilled nudge slot when the frame
+                     * divided evenly (R=G=B=0 in that slot). */
+                    const double gamma = 0.6;
                     double last_r = 0.0, last_g = 0.0, last_b = 0.0;
                     for (unsigned int i = 0; i <= n_windows; i++) {
-                        double R = (max_v > 0.0) ? spectrum_colors[i*3+0] / max_v : 0.0;
-                        double G = (max_v > 0.0) ? spectrum_colors[i*3+1] / max_v : 0.0;
-                        double B = (max_v > 0.0) ? spectrum_colors[i*3+2] / max_v : 0.0;
+                        double R = (max_v > 0.0) ? pow(spectrum_colors[i*3+0] / max_v, gamma) : 0.0;
+                        double G = (max_v > 0.0) ? pow(spectrum_colors[i*3+1] / max_v, gamma) : 0.0;
+                        double B = (max_v > 0.0) ? pow(spectrum_colors[i*3+2] / max_v, gamma) : 0.0;
                         if (R + G + B > 0.01) {
                             last_r = R; last_g = G; last_b = B;
                         }
