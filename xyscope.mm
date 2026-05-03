@@ -673,9 +673,9 @@ public:
                      * humans hear pitch (octaves), and white noise
                      * with max-per-band aggregation comes out
                      * actually white instead of B-skewed. */
-                    unsigned int r_last = (unsigned int)(200.0 / bin_width_hz);
-                    unsigned int g_last = (unsigned int)(2000.0 / bin_width_hz);
-                    unsigned int b_last = (unsigned int)(20000.0 / bin_width_hz);
+                    unsigned int r_last = (unsigned int)(149.0 / bin_width_hz);
+                    unsigned int g_last = (unsigned int)(1490.0 / bin_width_hz);
+                    unsigned int b_last = (unsigned int)(14900.0 / bin_width_hz);
                     /* Enforce r_last < g_last < b_last < half_w,
                      * leaving at least one bin per band. */
                     if (r_last >= half_w)            r_last = half_w - 3;
