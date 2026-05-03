@@ -668,8 +668,13 @@ public:
                      * scales both the effective sample rate AND the
                      * window size proportionally). */
                     double bin_width_hz = (double)sample_rate / (double)window_size;
-                    unsigned int r_last = (unsigned int)(300.0 / bin_width_hz);
-                    unsigned int g_last = (unsigned int)(1500.0 / bin_width_hz);
+                    /* Log-spaced boundaries (×10 each) so each band
+                     * spans one decade — perceptually closer to how
+                     * humans hear pitch (octaves), and white noise
+                     * with max-per-band aggregation comes out
+                     * actually white instead of B-skewed. */
+                    unsigned int r_last = (unsigned int)(200.0 / bin_width_hz);
+                    unsigned int g_last = (unsigned int)(2000.0 / bin_width_hz);
                     unsigned int b_last = (unsigned int)(20000.0 / bin_width_hz);
                     /* Enforce r_last < g_last < b_last < half_w,
                      * leaving at least one bin per band. */
