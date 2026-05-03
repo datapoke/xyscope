@@ -84,7 +84,7 @@ static inline int clock_gettime(int clk_id, struct timespec *ts) {
 #define DEFAULT_FULL_SCREEN   true
 #define DEFAULT_AUTO_SCALE    true
 #define DEFAULT_SPLINE_STEPS  32
-#define DEFAULT_COLOR_RANGE   2.0
+#define DEFAULT_COLOR_RANGE   1.0
 #define DEFAULT_COLOR_RATE    0.0
 #define DEFAULT_BLOOM_INTENSITY  1.2
 #define DEFAULT_BLOOM_GAMMA      1.0

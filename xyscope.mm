@@ -388,12 +388,12 @@ public:
         if (prefs.display_mode == DisplaySpectrumMode) {
             /* Spectrum mode: color_range indexes octaves of window_size
              * so each integer step of color_range doubles the FFT
-             * window (and halves the bin width).
+             * window (and halves the bin width). Floor is 1.
              *
-             *   color_range  0  1  2  3  4  5
-             *   window_size  32 64 128 256 512 1024
+             *   color_range  1   2   3   4   5
+             *   window_size  128 256 512 1024 2048
              *
-             * Default color_range=2 gives window_size=128, bin_width
+             * Default color_range=1 gives window_size=128, bin_width
              * 750 Hz. Cranks above that give progressively finer
              * frequency resolution at the cost of fewer STFT windows
              * per frame.
@@ -407,11 +407,11 @@ public:
              * trailing samples. */
             /* Base window scales with sample rate so the same
              * color_range gives the same bin width at any rate.
-             * At 96 kHz base=32 → color_range 0=32, 1=64, etc.
-             * At 192 kHz base=64 → color_range 0=64, 1=128, etc.
-             * At 48 kHz base=16 → color_range 0=16, 1=32, etc. */
+             * At 96 kHz base=64 → color_range 1=128, 2=256, etc.
+             * At 192 kHz base=128 → color_range 1=256, 2=512, etc.
+             * At 48 kHz base=32 → color_range 1=64, 2=128, etc. */
             unsigned int base = 1;
-            while (base * 2 <= (unsigned int)(32 * sample_rate / 96000))
+            while (base * 2 <= (unsigned int)(64 * sample_rate / 96000))
                 base *= 2;
             int steps = (int)prefs.color_range;
             if (steps < 0)  steps = 0;
@@ -1720,20 +1720,20 @@ public:
         prefs.color_range = range;
         if (prefs.display_mode == DisplaySpectrumMode) {
             /* Spectrum mode uses color_range as an octave index for
-             * window_size. Clamp to the usable octave range: each
-             * integer step doubles window_size from 32, and we stop
-             * once the next doubling would overflow draw_frames or
-             * the 2048 vDSP cap. */
+             * window_size. Floor is 1; each integer step doubles
+             * window_size from base=64, and we stop once the next
+             * doubling would overflow draw_frames or the 2048 vDSP
+             * cap. */
             int max_steps = 0;
             unsigned int base = 1;
-            while (base * 2 <= (unsigned int)(32 * sample_rate / 96000))
+            while (base * 2 <= (unsigned int)(64 * sample_rate / 96000))
                 base *= 2;
             unsigned int ws = base;
             while (ws * 2 <= (unsigned int)draw_frames && ws * 2 <= 2048) {
                 ws *= 2;
                 max_steps++;
             }
-            if (prefs.color_range < 0.0) prefs.color_range = 0.0;
+            if (prefs.color_range < 1.0) prefs.color_range = 1.0;
             if (prefs.color_range > (double)max_steps) prefs.color_range = (double)max_steps;
         } else {
             wrapValue(&prefs.color_range, 100.0);
