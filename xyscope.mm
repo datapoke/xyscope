@@ -33,15 +33,14 @@
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
-#ifndef __APPLE__
 #include <SDL2/SDL_syswm.h>
-#endif
 
 #ifdef __APPLE__
 #define GL_SILENCE_DEPRECATION
 #include <OpenGL/gl.h>
 #include <Accelerate/Accelerate.h>
 #import <Foundation/Foundation.h>
+#import <AppKit/AppKit.h>
 #elif defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -1901,13 +1900,9 @@ public:
         prefs.line_width    = DEFAULT_LINE_WIDTH;
         prefs.particles     = DEFAULT_PARTICLES;
         prefs.hue           = 0.0;
-        double detected     = detect_hdr_brightness();
+        double detected     = detect_hdr_brightness(window);
         if (detected < 1.0) detected = 1.0;
-#ifdef __APPLE__
-        prefs.brightness    = (detected > 2.0) ? 2.0 : detected;
-#else
         prefs.brightness    = detected;
-#endif
         if (prefs.brightness < 2.0)
             prefs.brightness = 2.0;
         prefs.velocity_dim  = prefs.brightness;
@@ -2639,6 +2634,36 @@ int main(int argc, char *argv[])
 #ifndef __APPLE__
         skip_clamp:;
 #endif
+    }
+#endif
+
+#ifdef __APPLE__
+    /* Tag the window's surface as extended-linear sRGB so the compositor
+     * interprets our float framebuffer as linear light (1.0 = SDR
+     * reference white, > 1.0 = EDR headroom), matching the scRGB-linear
+     * semantics of the Windows (WGL float) and Linux (ext_linear) HDR
+     * paths. Without this the default EDR surface is gamma-sRGB encoded,
+     * so identical bloom/brightness settings land on a different transfer
+     * curve than the other platforms — the soft midtone glow gets crushed
+     * and can't be recovered with a (linear) brightness multiplier. */
+    {
+        SDL_SysWMinfo wminfo;
+        SDL_VERSION(&wminfo.version);
+        if (SDL_GetWindowWMInfo(window, &wminfo) &&
+            wminfo.subsystem == SDL_SYSWM_COCOA) {
+            NSWindow *nswin = wminfo.info.cocoa.window;
+            CGColorSpaceRef cs =
+                CGColorSpaceCreateWithName(kCGColorSpaceExtendedLinearSRGB);
+            if (cs) {
+                NSColorSpace *ns =
+                    [[NSColorSpace alloc] initWithCGColorSpace:cs];
+                if (ns) {
+                    nswin.colorSpace = ns;
+                    printf("HDR: macOS window tagged extended-linear sRGB\n");
+                }
+                CGColorSpaceRelease(cs);
+            }
+        }
     }
 #endif
 

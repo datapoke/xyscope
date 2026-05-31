@@ -189,8 +189,9 @@ static inline double detect_hdr_brightness_dxgi(void)
     return result;
 }
 
-static inline double detect_hdr_brightness(void)
+static inline double detect_hdr_brightness(SDL_Window *win = nullptr)
 {
+    (void)win;
     /* Try DXGI first — gives peak display luminance for HDR */
     double m = detect_hdr_brightness_dxgi();
     if (m > 1.0)
@@ -320,16 +321,31 @@ static inline bool create_hdr_window(hdr_window_t *out,
 #import <AppKit/NSScreen.h>
 #endif
 
-static inline double detect_hdr_brightness(void)
+static inline double detect_hdr_brightness(SDL_Window *win = nullptr)
 {
 #ifdef __OBJC__
     @autoreleasepool {
-        NSScreen *screen = [NSScreen mainScreen];
+        NSScreen *screen = nil;
+        /* Prefer the screen the window is currently on, so reloading
+         * defaults (backtick) re-detects EDR headroom for whichever
+         * display the window was dragged to. Fall back to the main
+         * screen when no window exists yet (initial startup). */
+        if (win) {
+            SDL_SysWMinfo wminfo;
+            SDL_VERSION(&wminfo.version);
+            if (SDL_GetWindowWMInfo(win, &wminfo) &&
+                wminfo.subsystem == SDL_SYSWM_COCOA) {
+                screen = wminfo.info.cocoa.window.screen;
+            }
+        }
+        if (!screen)
+            screen = [NSScreen mainScreen];
         CGFloat edr = screen.maximumPotentialExtendedDynamicRangeColorComponentValue;
         if (edr > 1.0)
             return (double)edr;
     }
 #endif
+    (void)win;
     return 1.0;
 }
 
@@ -670,15 +686,17 @@ static bool wayland_hdr_setup(SDL_Window *window)
     return true;
 }
 
-static inline double detect_hdr_brightness(void)
+static inline double detect_hdr_brightness(SDL_Window *win = nullptr)
 {
+    (void)win;
     return wl_hdr.headroom > 0 ? wl_hdr.headroom : 1.0;
 }
 
 #else
 /* Linux without wp_color_management_v1: no HDR */
-static inline double detect_hdr_brightness(void)
+static inline double detect_hdr_brightness(SDL_Window *win = nullptr)
 {
+    (void)win;
     return 1.0;
 }
 #endif /* HAVE_WP_COLOR_MANAGEMENT */
