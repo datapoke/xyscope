@@ -152,7 +152,7 @@ static inline double detect_hdr_brightness_displayconfig(void)
     return max_multiplier;
 }
 
-static inline double detect_hdr_brightness_dxgi(void)
+static inline double detect_hdr_brightness_dxgi(HMONITOR target = NULL)
 {
     IDXGIFactory1 *factory = NULL;
     HRESULT hr = CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void **)&factory);
@@ -170,8 +170,13 @@ static inline double detect_hdr_brightness_dxgi(void)
             if (SUCCEEDED(hr) && output6) {
                 DXGI_OUTPUT_DESC1 desc1;
                 hr = output6->GetDesc1(&desc1);
+                /* When target is set (window's current monitor), only
+                 * consider that output so reloading defaults re-detects
+                 * the display the window was dragged to. target == NULL
+                 * keeps the old behavior: brightest HDR output overall. */
                 if (SUCCEEDED(hr) &&
-                    desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020) {
+                    desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020 &&
+                    (target == NULL || desc1.Monitor == target)) {
                     /* Use peak luminance in scRGB units (80 nits = 1.0).
                      * MaxLuminance is peak for small highlights; scope
                      * traces are thin lines so this is appropriate. */
@@ -191,13 +196,27 @@ static inline double detect_hdr_brightness_dxgi(void)
 
 static inline double detect_hdr_brightness(SDL_Window *win = nullptr)
 {
-    (void)win;
+    /* Resolve the monitor the window is currently on, so reloading
+     * defaults (backtick) re-detects HDR peak for whichever display the
+     * window was dragged to. Without a window, fall back to the brightest
+     * HDR output across all monitors. */
+    HMONITOR target = NULL;
+    if (win) {
+        SDL_SysWMinfo wminfo;
+        SDL_VERSION(&wminfo.version);
+        if (SDL_GetWindowWMInfo(win, &wminfo) &&
+            wminfo.subsystem == SDL_SYSWM_WINDOWS) {
+            target = MonitorFromWindow(wminfo.info.win.window,
+                                       MONITOR_DEFAULTTONEAREST);
+        }
+    }
+
     /* Try DXGI first — gives peak display luminance for HDR */
-    double m = detect_hdr_brightness_dxgi();
+    double m = detect_hdr_brightness_dxgi(target);
     if (m > 1.0)
         return m;
 
-    /* Fall back to DisplayConfig SDR white level */
+    /* Fall back to DisplayConfig SDR white level (all monitors) */
     return detect_hdr_brightness_displayconfig();
 }
 
