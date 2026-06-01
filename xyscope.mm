@@ -2925,16 +2925,14 @@ int main(int argc, char *argv[])
 
         // Swap buffers
 #ifdef _WIN32
-        if (g_hdr_present.enabled) {
+        if (hdr_hdc) {
             int dw, dh;
             SDL_GL_GetDrawableSize(window, &dw, &dh);
-            /* Present the GL frame (FBO 0) through the DXGI HDR swapchain;
-             * if a present fails, fall back to SwapBuffers for this frame. */
-            if (!hdr_present_swap(&g_hdr_present, 0, dw, dh) && hdr_hdc)
-                SwapBuffers(hdr_hdc);
-        } else if (hdr_hdc)
-            SwapBuffers(hdr_hdc);
-        else
+            /* No fallback: present ONLY through the DXGI HDR swapchain so a
+             * failure is obvious (black/frozen + log) instead of silently
+             * looking like the old SwapBuffers path. */
+            hdr_present_swap(&g_hdr_present, 0, dw, dh);
+        } else
 #endif
         SDL_GL_SwapWindow(window);
     }
