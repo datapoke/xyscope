@@ -62,7 +62,7 @@
 
 /* --- WGL_NV_DX_interop / interop2 --- */
 #ifndef WGL_ACCESS_WRITE_DISCARD_NV
-#define WGL_ACCESS_WRITE_DISCARD_NV 0x0003
+#define WGL_ACCESS_WRITE_DISCARD_NV 0x0002
 #endif
 
 typedef HANDLE (WINAPI *HP_wglDXOpenDeviceNV)(void *);
