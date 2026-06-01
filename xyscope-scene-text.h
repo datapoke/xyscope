@@ -7,6 +7,25 @@
 #ifndef XYSCOPE_SCENE_TEXT_H
 #define XYSCOPE_SCENE_TEXT_H
 
+/* <unordered_map>/<string> are included at the top of xyscope.mm, before
+ * the min/max function-macros (which otherwise break libstdc++'s
+ * std::min/std::max template declarations). */
+
+/* Cache of rendered text textures keyed by exact string content. Static
+ * strings (e.g. the 56 help lines) become permanent cache hits instead of
+ * being re-rasterized every frame; dynamic strings (fps/latency, unique
+ * each frame) miss and re-render but are LRU-bounded so the cache can't
+ * grow without limit. This kills the per-frame TTF + texture-alloc churn
+ * that made heavy text (help) glitch under load. */
+struct text_cache_entry_t {
+    GLuint        texture;
+    int           w, h;
+    unsigned long tick;
+};
+static std::unordered_map<std::string, text_cache_entry_t> g_text_cache;
+static unsigned long g_text_tick = 0;
+static const size_t  TEXT_CACHE_MAX = 256;
+
 void scene::beginText()
 {
     top_offset = -160.0;
@@ -39,26 +58,58 @@ void scene::drawString(double x, double y, char *string)
 {
     if (!font || !string || strlen(string) == 0) return;
 
-    // Render text to surface first (need actual width for right-alignment)
-    SDL_Color white = {255, 255, 255, 255};
-    SDL_Surface *text_surface = TTF_RenderText_Blended(font, string, white);
-    if (!text_surface) {
-        fprintf(stderr, "TTF_RenderText_Blended failed: %s\n", TTF_GetError());
-        return;
-    }
+    /* Fetch the cached texture for this exact string, or rasterize +
+     * cache it on a miss. Static strings (help) hit; dynamic ones miss
+     * and re-render but are LRU-bounded below. */
+    GLuint texture;
+    int    tex_w, tex_h;
+    std::string key(string);
+    auto it = g_text_cache.find(key);
+    if (it != g_text_cache.end()) {
+        texture = it->second.texture;
+        tex_w   = it->second.w;
+        tex_h   = it->second.h;
+        it->second.tick = ++g_text_tick;
+    } else {
+        SDL_Color white = {255, 255, 255, 255};
+        SDL_Surface *text_surface = TTF_RenderText_Blended(font, string, white);
+        if (!text_surface) {
+            fprintf(stderr, "TTF_RenderText_Blended failed: %s\n", TTF_GetError());
+            return;
+        }
+        SDL_Surface *rgba_surface = SDL_ConvertSurfaceFormat(text_surface, SDL_PIXELFORMAT_ABGR8888, 0);
+        SDL_FreeSurface(text_surface);
+        if (!rgba_surface) {
+            fprintf(stderr, "SDL_ConvertSurfaceFormat failed: %s\n", SDL_GetError());
+            return;
+        }
+        tex_w = rgba_surface->w;
+        tex_h = rgba_surface->h;
 
-    // Convert surface to RGBA format for OpenGL
-    SDL_Surface *rgba_surface = SDL_ConvertSurfaceFormat(text_surface, SDL_PIXELFORMAT_ABGR8888, 0);
-    SDL_FreeSurface(text_surface);
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_w, tex_h,
+                     0, GL_RGBA, GL_UNSIGNED_BYTE, rgba_surface->pixels);
+        SDL_FreeSurface(rgba_surface);
 
-    if (!rgba_surface) {
-        fprintf(stderr, "SDL_ConvertSurfaceFormat failed: %s\n", SDL_GetError());
-        return;
+        /* Bound the cache: evict the least-recently-used entry. */
+        if (g_text_cache.size() >= TEXT_CACHE_MAX) {
+            auto oldest = g_text_cache.begin();
+            for (auto i2 = g_text_cache.begin(); i2 != g_text_cache.end(); ++i2)
+                if (i2->second.tick < oldest->second.tick) oldest = i2;
+            glDeleteTextures(1, &oldest->second.texture);
+            g_text_cache.erase(oldest);
+        }
+        text_cache_entry_t e;
+        e.texture = texture; e.w = tex_w; e.h = tex_h; e.tick = ++g_text_tick;
+        g_text_cache[key] = e;
     }
 
     // Calculate text width and height in normalized coordinates
-    double text_w = (double)rgba_surface->w / (double)prefs.dim[0] * 2.0;
-    double text_h = (double)rgba_surface->h / (double)prefs.dim[1] * 2.0;
+    double text_w = (double)tex_w / (double)prefs.dim[0] * 2.0;
+    double text_h = (double)tex_h / (double)prefs.dim[1] * 2.0;
 
     /* Position: positive x = offset from left edge.
      * Negative x = right-align with margin from right edge.
@@ -74,24 +125,10 @@ void scene::drawString(double x, double y, char *string)
     else
         y =  1.0 + y / (double) prefs.dim[1];
 
-    // Create OpenGL texture from surface
-    GLuint texture;
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                 rgba_surface->w, rgba_surface->h,
-                 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba_surface->pixels);
-
-    // Enable blending for text transparency
+    // Draw textured quad (flip Y texture coordinate for SDL surfaces)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_TEXTURE_2D);
-
-    // Draw textured quad (flip Y texture coordinate for SDL surfaces)
     glBindTexture(GL_TEXTURE_2D, texture);
     glColor3f(1.0f, 1.0f, 1.0f);
     glBegin(GL_QUADS);
@@ -100,13 +137,8 @@ void scene::drawString(double x, double y, char *string)
     glTexCoord2f(1.0f, 0.0f); glVertex2f(x + text_w, y + text_h);
     glTexCoord2f(0.0f, 0.0f); glVertex2f(x, y + text_h);
     glEnd();
-
     glDisable(GL_TEXTURE_2D);
     glDisable(GL_BLEND);
-
-    // Cleanup
-    SDL_FreeSurface(rgba_surface);
-    glDeleteTextures(1, &texture);
 }
 
 void scene::endText()

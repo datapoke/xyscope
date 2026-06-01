@@ -55,6 +55,10 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <math.h>
+/* STL containers must be included before the min/max function-macros below,
+ * or libstdc++'s std::min/std::max template decls break under gcc. */
+#include <unordered_map>
+#include <string>
 #include "xyscope-shared.h"
 #include "xyscope-ringbuffer.h"
 #include "xyscope-draw.h"
