@@ -402,6 +402,18 @@ static inline void hdr_present_set_metadata(hdr_present_t *hp)
     }
 }
 
+/* Update the mastering peak (e.g. the window moved to a different-peak
+ * display) and re-assert the HDR metadata. peak_nits is the single source
+ * of truth the default-brightness path also reads, so this keeps both the
+ * swapchain and the brightness default tracking the current panel. */
+static inline void hdr_present_set_peak(hdr_present_t *hp, double peak_nits)
+{
+    if (!hp->enabled || peak_nits <= 0.0) return;
+    if (peak_nits == hp->peak_nits) return;
+    hp->peak_nits = peak_nits;
+    hdr_present_set_metadata(hp);
+}
+
 static inline bool hdr_present_init(hdr_present_t *hp, HWND hwnd, HWND gl_hwnd,
                                     int w, int h, double peak_nits)
 {

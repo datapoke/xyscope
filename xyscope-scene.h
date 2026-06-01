@@ -863,9 +863,22 @@ public:
         prefs.line_width    = DEFAULT_LINE_WIDTH;
         prefs.particles     = DEFAULT_PARTICLES;
         prefs.hue           = 0.0;
-        double detected     = detect_hdr_brightness(window);
-        if (detected < 1.0) detected = 1.0;
-        prefs.brightness    = detected;
+#ifdef _WIN32
+        if (g_hdr_present.enabled && g_hdr_present.peak_nits > 0.0) {
+            /* HDR active: reuse the panel peak already detected for the
+             * scRGB swapchain (no second detection). Scope traces are thin
+             * anti-aliased lines covering ~1/5 of a pixel, so default to
+             * peak/15 — the trace uses the headroom without per-pixel
+             * full-coverage clipping. ~100 on a 1500-nit panel, scaling
+             * down for dimmer HDR displays. */
+            prefs.brightness = g_hdr_present.peak_nits / 15.0;
+        } else
+#endif
+        {
+            double detected = detect_hdr_brightness(window);
+            if (detected < 1.0) detected = 1.0;
+            prefs.brightness = detected;
+        }
         if (prefs.brightness < 2.0)
             prefs.brightness = 2.0;
         prefs.velocity_dim  = prefs.brightness;

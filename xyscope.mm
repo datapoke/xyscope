@@ -787,6 +787,15 @@ int main(int argc, char *argv[])
                         && mode.refresh_rate != frame_rate) {
                         scn.reinit_frame_rate(mode.refresh_rate);
                     }
+#ifdef _WIN32
+                    /* Window moved to another display: re-detect its HDR
+                     * peak so the swapchain metadata (and the default
+                     * brightness, which reads g_hdr_present.peak_nits) track
+                     * the new panel. */
+                    if (g_hdr_present.enabled)
+                        hdr_present_set_peak(&g_hdr_present,
+                                             detect_hdr_brightness(window) * 80.0);
+#endif
                 }
             } else if (event.type == SDL_MOUSEMOTION) {
                 if (event.motion.state) {
