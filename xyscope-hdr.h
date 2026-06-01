@@ -247,7 +247,8 @@ typedef struct {
  */
 static inline bool create_hdr_window(hdr_window_t *out,
                                      const char *title,
-                                     int x, int y, int w, int h)
+                                     int x, int y, int w, int h,
+                                     bool visible = true)
 {
     /* Register window class */
     WNDCLASSA wc = {};
@@ -285,8 +286,9 @@ static inline bool create_hdr_window(hdr_window_t *out,
 
     if (!wglChoosePixelFormatARB) return false;
 
-    /* Create the real window */
-    DWORD style = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+    /* Create the real window (hidden when used only as an offscreen GL
+     * render target behind a separate DXGI present window). */
+    DWORD style = WS_OVERLAPPEDWINDOW | (visible ? WS_VISIBLE : 0);
     RECT rect = { 0, 0, w, h };
     AdjustWindowRect(&rect, style, FALSE);
 
@@ -332,6 +334,31 @@ static inline bool create_hdr_window(hdr_window_t *out,
     out->hglrc = hglrc;
     printf("HDR: created floating-point framebuffer (scRGB)\n");
     return true;
+}
+
+/*
+ * Create a plain top-level window with NO pixel format set. DXGI refuses
+ * (E_ACCESSDENIED) to create a swapchain on a window that already owns a
+ * GL pixel format, so the visible DXGI present window must be kept clean —
+ * OpenGL renders on a separate hidden window and we present here. Black
+ * background so nothing flashes white before the first Present.
+ */
+static inline HWND create_plain_window(const char *title,
+                                       int x, int y, int w, int h)
+{
+    WNDCLASSA wc = {};
+    wc.lpfnWndProc   = DefWindowProcA;
+    wc.hInstance     = GetModuleHandle(NULL);
+    wc.lpszClassName = "XYScopeVisible";
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    RegisterClassA(&wc);
+
+    DWORD style = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+    RECT rect = { 0, 0, w, h };
+    AdjustWindowRect(&rect, style, FALSE);
+    return CreateWindowExA(0, wc.lpszClassName, title, style,
+        x, y, rect.right - rect.left, rect.bottom - rect.top,
+        NULL, NULL, wc.hInstance, NULL);
 }
 
 #elif defined(__APPLE__)

@@ -69,6 +69,7 @@
 /* Forward declarations — defined after scene class */
 extern HDC hdr_hdc;
 extern HWND fs_cover_hwnd;
+extern HWND gl_hidden_hwnd;
 extern hdr_present_t g_hdr_present;
 #elif !defined(__APPLE__)
 extern bool wayland_hdr_active;
@@ -2034,6 +2035,15 @@ void idle(void)
         glViewport(0, 0, drawable_w, drawable_h);
         bloom_resize(&bloom, drawable_w, drawable_h);
 #ifdef _WIN32
+        /* Resize the offscreen GL window so FBO 0 matches the visible
+         * window, then resize the DXGI swapchain to the same size. */
+        if (gl_hidden_hwnd) {
+            RECT r = { 0, 0, drawable_w, drawable_h };
+            AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, FALSE);
+            SetWindowPos(gl_hidden_hwnd, NULL, 0, 0,
+                         r.right - r.left, r.bottom - r.top,
+                         SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
         hdr_present_resize(&g_hdr_present, drawable_w, drawable_h);
 #endif
         scn.window_is_dirty = false;
@@ -2338,6 +2348,7 @@ SDL_GLContext gl_context = NULL;
 #ifdef _WIN32
 HDC hdr_hdc = NULL;              /* non-NULL when using WGL float framebuffer */
 HGLRC hdr_hglrc = NULL;
+HWND gl_hidden_hwnd = NULL;      /* offscreen GL render window behind DXGI present */
 hdr_present_t g_hdr_present = {}; /* DXGI HDR present path; enabled when active */
 HWND fs_cover_hwnd = NULL;
 #elif !defined(__APPLE__)
@@ -2541,21 +2552,34 @@ int main(int argc, char *argv[])
     }
 
 #ifdef _WIN32
-    /* Try WGL float framebuffer for HDR; fall back to SDL if unavailable */
+    /* HDR path: render OpenGL on a HIDDEN float window, and present on a
+     * separate CLEAN window through a DXGI scRGB swapchain. DXGI refuses
+     * (E_ACCESSDENIED) to create a swapchain on a window that already owns
+     * a GL pixel format, so the GL-render and DXGI-present roles must live
+     * on different windows. Falls back to the plain SDL path if any step
+     * fails. */
     {
-        hdr_window_t hdr = {};
-        if (create_hdr_window(&hdr, "XY Scope",
+        hdr_window_t glwin = {};
+        if (create_hdr_window(&glwin, "XY Scope GL", 0, 0,
+                              scn.prefs.normal_dim[0], scn.prefs.normal_dim[1],
+                              /*visible=*/false)) {
+            HWND vis = create_plain_window("XY Scope",
                               scn.prefs.position[0], scn.prefs.position[1],
-                              scn.prefs.normal_dim[0], scn.prefs.normal_dim[1])) {
-            hdr_hdc   = hdr.hdc;
-            hdr_hglrc = hdr.hglrc;
-            window = SDL_CreateWindowFrom((void *)hdr.hwnd);
-            if (!window) {
-                fprintf(stderr, "SDL_CreateWindowFrom failed: %s\n", SDL_GetError());
-                wglDeleteContext(hdr.hglrc);
-                DestroyWindow(hdr.hwnd);
-                hdr_hdc = NULL;
-                hdr_hglrc = NULL;
+                              scn.prefs.normal_dim[0], scn.prefs.normal_dim[1]);
+            if (vis) window = SDL_CreateWindowFrom((void *)vis);
+            if (window) {
+                hdr_hdc        = glwin.hdc;
+                hdr_hglrc      = glwin.hglrc;
+                gl_hidden_hwnd = glwin.hwnd;
+                /* Re-assert GL current on the hidden window in case SDL
+                 * touched the context while wrapping the visible window. */
+                wglMakeCurrent(glwin.hdc, glwin.hglrc);
+            } else {
+                fprintf(stderr, "HDR: visible/SDL window setup failed; using SDL path\n");
+                if (vis) DestroyWindow(vis);
+                wglMakeCurrent(NULL, NULL);
+                wglDeleteContext(glwin.hglrc);
+                DestroyWindow(glwin.hwnd);
             }
         }
     }
@@ -2949,6 +2973,7 @@ int main(int argc, char *argv[])
     if (hdr_hglrc) {
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hdr_hglrc);
+        if (gl_hidden_hwnd) DestroyWindow(gl_hidden_hwnd);
     } else
 #endif
 #if !defined(__APPLE__) && !defined(_WIN32) && defined(HAVE_WP_COLOR_MANAGEMENT)
