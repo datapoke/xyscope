@@ -48,6 +48,9 @@
 #ifndef GL_COLOR_ATTACHMENT0
 #define GL_COLOR_ATTACHMENT0  0x8CE0
 #endif
+#ifndef GL_RENDERBUFFER
+#define GL_RENDERBUFFER       0x8D41
+#endif
 #ifndef GL_FRAMEBUFFER_COMPLETE
 #define GL_FRAMEBUFFER_COMPLETE 0x8CD5
 #endif
@@ -72,6 +75,9 @@ typedef void (APIENTRY *HP_glBindFramebuffer)(GLenum, GLuint);
 typedef void (APIENTRY *HP_glFramebufferTexture2D)(GLenum, GLenum, GLenum, GLuint, GLint);
 typedef GLenum (APIENTRY *HP_glCheckFramebufferStatus)(GLenum);
 typedef void (APIENTRY *HP_glBlitFramebuffer)(GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum);
+typedef void (APIENTRY *HP_glGenRenderbuffers)(GLsizei, GLuint *);
+typedef void (APIENTRY *HP_glDeleteRenderbuffers)(GLsizei, const GLuint *);
+typedef void (APIENTRY *HP_glFramebufferRenderbuffer)(GLenum, GLenum, GLenum, GLuint);
 
 typedef struct {
     bool enabled;
@@ -85,8 +91,8 @@ typedef struct {
     ID3D11Texture2D     *shared_tex;    /* fp16 render target shared with GL */
     HANDLE               gl_device;     /* wglDXOpenDeviceNV handle */
     HANDLE               gl_object;     /* registered interop object */
-    GLuint               gl_tex;        /* GL name backed by shared_tex */
-    GLuint               gl_fbo;        /* FBO wrapping gl_tex */
+    GLuint               gl_rbo;        /* GL renderbuffer backed by shared_tex */
+    GLuint               gl_fbo;        /* FBO wrapping gl_rbo */
 
     double               peak_nits;
 
@@ -102,9 +108,11 @@ typedef struct {
     HP_glGenFramebuffers        pGenFB;
     HP_glDeleteFramebuffers     pDelFB;
     HP_glBindFramebuffer        pBindFB;
-    HP_glFramebufferTexture2D   pFBTex;
     HP_glCheckFramebufferStatus pCheckFB;
     HP_glBlitFramebuffer        pBlitFB;
+    HP_glGenRenderbuffers       pGenRB;
+    HP_glDeleteRenderbuffers    pDelRB;
+    HP_glFramebufferRenderbuffer pFBRB;
 } hdr_present_t;
 
 /* Forward decl so init's failure path can clean up. */
@@ -123,17 +131,19 @@ static inline bool hdr_present_load_procs(hdr_present_t *hp)
     hp->pGenFB   = (HP_glGenFramebuffers)wglGetProcAddress("glGenFramebuffers");
     hp->pDelFB   = (HP_glDeleteFramebuffers)wglGetProcAddress("glDeleteFramebuffers");
     hp->pBindFB  = (HP_glBindFramebuffer)wglGetProcAddress("glBindFramebuffer");
-    hp->pFBTex   = (HP_glFramebufferTexture2D)wglGetProcAddress("glFramebufferTexture2D");
     hp->pCheckFB = (HP_glCheckFramebufferStatus)wglGetProcAddress("glCheckFramebufferStatus");
     hp->pBlitFB  = (HP_glBlitFramebuffer)wglGetProcAddress("glBlitFramebuffer");
+    hp->pGenRB   = (HP_glGenRenderbuffers)wglGetProcAddress("glGenRenderbuffers");
+    hp->pDelRB   = (HP_glDeleteRenderbuffers)wglGetProcAddress("glDeleteRenderbuffers");
+    hp->pFBRB    = (HP_glFramebufferRenderbuffer)wglGetProcAddress("glFramebufferRenderbuffer");
 
     if (!hp->pDXOpen || !hp->pDXClose || !hp->pDXRegister || !hp->pDXUnregister
         || !hp->pDXLock || !hp->pDXUnlock || !hp->pDXSetShare) {
         fprintf(stderr, "HDR present: WGL_NV_DX_interop2 not available\n");
         return false;
     }
-    if (!hp->pGenFB || !hp->pDelFB || !hp->pBindFB || !hp->pFBTex
-        || !hp->pCheckFB || !hp->pBlitFB) {
+    if (!hp->pGenFB || !hp->pDelFB || !hp->pBindFB || !hp->pCheckFB
+        || !hp->pBlitFB || !hp->pGenRB || !hp->pDelRB || !hp->pFBRB) {
         fprintf(stderr, "HDR present: GL framebuffer procs unavailable\n");
         return false;
     }
@@ -169,17 +179,20 @@ static inline bool hdr_present_make_target(hdr_present_t *hp)
         res->Release();
     }
 
-    glGenTextures(1, &hp->gl_tex);
-    hp->gl_object = hp->pDXRegister(hp->gl_device, hp->shared_tex, hp->gl_tex,
-                                    GL_TEXTURE_2D, WGL_ACCESS_WRITE_DISCARD_NV);
+    /* Register the D3D render target as a GL renderbuffer (the form AMD's
+     * WGL_NV_DX_interop supports most reliably for a shared RT). */
+    hp->pGenRB(1, &hp->gl_rbo);
+    hp->gl_object = hp->pDXRegister(hp->gl_device, hp->shared_tex, hp->gl_rbo,
+                                    GL_RENDERBUFFER, WGL_ACCESS_WRITE_DISCARD_NV);
     if (!hp->gl_object) {
-        fprintf(stderr, "HDR present: wglDXRegisterObjectNV failed\n");
+        fprintf(stderr, "HDR present: wglDXRegisterObjectNV failed (GetLastError 0x%lx)\n",
+                (unsigned long)GetLastError());
         return false;
     }
 
     hp->pGenFB(1, &hp->gl_fbo);
     hp->pBindFB(GL_FRAMEBUFFER, hp->gl_fbo);
-    hp->pFBTex(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, hp->gl_tex, 0);
+    hp->pFBRB(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, hp->gl_rbo);
     GLenum status = hp->pCheckFB(GL_FRAMEBUFFER);
     hp->pBindFB(GL_FRAMEBUFFER, 0);
     if (status != GL_FRAMEBUFFER_COMPLETE) {
@@ -296,7 +309,7 @@ static inline void hdr_present_free_target(hdr_present_t *hp)
 {
     if (hp->gl_fbo)    { hp->pDelFB(1, &hp->gl_fbo); hp->gl_fbo = 0; }
     if (hp->gl_object) { hp->pDXUnregister(hp->gl_device, hp->gl_object); hp->gl_object = NULL; }
-    if (hp->gl_tex)    { glDeleteTextures(1, &hp->gl_tex); hp->gl_tex = 0; }
+    if (hp->gl_rbo)    { hp->pDelRB(1, &hp->gl_rbo); hp->gl_rbo = 0; }
     if (hp->shared_tex){ hp->shared_tex->Release(); hp->shared_tex = NULL; }
 }
 
