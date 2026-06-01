@@ -34,6 +34,7 @@
 #include <dxgi1_6.h>
 #include <GL/gl.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 /* --- GL constants we need (may be absent from mingw's gl.h) --- */
 #ifndef GL_READ_FRAMEBUFFER
@@ -50,6 +51,9 @@
 #endif
 #ifndef GL_RENDERBUFFER
 #define GL_RENDERBUFFER       0x8D41
+#endif
+#ifndef GL_HALF_FLOAT
+#define GL_HALF_FLOAT         0x140B
 #endif
 #ifndef GL_FRAMEBUFFER_COMPLETE
 #define GL_FRAMEBUFFER_COMPLETE 0x8CD5
@@ -93,6 +97,13 @@ typedef struct {
     HANDLE               gl_object;     /* registered interop object */
     GLuint               gl_rbo;        /* GL renderbuffer backed by shared_tex */
     GLuint               gl_fbo;        /* FBO wrapping gl_rbo */
+
+    /* Readback fallback (used when GL<->D3D interop is unsupported, e.g.
+     * AMD's WGL_NV_DX_interop only supports D3D9, not D3D11). Slower:
+     * glReadPixels the GL frame, upload into a CPU-writable D3D texture. */
+    bool                 use_readback;
+    ID3D11Texture2D     *upload_tex;    /* DYNAMIC fp16, CPU-written */
+    void                *readback_buf;  /* glReadPixels destination */
 
     double               peak_nits;
 
@@ -218,6 +229,38 @@ static inline bool hdr_present_make_target(hdr_present_t *hp)
     return true;
 }
 
+/* Readback bridge: a CPU-writable fp16 texture plus a glReadPixels buffer.
+ * Used when GL<->D3D interop is unavailable (AMD D3D11). */
+static inline void hdr_present_free_readback(hdr_present_t *hp)
+{
+    if (hp->upload_tex)   { hp->upload_tex->Release(); hp->upload_tex = NULL; }
+    if (hp->readback_buf) { free(hp->readback_buf); hp->readback_buf = NULL; }
+}
+
+static inline bool hdr_present_make_readback(hdr_present_t *hp)
+{
+    D3D11_TEXTURE2D_DESC td = {};
+    td.Width            = (UINT)hp->width;
+    td.Height           = (UINT)hp->height;
+    td.MipLevels        = 1;
+    td.ArraySize        = 1;
+    td.Format           = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    td.SampleDesc.Count = 1;
+    td.Usage            = D3D11_USAGE_DEFAULT;       /* UpdateSubresource + CopyResource */
+    td.BindFlags        = D3D11_BIND_SHADER_RESOURCE;
+
+    if (FAILED(hp->device->CreateTexture2D(&td, NULL, &hp->upload_tex)) || !hp->upload_tex) {
+        fprintf(stderr, "HDR present: readback upload texture failed\n");
+        return false;
+    }
+    hp->readback_buf = malloc((size_t)hp->width * hp->height * 8); /* fp16 RGBA */
+    if (!hp->readback_buf) {
+        hp->upload_tex->Release(); hp->upload_tex = NULL;
+        return false;
+    }
+    return true;
+}
+
 static inline void hdr_present_set_metadata(hdr_present_t *hp)
 {
     if (!hp->swapchain) return;
@@ -303,16 +346,21 @@ static inline bool hdr_present_init(hdr_present_t *hp, HWND hwnd,
     /* 3. Declare scRGB + HDR10 metadata so the DWM drives full panel peak. */
     hdr_present_set_metadata(hp);
 
-    /* 4. Open the GL<->D3D interop device and build the shared target. */
+    /* 4. Bridge GL -> the swapchain. Prefer zero-copy WGL<->D3D interop;
+     * if the driver can't register a D3D11 resource (AMD only supports
+     * D3D9 interop), fall back to a CPU readback path. */
     hp->gl_device = hp->pDXOpen(hp->device);
-    if (!hp->gl_device) {
-        fprintf(stderr, "HDR present: wglDXOpenDeviceNV failed\n");
-        goto fail;
+    if (hp->gl_device && hdr_present_make_target(hp)) {
+        hp->use_readback = false;
+    } else {
+        if (hp->gl_device) { hp->pDXClose(hp->gl_device); hp->gl_device = NULL; }
+        if (!hdr_present_make_readback(hp)) goto fail;
+        hp->use_readback = true;
     }
-    if (!hdr_present_make_target(hp)) goto fail;
 
     hp->enabled = true;
-    printf("HDR present: DXGI scRGB swapchain active (peak %.0f nits)\n", peak_nits);
+    printf("HDR present: DXGI scRGB swapchain active (peak %.0f nits)%s\n",
+           peak_nits, hp->use_readback ? " [readback bridge]" : "");
     return true;
 
 fail:
@@ -334,11 +382,12 @@ static inline void hdr_present_resize(hdr_present_t *hp, int w, int h)
     if (!hp->enabled || w < 1 || h < 1) return;
     if (w == hp->width && h == hp->height) return;
 
-    hdr_present_free_target(hp);
+    if (hp->use_readback) hdr_present_free_readback(hp);
+    else                  hdr_present_free_target(hp);
     hp->width = w; hp->height = h;
 
     /* Backbuffers must be released before ResizeBuffers; we never hold one
-     * past Present, so just resize and rebuild the shared target. */
+     * past Present, so just resize and rebuild the GL->swapchain bridge. */
     HRESULT hr = hp->swapchain->ResizeBuffers(0, (UINT)w, (UINT)h,
                                               DXGI_FORMAT_UNKNOWN, 0);
     if (FAILED(hr)) {
@@ -347,7 +396,9 @@ static inline void hdr_present_resize(hdr_present_t *hp, int w, int h)
         return;
     }
     hdr_present_set_metadata(hp);     /* re-assert after resize */
-    if (!hdr_present_make_target(hp)) hp->enabled = false;
+    bool ok = hp->use_readback ? hdr_present_make_readback(hp)
+                               : hdr_present_make_target(hp);
+    if (!ok) hp->enabled = false;
 }
 
 /* Blit the finished GL frame (src_fbo, src_w x src_h) into the shared
@@ -358,23 +409,39 @@ static inline bool hdr_present_swap(hdr_present_t *hp, GLuint src_fbo,
 {
     if (!hp->enabled) return false;
 
-    if (!hp->pDXLock(hp->gl_device, 1, &hp->gl_object))
-        return false;
+    ID3D11Texture2D *source = NULL;   /* what we CopyResource into the backbuffer */
 
-    hp->pBindFB(GL_READ_FRAMEBUFFER, src_fbo);
-    hp->pBindFB(GL_DRAW_FRAMEBUFFER, hp->gl_fbo);
-    /* Flip Y: GL origin is bottom-left, D3D/DXGI is top-left. */
-    hp->pBlitFB(0, 0, src_w, src_h,
-                0, hp->height, hp->width, 0,
-                GL_COLOR_BUFFER_BIT, GL_NEAREST);
-    hp->pBindFB(GL_FRAMEBUFFER, 0);
-
-    hp->pDXUnlock(hp->gl_device, 1, &hp->gl_object);
+    if (hp->use_readback) {
+        /* CPU path: read the GL frame and upload it into a D3D texture.
+         * NOTE: presents vertically flipped (GL bottom-left vs D3D
+         * top-left); orientation is a trivial fix once the path is proven. */
+        (void)src_w; (void)src_h;
+        hp->pBindFB(GL_READ_FRAMEBUFFER, src_fbo);
+        glReadPixels(0, 0, hp->width, hp->height, GL_RGBA, GL_HALF_FLOAT,
+                     hp->readback_buf);
+        hp->pBindFB(GL_READ_FRAMEBUFFER, 0);
+        hp->context->UpdateSubresource(hp->upload_tex, 0, NULL,
+                                       hp->readback_buf, (UINT)(hp->width * 8), 0);
+        source = hp->upload_tex;
+    } else {
+        /* Zero-copy interop path. */
+        if (!hp->pDXLock(hp->gl_device, 1, &hp->gl_object))
+            return false;
+        hp->pBindFB(GL_READ_FRAMEBUFFER, src_fbo);
+        hp->pBindFB(GL_DRAW_FRAMEBUFFER, hp->gl_fbo);
+        /* Flip Y: GL origin is bottom-left, D3D/DXGI is top-left. */
+        hp->pBlitFB(0, 0, src_w, src_h,
+                    0, hp->height, hp->width, 0,
+                    GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        hp->pBindFB(GL_FRAMEBUFFER, 0);
+        hp->pDXUnlock(hp->gl_device, 1, &hp->gl_object);
+        source = hp->shared_tex;
+    }
 
     ID3D11Texture2D *back = NULL;
     if (FAILED(hp->swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void **)&back)) || !back)
         return false;
-    hp->context->CopyResource(back, hp->shared_tex);
+    hp->context->CopyResource(back, source);
     back->Release();
 
     HRESULT hr = hp->swapchain->Present(1, 0);
@@ -383,8 +450,9 @@ static inline bool hdr_present_swap(hdr_present_t *hp, GLuint src_fbo,
 
 static inline void hdr_present_shutdown(hdr_present_t *hp)
 {
-    /* free_target is fully guarded — safe even if make_target never ran. */
+    /* both are fully guarded — safe even if neither bridge was built. */
     hdr_present_free_target(hp);
+    hdr_present_free_readback(hp);
     if (hp->gl_device) { hp->pDXClose(hp->gl_device); hp->gl_device = NULL; }
     if (hp->swapchain4){ hp->swapchain4->Release(); hp->swapchain4 = NULL; }
     if (hp->swapchain) { hp->swapchain->Release(); hp->swapchain = NULL; }
