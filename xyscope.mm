@@ -59,6 +59,7 @@
 #include "xyscope-ringbuffer.h"
 #include "xyscope-draw.h"
 #include "xyscope-hdr.h"
+#include "xyscope-hdr-present.h"
 #include "xyscope-bloom.h"
 
 #include "xyscope-compat.h"
@@ -68,6 +69,7 @@
 /* Forward declarations — defined after scene class */
 extern HDC hdr_hdc;
 extern HWND fs_cover_hwnd;
+extern hdr_present_t g_hdr_present;
 #elif !defined(__APPLE__)
 extern bool wayland_hdr_active;
 #endif
@@ -2031,6 +2033,9 @@ void idle(void)
             scn.rescale();
         glViewport(0, 0, drawable_w, drawable_h);
         bloom_resize(&bloom, drawable_w, drawable_h);
+#ifdef _WIN32
+        hdr_present_resize(&g_hdr_present, drawable_w, drawable_h);
+#endif
         scn.window_is_dirty = false;
     }
 
@@ -2333,6 +2338,7 @@ SDL_GLContext gl_context = NULL;
 #ifdef _WIN32
 HDC hdr_hdc = NULL;              /* non-NULL when using WGL float framebuffer */
 HGLRC hdr_hglrc = NULL;
+hdr_present_t g_hdr_present = {}; /* DXGI HDR present path; enabled when active */
 HWND fs_cover_hwnd = NULL;
 #elif !defined(__APPLE__)
 bool wayland_hdr_active = false;
@@ -2744,6 +2750,23 @@ int main(int argc, char *argv[])
         }
     }
 
+#ifdef _WIN32
+    /* Present the HDR frame through a DXGI scRGB swapchain with explicit
+     * HDR10 metadata so the compositor drives the panel to its real peak
+     * instead of tone-mapping our values down. Only when the WGL float
+     * path is active; falls back to SwapBuffers if interop init fails. */
+    if (hdr_hdc) {
+        SDL_SysWMinfo wi;
+        SDL_VERSION(&wi.version);
+        if (SDL_GetWindowWMInfo(window, &wi) && wi.subsystem == SDL_SYSWM_WINDOWS) {
+            double peak = detect_hdr_brightness(window) * 80.0;  /* MaxLuminance */
+            hdr_present_init(&g_hdr_present, wi.info.win.window,
+                             drawable_w, drawable_h, peak);
+        }
+        fflush(stderr);
+    }
+#endif
+
     if (scn.prefs.is_full_screen) {
         scn.setFullScreen();
     }
@@ -2902,7 +2925,14 @@ int main(int argc, char *argv[])
 
         // Swap buffers
 #ifdef _WIN32
-        if (hdr_hdc)
+        if (g_hdr_present.enabled) {
+            int dw, dh;
+            SDL_GL_GetDrawableSize(window, &dw, &dh);
+            /* Present the GL frame (FBO 0) through the DXGI HDR swapchain;
+             * if a present fails, fall back to SwapBuffers for this frame. */
+            if (!hdr_present_swap(&g_hdr_present, 0, dw, dh) && hdr_hdc)
+                SwapBuffers(hdr_hdc);
+        } else if (hdr_hdc)
             SwapBuffers(hdr_hdc);
         else
 #endif
@@ -2916,6 +2946,8 @@ int main(int argc, char *argv[])
         if (taskbar) ShowWindow(taskbar, SW_SHOW);
         if (fs_cover_hwnd) ShowWindow(fs_cover_hwnd, SW_HIDE);
     }
+    /* Release D3D/interop while the GL context is still current. */
+    hdr_present_shutdown(&g_hdr_present);
     if (hdr_hglrc) {
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hdr_hglrc);
