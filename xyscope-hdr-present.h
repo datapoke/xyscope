@@ -31,6 +31,7 @@
 
 #include <windows.h>
 #include <d3d11.h>
+#include <d3d9.h>
 #include <dxgi1_6.h>
 #include <GL/gl.h>
 #include <stdio.h>
@@ -92,11 +93,21 @@ typedef struct {
     IDXGISwapChain3     *swapchain;     /* SetColorSpace1 */
     IDXGISwapChain4     *swapchain4;    /* SetHDRMetaData (may be NULL) */
 
-    ID3D11Texture2D     *shared_tex;    /* fp16 render target shared with GL */
-    HANDLE               gl_device;     /* wglDXOpenDeviceNV handle */
+    ID3D11Texture2D     *shared_tex;    /* fp16 RT shared with GL (D3D11 interop) */
+    HANDLE               gl_device;     /* wglDXOpenDeviceNV handle (D3D11 or D3D9) */
     HANDLE               gl_object;     /* registered interop object */
-    GLuint               gl_rbo;        /* GL renderbuffer backed by shared_tex */
+    GLuint               gl_rbo;        /* GL renderbuffer backed by the shared RT */
     GLuint               gl_fbo;        /* FBO wrapping gl_rbo */
+    ID3D11Texture2D     *copy_src;      /* D3D11 texture CopyResource'd to backbuffer */
+    HWND                 gl_hwnd;       /* focus window for the D3D9 device */
+
+    /* D3D9 interop bridge (AMD: WGL interop supports D3D9, not D3D11). GL
+     * renders into a shared D3D9 fp16 surface, opened in D3D11 as shared11. */
+    IDirect3D9Ex        *d3d9;
+    IDirect3DDevice9Ex  *device9;
+    IDirect3DTexture9   *d3d9_tex;
+    IDirect3DSurface9   *d3d9_surf;
+    ID3D11Texture2D     *shared11;      /* D3D11 view of the shared D3D9 texture */
 
     /* Readback fallback (used when GL<->D3D interop is unsupported, e.g.
      * AMD's WGL_NV_DX_interop only supports D3D9, not D3D11). Slower:
@@ -208,15 +219,10 @@ static inline bool hdr_present_register_rt(hdr_present_t *hp, bool shared)
     return true;
 }
 
-/* Create the shared D3D fp16 RT + interop registration and wrap it in an
- * FBO. Split out so resize can rebuild it without tearing down the device. */
-static inline bool hdr_present_make_target(hdr_present_t *hp)
+/* Wrap the registered gl_rbo in an FBO we can blit into. Shared by the
+ * D3D11 and D3D9 interop paths. */
+static inline bool hdr_present_build_fbo(hdr_present_t *hp)
 {
-    if (!hdr_present_register_rt(hp, false) && !hdr_present_register_rt(hp, true)) {
-        fprintf(stderr, "HDR present: could not register interop render target\n");
-        return false;
-    }
-
     hp->pGenFB(1, &hp->gl_fbo);
     hp->pBindFB(GL_FRAMEBUFFER, hp->gl_fbo);
     hp->pFBRB(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, hp->gl_rbo);
@@ -226,6 +232,84 @@ static inline bool hdr_present_make_target(hdr_present_t *hp)
         fprintf(stderr, "HDR present: interop FBO incomplete (0x%x)\n", status);
         return false;
     }
+    return true;
+}
+
+/* D3D11 interop: zero-copy on NVIDIA/Intel; fails on AMD (D3D9-only). */
+static inline bool hdr_present_make_interop11(hdr_present_t *hp)
+{
+    hp->gl_device = hp->pDXOpen(hp->device);
+    if (!hp->gl_device) {
+        fprintf(stderr, "HDR present: wglDXOpenDeviceNV(D3D11) failed\n");
+        return false;
+    }
+    if (!hdr_present_register_rt(hp, false) && !hdr_present_register_rt(hp, true)) {
+        fprintf(stderr, "HDR present: could not register D3D11 interop RT\n");
+        return false;
+    }
+    if (!hdr_present_build_fbo(hp)) return false;
+    hp->copy_src = hp->shared_tex;
+    return true;
+}
+
+/* D3D9 interop: AMD-friendly zero-copy path. GL renders into a shared D3D9
+ * fp16 surface; the same resource is opened in D3D11 (shared11) and copied
+ * to the swapchain backbuffer. Needs a focus window (the hidden GL one). */
+static inline bool hdr_present_make_interop9(hdr_present_t *hp)
+{
+    if (!hp->gl_hwnd) return false;
+
+    if (FAILED(Direct3DCreate9Ex(D3D_SDK_VERSION, &hp->d3d9)) || !hp->d3d9) {
+        fprintf(stderr, "HDR present: Direct3DCreate9Ex failed\n");
+        return false;
+    }
+    D3DPRESENT_PARAMETERS pp = {};
+    pp.Windowed             = TRUE;
+    pp.SwapEffect           = D3DSWAPEFFECT_DISCARD;
+    pp.BackBufferWidth      = 1;
+    pp.BackBufferHeight     = 1;
+    pp.BackBufferFormat     = D3DFMT_UNKNOWN;
+    pp.hDeviceWindow        = hp->gl_hwnd;
+    pp.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+    if (FAILED(hp->d3d9->CreateDeviceEx(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hp->gl_hwnd,
+            D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_MULTITHREADED
+            | D3DCREATE_FPU_PRESERVE, &pp, NULL, &hp->device9)) || !hp->device9) {
+        fprintf(stderr, "HDR present: D3D9 CreateDeviceEx failed\n");
+        return false;
+    }
+
+    /* Shared fp16 render-target texture; D3D11 opens the same resource. */
+    HANDLE share = NULL;
+    if (FAILED(hp->device9->CreateTexture(hp->width, hp->height, 1,
+            D3DUSAGE_RENDERTARGET, D3DFMT_A16B16G16R16F, D3DPOOL_DEFAULT,
+            &hp->d3d9_tex, &share)) || !hp->d3d9_tex || !share) {
+        fprintf(stderr, "HDR present: D3D9 shared fp16 RT failed\n");
+        return false;
+    }
+    if (FAILED(hp->d3d9_tex->GetSurfaceLevel(0, &hp->d3d9_surf)) || !hp->d3d9_surf)
+        return false;
+    if (FAILED(hp->device->OpenSharedResource(share, __uuidof(ID3D11Texture2D),
+            (void **)&hp->shared11)) || !hp->shared11) {
+        fprintf(stderr, "HDR present: OpenSharedResource D3D9->D3D11 failed\n");
+        return false;
+    }
+
+    /* Register the D3D9 surface with GL (AMD supports D3D9 interop). */
+    hp->gl_device = hp->pDXOpen(hp->device9);
+    if (!hp->gl_device) {
+        fprintf(stderr, "HDR present: wglDXOpenDeviceNV(D3D9) failed\n");
+        return false;
+    }
+    hp->pGenRB(1, &hp->gl_rbo);
+    hp->gl_object = hp->pDXRegister(hp->gl_device, hp->d3d9_surf, hp->gl_rbo,
+                                    GL_RENDERBUFFER, WGL_ACCESS_WRITE_DISCARD_NV);
+    if (!hp->gl_object) {
+        fprintf(stderr, "HDR present: register D3D9 surface failed (GetLastError 0x%lx)\n",
+                (unsigned long)GetLastError());
+        return false;
+    }
+    if (!hdr_present_build_fbo(hp)) return false;
+    hp->copy_src = hp->shared11;
     return true;
 }
 
@@ -261,6 +345,39 @@ static inline bool hdr_present_make_readback(hdr_present_t *hp)
     return true;
 }
 
+/* Tear down every bridge resource (GL interop, D3D11 RT, D3D9 chain,
+ * readback). Fully guarded — safe to call on partial/failed state. */
+static inline void hdr_present_free_bridge(hdr_present_t *hp)
+{
+    if (hp->gl_fbo)    { hp->pDelFB(1, &hp->gl_fbo); hp->gl_fbo = 0; }
+    if (hp->gl_object) { hp->pDXUnregister(hp->gl_device, hp->gl_object); hp->gl_object = NULL; }
+    if (hp->gl_rbo)    { hp->pDelRB(1, &hp->gl_rbo); hp->gl_rbo = 0; }
+    if (hp->gl_device) { hp->pDXClose(hp->gl_device); hp->gl_device = NULL; }
+    if (hp->shared_tex){ hp->shared_tex->Release(); hp->shared_tex = NULL; }
+    if (hp->shared11)  { hp->shared11->Release(); hp->shared11 = NULL; }
+    if (hp->d3d9_surf) { hp->d3d9_surf->Release(); hp->d3d9_surf = NULL; }
+    if (hp->d3d9_tex)  { hp->d3d9_tex->Release(); hp->d3d9_tex = NULL; }
+    if (hp->device9)   { hp->device9->Release(); hp->device9 = NULL; }
+    if (hp->d3d9)      { hp->d3d9->Release(); hp->d3d9 = NULL; }
+    hdr_present_free_readback(hp);
+    hp->copy_src = NULL;
+}
+
+/* Build the GL->swapchain bridge, best path first: zero-copy D3D11 interop
+ * (NVIDIA/Intel), then zero-copy D3D9 interop (AMD), then CPU readback. */
+static inline bool hdr_present_make_bridge(hdr_present_t *hp)
+{
+    hp->use_readback = false;
+    hp->copy_src     = NULL;
+    if (hdr_present_make_interop11(hp)) return true;
+    hdr_present_free_bridge(hp);
+    if (hdr_present_make_interop9(hp))  return true;
+    hdr_present_free_bridge(hp);
+    if (hdr_present_make_readback(hp)) { hp->use_readback = true; return true; }
+    hdr_present_free_bridge(hp);
+    return false;
+}
+
 static inline void hdr_present_set_metadata(hdr_present_t *hp)
 {
     if (!hp->swapchain) return;
@@ -285,12 +402,13 @@ static inline void hdr_present_set_metadata(hdr_present_t *hp)
     }
 }
 
-static inline bool hdr_present_init(hdr_present_t *hp, HWND hwnd,
+static inline bool hdr_present_init(hdr_present_t *hp, HWND hwnd, HWND gl_hwnd,
                                     int w, int h, double peak_nits)
 {
     memset(hp, 0, sizeof(*hp));
     if (w < 1 || h < 1) return false;
     hp->width = w; hp->height = h; hp->peak_nits = peak_nits;
+    hp->gl_hwnd = gl_hwnd;
 
     if (!hdr_present_load_procs(hp)) return false;
 
@@ -346,21 +464,13 @@ static inline bool hdr_present_init(hdr_present_t *hp, HWND hwnd,
     /* 3. Declare scRGB + HDR10 metadata so the DWM drives full panel peak. */
     hdr_present_set_metadata(hp);
 
-    /* 4. Bridge GL -> the swapchain. Prefer zero-copy WGL<->D3D interop;
-     * if the driver can't register a D3D11 resource (AMD only supports
-     * D3D9 interop), fall back to a CPU readback path. */
-    hp->gl_device = hp->pDXOpen(hp->device);
-    if (hp->gl_device && hdr_present_make_target(hp)) {
-        hp->use_readback = false;
-    } else {
-        if (hp->gl_device) { hp->pDXClose(hp->gl_device); hp->gl_device = NULL; }
-        if (!hdr_present_make_readback(hp)) goto fail;
-        hp->use_readback = true;
-    }
+    /* 4. Bridge GL -> the swapchain (D3D11 interop / D3D9 interop / readback). */
+    if (!hdr_present_make_bridge(hp)) goto fail;
 
     hp->enabled = true;
-    printf("HDR present: DXGI scRGB swapchain active (peak %.0f nits)%s\n",
-           peak_nits, hp->use_readback ? " [readback bridge]" : "");
+    printf("HDR present: DXGI scRGB swapchain active (peak %.0f nits) [%s]\n",
+           peak_nits, hp->use_readback ? "readback"
+                      : (hp->d3d9 ? "D3D9 interop" : "D3D11 interop"));
     return true;
 
 fail:
@@ -368,22 +478,12 @@ fail:
     return false;
 }
 
-/* Tear down only the shared target (for resize). */
-static inline void hdr_present_free_target(hdr_present_t *hp)
-{
-    if (hp->gl_fbo)    { hp->pDelFB(1, &hp->gl_fbo); hp->gl_fbo = 0; }
-    if (hp->gl_object) { hp->pDXUnregister(hp->gl_device, hp->gl_object); hp->gl_object = NULL; }
-    if (hp->gl_rbo)    { hp->pDelRB(1, &hp->gl_rbo); hp->gl_rbo = 0; }
-    if (hp->shared_tex){ hp->shared_tex->Release(); hp->shared_tex = NULL; }
-}
-
 static inline void hdr_present_resize(hdr_present_t *hp, int w, int h)
 {
     if (!hp->enabled || w < 1 || h < 1) return;
     if (w == hp->width && h == hp->height) return;
 
-    if (hp->use_readback) hdr_present_free_readback(hp);
-    else                  hdr_present_free_target(hp);
+    hdr_present_free_bridge(hp);
     hp->width = w; hp->height = h;
 
     /* Backbuffers must be released before ResizeBuffers; we never hold one
@@ -396,9 +496,7 @@ static inline void hdr_present_resize(hdr_present_t *hp, int w, int h)
         return;
     }
     hdr_present_set_metadata(hp);     /* re-assert after resize */
-    bool ok = hp->use_readback ? hdr_present_make_readback(hp)
-                               : hdr_present_make_target(hp);
-    if (!ok) hp->enabled = false;
+    if (!hdr_present_make_bridge(hp)) hp->enabled = false;
 }
 
 /* Blit the finished GL frame (src_fbo, src_w x src_h) into the shared
@@ -435,7 +533,7 @@ static inline bool hdr_present_swap(hdr_present_t *hp, GLuint src_fbo,
                     GL_COLOR_BUFFER_BIT, GL_NEAREST);
         hp->pBindFB(GL_FRAMEBUFFER, 0);
         hp->pDXUnlock(hp->gl_device, 1, &hp->gl_object);
-        source = hp->shared_tex;
+        source = hp->copy_src;
     }
 
     ID3D11Texture2D *back = NULL;
@@ -450,10 +548,8 @@ static inline bool hdr_present_swap(hdr_present_t *hp, GLuint src_fbo,
 
 static inline void hdr_present_shutdown(hdr_present_t *hp)
 {
-    /* both are fully guarded — safe even if neither bridge was built. */
-    hdr_present_free_target(hp);
-    hdr_present_free_readback(hp);
-    if (hp->gl_device) { hp->pDXClose(hp->gl_device); hp->gl_device = NULL; }
+    /* fully guarded — safe even if no bridge was built. */
+    hdr_present_free_bridge(hp);
     if (hp->swapchain4){ hp->swapchain4->Release(); hp->swapchain4 = NULL; }
     if (hp->swapchain) { hp->swapchain->Release(); hp->swapchain = NULL; }
     if (hp->context)   { hp->context->Release(); hp->context = NULL; }

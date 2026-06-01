@@ -2784,7 +2784,7 @@ int main(int argc, char *argv[])
         SDL_VERSION(&wi.version);
         if (SDL_GetWindowWMInfo(window, &wi) && wi.subsystem == SDL_SYSWM_WINDOWS) {
             double peak = detect_hdr_brightness(window) * 80.0;  /* MaxLuminance */
-            hdr_present_init(&g_hdr_present, wi.info.win.window,
+            hdr_present_init(&g_hdr_present, wi.info.win.window, gl_hidden_hwnd,
                              drawable_w, drawable_h, peak);
         }
         fflush(stderr);
