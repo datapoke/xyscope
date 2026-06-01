@@ -153,6 +153,8 @@ static unsigned int spline_index_alloc = 0;
 
 
 #include "xyscope-scene.h"
+#include "xyscope-scene-draw.h"
+#include "xyscope-scene-text.h"
 static scene scn;
 static bloom_state_t bloom = {0};
 
