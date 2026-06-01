@@ -137,8 +137,9 @@ static inline bool hdr_present_load_procs(hdr_present_t *hp)
     hp->pDelRB   = (HP_glDeleteRenderbuffers)wglGetProcAddress("glDeleteRenderbuffers");
     hp->pFBRB    = (HP_glFramebufferRenderbuffer)wglGetProcAddress("glFramebufferRenderbuffer");
 
+    /* pDXSetShare is only needed for the interop1 (shared) fallback. */
     if (!hp->pDXOpen || !hp->pDXClose || !hp->pDXRegister || !hp->pDXUnregister
-        || !hp->pDXLock || !hp->pDXUnlock || !hp->pDXSetShare) {
+        || !hp->pDXLock || !hp->pDXUnlock) {
         fprintf(stderr, "HDR present: WGL_NV_DX_interop2 not available\n");
         return false;
     }
@@ -150,9 +151,12 @@ static inline bool hdr_present_load_procs(hdr_present_t *hp)
     return true;
 }
 
-/* Create the shared D3D fp16 texture and register it as a GL FBO target.
- * Split out so resize can rebuild it without tearing down the device. */
-static inline bool hdr_present_make_target(hdr_present_t *hp)
+/* Create an fp16 D3D render target and register it with GL as a
+ * renderbuffer. `shared` selects interop1 (MISC_SHARED + share handle) vs
+ * interop2 (non-shared) — AMD/NVIDIA drivers differ on which they accept,
+ * so the caller tries both. Cleans up its own partial state on failure so
+ * the next attempt starts fresh. */
+static inline bool hdr_present_register_rt(hdr_present_t *hp, bool shared)
 {
     D3D11_TEXTURE2D_DESC td = {};
     td.Width            = (UINT)hp->width;
@@ -163,30 +167,42 @@ static inline bool hdr_present_make_target(hdr_present_t *hp)
     td.SampleDesc.Count = 1;
     td.Usage            = D3D11_USAGE_DEFAULT;
     td.BindFlags        = D3D11_BIND_RENDER_TARGET;
-    td.MiscFlags        = D3D11_RESOURCE_MISC_SHARED;
+    td.MiscFlags        = shared ? D3D11_RESOURCE_MISC_SHARED : 0;
 
     if (FAILED(hp->device->CreateTexture2D(&td, NULL, &hp->shared_tex)) || !hp->shared_tex) {
         fprintf(stderr, "HDR present: CreateTexture2D failed\n");
         return false;
     }
 
-    /* interop2 wants the resource's share handle set before register. */
-    IDXGIResource *res = NULL;
-    if (SUCCEEDED(hp->shared_tex->QueryInterface(__uuidof(IDXGIResource), (void **)&res)) && res) {
-        HANDLE share = NULL;
-        if (SUCCEEDED(res->GetSharedHandle(&share)) && share)
-            hp->pDXSetShare(hp->shared_tex, share);
-        res->Release();
+    if (shared && hp->pDXSetShare) {
+        IDXGIResource *res = NULL;
+        if (SUCCEEDED(hp->shared_tex->QueryInterface(__uuidof(IDXGIResource), (void **)&res)) && res) {
+            HANDLE share = NULL;
+            if (SUCCEEDED(res->GetSharedHandle(&share)) && share)
+                hp->pDXSetShare(hp->shared_tex, share);
+            res->Release();
+        }
     }
 
-    /* Register the D3D render target as a GL renderbuffer (the form AMD's
-     * WGL_NV_DX_interop supports most reliably for a shared RT). */
     hp->pGenRB(1, &hp->gl_rbo);
     hp->gl_object = hp->pDXRegister(hp->gl_device, hp->shared_tex, hp->gl_rbo,
                                     GL_RENDERBUFFER, WGL_ACCESS_WRITE_DISCARD_NV);
     if (!hp->gl_object) {
-        fprintf(stderr, "HDR present: wglDXRegisterObjectNV failed (GetLastError 0x%lx)\n",
-                (unsigned long)GetLastError());
+        fprintf(stderr, "HDR present: register (%s) failed (GetLastError 0x%lx)\n",
+                shared ? "shared" : "non-shared", (unsigned long)GetLastError());
+        hp->pDelRB(1, &hp->gl_rbo); hp->gl_rbo = 0;
+        hp->shared_tex->Release(); hp->shared_tex = NULL;
+        return false;
+    }
+    return true;
+}
+
+/* Create the shared D3D fp16 RT + interop registration and wrap it in an
+ * FBO. Split out so resize can rebuild it without tearing down the device. */
+static inline bool hdr_present_make_target(hdr_present_t *hp)
+{
+    if (!hdr_present_register_rt(hp, false) && !hdr_present_register_rt(hp, true)) {
+        fprintf(stderr, "HDR present: could not register interop render target\n");
         return false;
     }
 
