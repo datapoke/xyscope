@@ -54,7 +54,6 @@ typedef long GLsizeiptr_;
 typedef long long GLsizeiptr_;
 #endif
 static void   (APIENTRYP p_glGenBuffers_)(GLsizei, GLuint *);
-static void   (APIENTRYP p_glDeleteBuffers_)(GLsizei, const GLuint *);
 static void   (APIENTRYP p_glBindBuffer_)(GLenum, GLuint);
 static void   (APIENTRYP p_glBufferData_)(GLenum, GLsizeiptr_, const void *, GLenum);
 

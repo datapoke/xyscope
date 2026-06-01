@@ -153,7 +153,6 @@ static inline bool bloom_load_procs(void)
 
     /* VBO procs for xyscope-draw.h — optional, not fatal if missing */
     p_glGenBuffers_    = (decltype(p_glGenBuffers_))BLOOM_GET_PROC("glGenBuffers");
-    p_glDeleteBuffers_ = (decltype(p_glDeleteBuffers_))BLOOM_GET_PROC("glDeleteBuffers");
     p_glBindBuffer_    = (decltype(p_glBindBuffer_))BLOOM_GET_PROC("glBindBuffer");
     p_glBufferData_    = (decltype(p_glBufferData_))BLOOM_GET_PROC("glBufferData");
 
