@@ -88,6 +88,7 @@ public:
     timeval last_frame_time;
     timeval reset_frame_time;
     timeval mouse_dirty_time;
+    timeval this_frame_time;
 
     #define NUM_COLOR_MODES 2
     #define NUM_DISPLAY_MODES 3

@@ -14,6 +14,18 @@ void scene::drawPlot()
     double dt  = 0.0;
     signed int distance = 0;
 
+    /* Frame counting — always runs, needed by frame rate limiter */
+    double elapsed_time;
+    gettimeofday(&this_frame_time, NULL);
+    elapsed_time = timeDiff(reset_frame_time, this_frame_time);
+    frame_count++;
+    if (elapsed_time >= 1.0) {
+        fps = frame_count / elapsed_time;
+        reset_frame_time = this_frame_time;
+        frame_count = 0;
+    }
+    last_frame_time = this_frame_time;
+
     /* FFT stuff */
     unsigned int window_size, overlap_size;
     if (prefs.display_mode == DisplaySpectrumMode) {

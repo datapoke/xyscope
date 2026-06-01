@@ -197,10 +197,8 @@ void scene::drawHelp()
 
 void scene::drawTimedText()
 {
-    timeval this_frame_time;
     double elapsed_time;
     double x = 80.0;
-    gettimeofday(&this_frame_time, NULL);
     for (unsigned int i = 0; i < NUM_TEXT_TIMERS; i++) {
         if (text_timer[i].show) {
             /* get the time so we can calculate how long to display */
@@ -227,23 +225,11 @@ void scene::drawTimedText()
 void scene::drawStats()
 {
     thread_data_t *t_data = ai->getThreadData();
-    timeval this_frame_time;
     double elapsed_time;
     /* char color_threshold_string[64]; */
     char fps_string[64];
     char vps_string[64];
     char time_string[64];
-
-    /* Frame counting — always runs, needed by frame rate limiter */
-    gettimeofday(&this_frame_time, NULL);
-    elapsed_time = timeDiff(reset_frame_time, this_frame_time);
-    frame_count++;
-    if (elapsed_time >= 1.0) {
-        fps = frame_count / elapsed_time;
-        reset_frame_time = this_frame_time;
-        frame_count = 0;
-    }
-    last_frame_time = this_frame_time;
 
     if (show_intro || (prefs.show_stats > 0 && prefs.show_stats < 3)) {
         snprintf(fps_string, sizeof(fps_string), "%.1f fps", fps);
@@ -253,7 +239,6 @@ void scene::drawStats()
     }
 
     /* calculate latency */
-    gettimeofday(&this_frame_time, NULL);
     elapsed_time = timeDiff(t_data->last_write, this_frame_time);
     if (elapsed_time > latency)
         latency = elapsed_time;
@@ -270,12 +255,10 @@ void scene::drawStats()
 void scene::drawText(void)
 {
     thread_data_t *t_data = ai->getThreadData();
-    timeval this_frame_time;
     double elapsed_time;
     bool show_timer = false;
 
     /* get the time so we can calculate how long to display */
-    gettimeofday(&this_frame_time, NULL);
     elapsed_time = timeDiff(show_intro_time, this_frame_time);
     if (elapsed_time > 10.0)
         show_intro = false;
