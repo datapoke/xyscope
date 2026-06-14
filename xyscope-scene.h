@@ -872,7 +872,7 @@ public:
              * peak/15 — the trace uses the headroom without per-pixel
              * full-coverage clipping. ~100 on a 1500-nit panel, scaling
              * down for dimmer HDR displays. */
-            prefs.brightness = g_hdr_present.peak_nits / 15.0;
+            prefs.brightness = g_hdr_present.peak_nits / 80.0;
         } else
 #endif
         {
