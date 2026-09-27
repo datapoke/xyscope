@@ -24,5 +24,7 @@
     <true/>
     <key>CADisableMinimumFrameDuration</key>
     <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>XYScope reads audio input (e.g. BlackHole) to draw the scope.</string>
 </dict>
 </plist>
