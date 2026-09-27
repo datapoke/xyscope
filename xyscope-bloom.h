@@ -461,7 +461,7 @@ static inline void bloom_end(bloom_state_t *b, float intensity, float gamma = 1.
     p_glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, b->blur_tex[src]);
     p_glUniform1i(b->comp_loc_bloom, 1);
-    p_glUniform1f(b->comp_loc_intensity, intensity);
+    p_glUniform1f(b->comp_loc_intensity, intensity / 2.0);
     bloom_draw_fullscreen_quad();
 
     /* Restore GL state drawText expects. */
