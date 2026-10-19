@@ -882,7 +882,7 @@ public:
         }
         if (prefs.brightness < 2.0)
             prefs.brightness = 2.0;
-        prefs.velocity_dim  = prefs.brightness;
+        prefs.velocity_dim = prefs.brightness * 2.0;
         if (prefs.velocity_dim < 4.0)
             prefs.velocity_dim = 4.0;
         prefs.bloom_intensity = DEFAULT_BLOOM_INTENSITY;
